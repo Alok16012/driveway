@@ -1,0 +1,241 @@
+@import "tailwindcss";
+
+/* DriveWay palette — same system as the Zavtoo customer app: blue as the primary UI colour (it is the
+ * end of the logo's green → cyan → blue gradient), gold for highlights (badges, CTAs, the car on the map). */
+@theme {
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #dbe5ff;
+  --color-brand-500: #2f6bff;
+  --color-brand-600: #0b5cff;
+  --color-brand-700: #0847c7;
+  --color-brand-800: #06359a;
+  --color-brand-900: #04246b;
+
+  --color-gold-50: #fff8e8;
+  --color-gold-100: #ffeec2;
+  --color-gold-500: #f5a623;
+  --color-gold-600: #dd8f0d;
+  --color-gold-700: #a86a06;
+}
+
+/* Design tokens — every screen reads these instead of hard-coding hexes. */
+:root {
+  --app-bg: #eef1fb;      /* page canvas */
+  --bg-primary: #eef1fb;
+  --surface: #ffffff;     /* cards */
+  --ink: #0f1729;         /* headings */
+  --ink-primary: #0f1729;
+  --ink-soft: #5b6478;    /* body / secondary */
+  --ink-mute: #98a1b5;    /* captions */
+  --line: #e6eaf5;        /* hairlines */
+  --blue: #0b5cff;
+  --blue-dark: #0847c7;
+  --blue-tint: #e8effe;
+  --blue-ghost: #dbeafe;
+  --gold: #f5a623;
+  --gold-dark: #dd8f0d;
+  --gold-tint: #fff6e4;
+  --gold-100: #ffeec2;
+  --border: #e5e7eb;
+  --surface-dim: #f3f4f6;
+  --surface-input: #f9fafb;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+  --text-disabled: #9ca3af;
+  --success: #dcfce7;
+  --success-text: #15803d;
+  --success-border: #bbf7d0;
+  --warning: #fef3c7;
+  --warning-text: #d97706;
+  --warning-border: #fde68a;
+  --error: #fee2e2;
+  --error-text: #dc2626;
+  --info-bg: #eff6ff;
+  --info-border: #dbeafe;
+  --info-text: #1e40af;
+  --teal-bg: #e6fffa;
+  --teal-text: #0d9488;
+  --teal-border: #ccfbf1;
+  --orange-bg: #fff3e0;
+  --orange-text: #d97706;
+  --orange-border: #fde68a;
+  --green: #2f9e76;
+  --green-dark: #3e8e7e;
+  --line-strong: #dfe4ef;
+  --red: #e03131;
+  --disabled: #c9b999;
+  --purple-tint: #f5f3ff;   /* light purple tint */
+  --purple: #7c3aed;
+  --purple-400: #c084fc;
+  --purple-600: #9333ea;
+  --teal: #2fb6c4;
+  --teal-light: #5ccfdb;
+  --green-500: #22c55e;
+  --blue-soft: #93bdfb;
+  --blue-pale: #dce9fd;
+  --orange: #e07b1f;
+  --orange-light: #f0a44a;
+  --cyan: #22b8cf;
+  --cyan-dark: #0e7490;
+  --brand-50: #eef2ff;
+  --brand-100: #dbe5ff;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --bg-secondary: #f0f2f8;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 20px;
+  --shadow-sm: 0 1px 3px rgba(15, 23, 41, 0.06);
+  --shadow-md: 0 2px 10px rgba(15, 23, 41, 0.06);
+  --shadow-lg: 0 4px 16px rgba(15, 23, 41, 0.08);
+  --shadow-xl: 0 8px 24px rgba(15, 23, 41, 0.1);
+  --transition-fast: 150ms ease;
+  --transition-med: 250ms ease;
+  --font-size-xs: 10.5px;
+  --font-size-sm: 12px;
+  --font-size-md: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 15px;
+  --font-size-xl: 16px;
+  --font-size-2xl: 18px;
+  --font-size-3xl: 22px;
+  --font-size-4xl: 24px;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-black: 800;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-2xl: 24px;
+  --spacing-3xl: 32px;
+  --max-width-app: 430px;
+  --nav-height: 64px;
+  --text-primary: #0f1729;
+  --shadow-card: 0 2px 10px rgba(15, 23, 41, 0.05);
+  --shadow-float: 0 0 40px rgba(15, 23, 41, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--app-bg);
+  font-family: var(--font-poppins), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+  /* Prices, ranks & stats line up cleanly in columns. */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  /* iOS Safari inflates text on rotation without this. */
+  -webkit-text-size-adjust: 100%;
+}
+
+button, input, textarea, select { font-family: inherit; }
+
+/* Poppins runs wide; pull headings in slightly so they read as one block. */
+h1, h2, h3, h4 { letter-spacing: -0.02em; }
+
+/* iOS zooms the whole page into any focused input under 16px — a very
+ * un-app-like jolt. Force 16px on touch-size screens (beats inline styles). */
+@media (max-width: 640px) {
+  input, textarea, select { font-size: 16px !important; }
+}
+
+/* Subtle press feedback for tappable cards/buttons (native-app feel). */
+.press { transition: transform 0.12s ease, opacity 0.12s ease; }
+.press:active { transform: scale(0.97); opacity: 0.9; }
+
+.no-scroll::-webkit-scrollbar { display: none; }
+.no-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Home "recommended by" avatars — each new face flips into its slot. */
+@keyframes avatar-flip {
+  from { opacity: 0; transform: rotateY(90deg) scale(0.7); }
+  to   { opacity: 1; transform: none; }
+}
+.avatar-flip { animation: avatar-flip 0.45s cubic-bezier(0.2, 0.8, 0.3, 1.2) both; }
+@media (prefers-reduced-motion: reduce) { .avatar-flip { animation: none; } }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.animate-pulse-dot { animation: pulse-dot 1.5s infinite; }
+
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.fade-up { animation: fade-up 0.35s ease both; }
+@media (prefers-reduced-motion: reduce) { .fade-up { animation: none; } }
+
+/* "You are here" ring on the map. */
+@keyframes map-pulse {
+  0% { transform: scale(0.6); opacity: 0.9; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+.map-pulse { animation: map-pulse 1.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.9s linear infinite; }
+
+@keyframes ripple {
+  0% { transform: scale(0.5); opacity: 0.7; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.ripple { animation: ripple 2s ease-out infinite; }
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to   { transform: none; }
+}
+.slide-up { animation: slide-up 0.35s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) { .map-pulse, .ripple, .slide-up { animation: none; } }
+
+/* Netlify injects a "Powered by Netlify" badge (and an owner toolbar) into
+   every page as an iframe. This keeps both hidden regardless of the
+   dashboard setting. */
+#nl-badge-frame,
+#nl-hud-frame {
+  display: none !important;
+}
+
+/* ── Admin panel layout: sidebar on desktop, scrollable top bar on phones ── */
+.adm-shell { display: flex; min-height: 100vh; background: var(--app-bg); }
+.adm-side { width: 240px; flex-shrink: 0; background: linear-gradient(180deg,#04246b 0%,#020b24 100%); color: white; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; padding: 20px 14px; overflow-y: auto; }
+.adm-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 22px; }
+.adm-main { flex: 1; min-width: 0; padding: 22px 28px 40px; }
+.adm-grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; }
+.adm-grid-2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; }
+.adm-table-wrap { overflow-x: auto; }
+.adm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.adm-table th { text-align: left; font-weight: 600; color: var(--ink-mute); font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.adm-table td { padding: 12px; border-bottom: 1px solid var(--line); color: var(--ink); white-space: nowrap; }
+.adm-table tbody tr { cursor: pointer; transition: background 0.12s; }
+.adm-table tbody tr:hover { background: var(--bg-secondary); }
+@media (max-width: 1100px) { .adm-grid-4 { grid-template-columns: repeat(2, minmax(0,1fr)); } .adm-grid-2 { grid-template-columns: 1fr; } }
+@media (max-width: 820px) {
+  .adm-shell { flex-direction: column; }
+  .adm-side { width: 100%; height: auto; position: sticky; top: 0; z-index: 40; flex-direction: row; align-items: center; padding: 10px 12px; gap: 12px; }
+  .adm-nav { flex-direction: row; margin-top: 0; overflow-x: auto; scrollbar-width: none; }
+  .adm-nav::-webkit-scrollbar { display: none; }
+  .adm-side-foot { display: none !important; }
+  .adm-main { padding: 16px 16px 32px; }
+}
