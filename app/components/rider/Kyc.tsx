@@ -23,7 +23,7 @@ const DOCS = [
 
 const STEPS = ["Personal", "Vehicle", "Documents", "Bank"];
 
-/** Four-step driver registration (PRD §5.1). Uploads are simulated. */
+/** Four-step rider registration (PRD §5.1). Uploads are simulated. */
 export function KycFlow({ onSubmit }: { onSubmit: (k: KycData) => void }) {
   const [step, setStep] = useState(0);
   const [k, setK] = useState<KycData>({
@@ -135,7 +135,7 @@ export function PendingApproval({ name, onApproved }: { name: string; onApproved
     <div className="fade-up" style={{ position: "absolute", inset: 0, zIndex: 190, background: "var(--app-bg)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 28, textAlign: "center" }}>
       <div style={{ width: 96, height: 96, borderRadius: "50%", background: "var(--gold-tint)", display: "flex", alignItems: "center", justifyContent: "center" }}><ClockIcon s={48} c="var(--gold-dark)" w={1.6} /></div>
       <h1 style={{ margin: "20px 0 6px", fontSize: 24, fontWeight: 800 }}>Verification in progress</h1>
-      <p style={{ margin: 0, fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.55 }}>Thanks, {name.split(" ")[0] || "driver"}! Our team is reviewing your documents. This usually takes 24–48 hours — we&apos;ll notify you once you&apos;re approved.</p>
+      <p style={{ margin: 0, fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.55 }}>Thanks, {name.split(" ")[0] || "rider"}! Our team is reviewing your documents. This usually takes 24–48 hours — we&apos;ll notify you once you&apos;re approved.</p>
       <div style={{ ...card, width: "100%", padding: 14, marginTop: 22, textAlign: "left" }}>
         {[["Documents submitted", true], ["Background check", false], ["Account activated", false]].map(([t, d], i) => (
           <div key={String(t)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>

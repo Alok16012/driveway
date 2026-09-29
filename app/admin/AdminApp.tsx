@@ -84,7 +84,7 @@ export default function AdminApp() {
         </nav>
         <div className="adm-side-foot" style={{ marginTop: "auto", paddingTop: 20, display: "flex", flexDirection: "column", gap: 8 }}>
           <p style={{ margin: "0 6px", fontSize: 11.5, color: "rgba(255,255,255,0.5)" }}>
-            <Link href="/" style={{ color: "rgba(255,255,255,0.7)" }}>Customer app</Link> · <Link href="/driver" style={{ color: "rgba(255,255,255,0.7)" }}>Driver app</Link>
+            <Link href="/customer" style={{ color: "rgba(255,255,255,0.7)" }}>Customer app</Link> · <Link href="/rider" style={{ color: "rgba(255,255,255,0.7)" }}>Rider app</Link>
           </p>
           <button onClick={() => { writeAdmin(false); setAuthed(false); }} style={{ display: "flex", alignItems: "center", gap: 10, border: "none", background: "rgba(255,255,255,0.08)", color: "white", borderRadius: 12, padding: "10px 12px", cursor: "pointer", fontSize: 13.5, fontWeight: 500 }}>
             <LogoutIcon s={18} c="white" /> Log out

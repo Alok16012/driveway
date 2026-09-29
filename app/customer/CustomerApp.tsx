@@ -2,24 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import BottomNav, { ChatGlyph, HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph } from "./components/BottomNav";
-import { OtpStep, PermissionStep, PhoneLogin, ProfileSetup, SplashScreen } from "./components/Auth";
-import HomeScreen from "./components/customer/HomeScreen";
-import { ChooseRidePage, ConfirmPage, LiveRidePage, SearchPage, TripDonePage } from "./components/customer/BookingScreens";
+import BottomNav, { ChatGlyph, HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph } from "../components/BottomNav";
+import { OtpStep, PermissionStep, PhoneLogin, ProfileSetup, SplashScreen } from "../components/Auth";
+import HomeScreen from "../components/customer/HomeScreen";
+import { ChooseRidePage, ConfirmPage, LiveRidePage, SearchPage, TripDonePage } from "../components/customer/BookingScreens";
 import {
   ChatScreen, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen,
   type ChatMessage, type ProfileKey,
-} from "./components/customer/AccountScreens";
-import type { ActiveRide, Booking } from "./components/customer/types";
-import { Toast, card } from "./components/ui";
-import { BriefcaseIcon, CardIcon, HomeIcon, UpiIcon, WalletIcon } from "./components/icons";
+} from "../components/customer/AccountScreens";
+import type { ActiveRide, Booking } from "../components/customer/types";
+import { Toast, card } from "../components/ui";
+import { BriefcaseIcon, CardIcon, HomeIcon, UpiIcon, WalletIcon } from "../components/icons";
 import {
   COUPONS, DRIVERS, MY_RIDES, PLACES, USER, discountFor, inr, nowTime,
   type Place, type Ride, type VehicleKind,
-} from "./lib/data";
+} from "../lib/data";
 
 const SHELL_MAX_W = 430;
-const AUTH_KEY = "driveway:rider";
+const AUTH_KEY = "driveway:customer";
 
 type Tab = "home" | "rides" | "offers" | "support" | "profile";
 type Stage = "splash" | "phone" | "otp" | "setup" | "perm" | "app";
@@ -197,7 +197,7 @@ export default function CustomerApp() {
           <SplashScreen tagline="Ride · Reach · Relax" onStart={() => setStage(readRider() ? "app" : "phone")}
             footer={
               <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-                Demo: <Link href="/driver" style={{ color: "var(--gold)" }}>Driver app</Link> · <Link href="/admin" style={{ color: "var(--gold)" }}>Admin panel</Link>
+                Demo: <Link href="/rider" style={{ color: "var(--gold)" }}>Rider app</Link> · <Link href="/admin" style={{ color: "var(--gold)" }}>Admin panel</Link>
               </p>
             } />
         )}

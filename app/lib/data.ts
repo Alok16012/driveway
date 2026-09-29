@@ -172,3 +172,42 @@ export const TXNS: Txn[] = [
   { id: "TX9006", kind: "Ride Fare", who: "Kavya Iyer", amount: 945, method: "Card", at: "26 Sep, 07:36 AM", ride: "RD1280" },
   { id: "TX9005", kind: "Driver Payout", who: "Rohit Kumar", amount: -12840, method: "Bank", at: "22 Sep, 09:00 AM" },
 ];
+
+/* ───────────── Rider panel (the person driving) ───────────── */
+
+/** High-demand zones shown to riders who are online. */
+export interface Hotspot { id: string; area: string; km: number; surge: number; waiting: number }
+
+export const HOTSPOTS: Hotspot[] = [
+  { id: "hs1", area: "Sector 18 Market, Noida", km: 1.4, surge: 1.5, waiting: 23 },
+  { id: "hs2", area: "Botanical Garden Metro", km: 2.1, surge: 1.3, waiting: 17 },
+  { id: "hs3", area: "Great India Place", km: 2.8, surge: 1.2, waiting: 11 },
+  { id: "hs4", area: "Film City, Sector 16A", km: 3.5, surge: 1.1, waiting: 6 },
+];
+
+/** Incentive programmes. `kind` decides which counter moves the progress bar. */
+export interface Incentive { id: string; title: string; body: string; target: number; reward: number; kind: "today" | "week" | "peak"; ends: string }
+
+export const INCENTIVES: Incentive[] = [
+  { id: "in1", title: "Daily Target", body: "Complete 5 trips today", target: 5, reward: 500, kind: "today", ends: "Ends 11:59 PM" },
+  { id: "in2", title: "Peak Hour Hero", body: "3 trips between 6 PM – 9 PM", target: 3, reward: 250, kind: "peak", ends: "Today, 6 – 9 PM" },
+  { id: "in3", title: "Weekly Streak", body: "Complete 60 trips this week", target: 60, reward: 2000, kind: "week", ends: "Ends Sun, 5 Oct" },
+];
+
+export type WalletKind = "Trip Earning" | "Cash Commission" | "Incentive" | "Payout" | "Dues Paid";
+
+export interface WalletTxn { id: string; kind: WalletKind; note: string; amount: number; at: string }
+
+export const RIDER_WALLET: WalletTxn[] = [
+  { id: "WT311", kind: "Trip Earning", note: "Ride RD1289 · UPI", amount: 128, at: "Today, 10:54 AM" },
+  { id: "WT310", kind: "Cash Commission", note: "Ride RD1283 · 20% of ₹182", amount: -36, at: "Yesterday, 07:24 PM" },
+  { id: "WT309", kind: "Incentive", note: "Daily Target bonus", amount: 500, at: "Yesterday, 11:59 PM" },
+  { id: "WT308", kind: "Payout", note: "Weekly settlement · HDFC ••4521", amount: -12840, at: "22 Sep, 09:00 AM" },
+];
+
+/** Feedback customers left for the signed-in rider. */
+export const RIDER_FEEDBACK = [
+  { who: "Amit S.", stars: 5, text: "Very polite and drove safely. Car was spotless.", at: "Today" },
+  { who: "Rahul V.", stars: 5, text: "Reached on time, knew a shortcut through traffic.", at: "Yesterday" },
+  { who: "Neha G.", stars: 4, text: "Good ride, AC could have been cooler.", at: "25 Sep" },
+];
