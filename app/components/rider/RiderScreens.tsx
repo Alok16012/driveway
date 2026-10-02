@@ -18,6 +18,8 @@ export interface RideRequest {
   id: string; customer: string; initials: string; rating: number;
   from: string; to: string; pickupKm: number; pickupMin: number; km: number; min: number; fare: number; pay: "Cash" | "UPI";
   waitFee?: number;   // added when the customer keeps the rider waiting past the free window
+  parcel?: string;    // set for parcel deliveries, e.g. "Documents · up to 1 kg"
+  ac?: boolean;       // customer booked an AC ride — keep the AC on
 }
 
 const dotStyle = (c: string, sq = false): React.CSSProperties => ({ width: 9, height: 9, borderRadius: sq ? 2 : "50%", background: c, flexShrink: 0 });
@@ -164,7 +166,7 @@ export function RiderHome({ rider, online, onToggle, today, wallet, goHome, onOp
           <VehicleArt kind={rider.vehicle} size={60} />
           <div style={{ flex: 1 }}>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{rider.model}</p>
-            <p style={{ margin: "1px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>{vehicleById(rider.vehicle).name} · {rider.plate}</p>
+            <p style={{ margin: "1px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>{vehicleById(rider.vehicle).name} · {rider.ac ? "❄ AC" : "Non-AC"} · {rider.plate}</p>
           </div>
           <StatusBadge status={rider.kyc} />
         </div>
@@ -195,8 +197,10 @@ export function RequestPopup({ req, autoAccept, towardsHome, onAccept, onDecline
       <div className="slide-up" style={{ position: "relative", background: "var(--app-bg)", borderRadius: "24px 24px 0 0", padding: "16px 16px calc(18px + env(safe-area-inset-bottom))", maxHeight: "94%", overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <p style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>New Ride Request</p>
+            <p style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>{req.parcel ? "New Delivery Request" : "New Ride Request"}</p>
             <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+              {!req.parcel && req.ac !== undefined && <span style={{ background: req.ac ? "var(--info-bg)" : "var(--surface-dim)", color: req.ac ? "var(--info-text)" : "var(--text-muted)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>{req.ac ? "❄ AC RIDE" : "NON-AC RIDE"}</span>}
+              {req.parcel && <span style={{ background: "var(--gold-tint)", color: "var(--gold-dark)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>📦 PARCEL · {req.parcel.toUpperCase()}</span>}
               {towardsHome && <span style={{ background: "var(--blue-tint)", color: "var(--blue)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>🏠 TOWARDS HOME</span>}
               {autoAccept && <span style={{ background: "var(--success)", color: "var(--success-text)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>AUTO-ACCEPTING…</span>}
             </div>
@@ -222,13 +226,13 @@ export function RequestPopup({ req, autoAccept, towardsHome, onAccept, onDecline
         <div style={{ ...card, padding: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
             <Avatar initials={req.initials} size={36} tone="gold" />
-            <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{req.customer}</p><p style={{ margin: 0, fontSize: 11.5, color: "var(--ink-soft)" }}>★ {req.rating} customer</p></div>
+            <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{req.customer}</p><p style={{ margin: 0, fontSize: 11.5, color: "var(--ink-soft)" }}>★ {req.rating} {req.parcel ? "sender" : "customer"}</p></div>
           </div>
           <RouteLines from={req.from} to={req.to} />
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
           <PrimaryButton tone="ghost" onClick={() => onDecline(false)} style={{ flex: 1, color: "var(--red)" }}>Decline</PrimaryButton>
-          <PrimaryButton onClick={onAccept} style={{ flex: 2, background: "linear-gradient(135deg,#34c38f,var(--green))", boxShadow: "0 6px 16px rgba(47,158,118,0.35)" }}>Accept Ride</PrimaryButton>
+          <PrimaryButton onClick={onAccept} style={{ flex: 2, background: "linear-gradient(135deg,#34c38f,var(--green))", boxShadow: "0 6px 16px rgba(47,158,118,0.35)" }}>{req.parcel ? "Accept Delivery" : "Accept Ride"}</PrimaryButton>
         </div>
       </div>
     </div>
@@ -269,7 +273,7 @@ export function TripPage({ req, phase, progress, onArrived, onStart, onEnd, onCo
       <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", padding: "34px 16px 20px" }}>
         <div style={{ textAlign: "center" }}>
           <div className="fade-up" style={{ width: 76, height: 76, margin: "0 auto", borderRadius: "50%", background: "linear-gradient(135deg,#34c38f,var(--green))", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 10px 24px rgba(47,158,118,0.35)" }}><CheckIcon s={38} c="white" w={3} /></div>
-          <p style={{ margin: "14px 0 0", fontSize: 22, fontWeight: 800 }}>Trip Completed</p>
+          <p style={{ margin: "14px 0 0", fontSize: 22, fontWeight: 800 }}>{req.parcel ? "Parcel Delivered" : "Trip Completed"}</p>
           <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--ink-soft)" }}>{req.km} km · {req.min} min · #{req.id}</p>
           <p style={{ margin: "14px 0 0", fontSize: 38, fontWeight: 800 }}>{inr(total)}</p>
           <p style={{ margin: "2px 0 0", fontSize: 13, fontWeight: 600, color: phase === "rate" || req.pay !== "Cash" ? "var(--success-text)" : "var(--warning-text)" }}>
@@ -299,7 +303,9 @@ export function TripPage({ req, phase, progress, onArrived, onStart, onEnd, onCo
     );
   }
 
-  const title = { toPickup: "On the way to pickup", arrived: "Waiting for customer", onTrip: "Trip in progress" }[phase];
+  const title = req.parcel
+    ? { toPickup: "Going to collect parcel", arrived: "Collect the parcel", onTrip: "Delivering parcel" }[phase]
+    : { toPickup: "On the way to pickup", arrived: "Waiting for customer", onTrip: "Trip in progress" }[phase];
   const eta = phase === "onTrip" ? Math.max(1, Math.round(req.min * (1 - progress))) : Math.max(1, Math.round(req.pickupMin * (1 - progress)));
   const fee = waitFeeFor(waited);
   const pill: React.CSSProperties = { flex: 1, border: "none", borderRadius: 12, padding: "10px 6px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
@@ -328,10 +334,11 @@ export function TripPage({ req, phase, progress, onArrived, onStart, onEnd, onCo
         <div style={{ ...card, padding: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
             <Avatar initials={req.initials} size={42} tone="gold" />
-            <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>{req.customer}</p><p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>★ {req.rating} · {req.pay} · {inr(req.fare)}</p></div>
+            <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>{req.customer}</p><p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>★ {req.rating} · {req.pay} · {inr(req.fare)}{req.ac !== undefined && !req.parcel ? (req.ac ? " · ❄ AC ON" : " · Non-AC") : ""}</p></div>
             <button onClick={onCall} aria-label="Call customer" className="press" style={{ width: 42, height: 42, borderRadius: "50%", border: "none", background: "var(--blue-tint)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><PhoneIcon s={19} c="var(--blue)" /></button>
           </div>
           <RouteLines from={req.from} to={req.to} />
+          {req.parcel && <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-soft)", background: "var(--gold-tint)", borderRadius: 10, padding: "8px 10px" }}>📦 {req.parcel} · Hand over to the receiver and confirm delivery</p>}
         </div>
 
         <div style={{ display: "flex", gap: 8 }}>
@@ -351,7 +358,7 @@ export function TripPage({ req, phase, progress, onArrived, onStart, onEnd, onCo
                 : <button onClick={() => setWaited(FREE_WAIT_SEC + 55)} style={{ background: "none", border: "1px dashed var(--line-strong)", borderRadius: 8, padding: "3px 8px", fontSize: 10.5, color: "var(--ink-mute)", cursor: "pointer" }}>Demo: skip 3 min</button>}
             </div>
             <div style={{ ...card, padding: 16, textAlign: "center" }}>
-              <p style={{ margin: "0 0 12px", fontSize: 13.5, fontWeight: 600 }}>Ask the customer for their 4-digit ride OTP</p>
+              <p style={{ margin: "0 0 12px", fontSize: 13.5, fontWeight: 600 }}>{req.parcel ? "Ask the sender for the 4-digit pickup OTP" : "Ask the customer for their 4-digit ride OTP"}</p>
               <OtpInput value={otp} onChange={(v) => { setOtp(v); setOtpErr(false); }} />
               {otpErr && <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--error-text)" }}>Enter all 4 digits</p>}
               <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--ink-mute)" }}>Demo: any 4 digits</p>
@@ -362,7 +369,7 @@ export function TripPage({ req, phase, progress, onArrived, onStart, onEnd, onCo
         <div style={{ marginTop: "auto" }}>
           {phase === "toPickup" && <PrimaryButton onClick={onArrived}>{progress >= 1 ? "I've Arrived" : "Mark Arrived"}</PrimaryButton>}
           {phase === "arrived" && <PrimaryButton onClick={() => (otp.length === 4 ? onStart(fee) : setOtpErr(true))}>Start Trip</PrimaryButton>}
-          {phase === "onTrip" && <PrimaryButton tone="red" onClick={onEnd}>End Trip</PrimaryButton>}
+          {phase === "onTrip" && <PrimaryButton tone="red" onClick={onEnd}>{req.parcel ? "Mark Delivered" : "End Trip"}</PrimaryButton>}
         </div>
       </div>
     </div>
@@ -529,7 +536,7 @@ export function RiderAccount({ rider, stats, onMenu, onLogout }: {
         </div>
         <div style={{ ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 }}>
           <VehicleArt kind={rider.vehicle} size={60} />
-          <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{rider.model}</p><p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>{vehicleById(rider.vehicle).name} · {rider.plate}</p></div>
+          <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{rider.model}</p><p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>{vehicleById(rider.vehicle).name} · {rider.ac ? "❄ AC" : "Non-AC"} · {rider.plate}</p></div>
         </div>
         <div style={{ ...card, padding: "0 14px" }}>
           {MENU.map(({ k, label: l, Icon }, i) => (

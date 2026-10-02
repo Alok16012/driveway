@@ -8,7 +8,7 @@ import { VEHICLES, type VehicleKind } from "../../lib/data";
 
 export interface KycData {
   name: string; email: string; city: string;
-  vehicle: VehicleKind; model: string; plate: string;
+  vehicle: VehicleKind; model: string; plate: string; ac: boolean;
   docs: Record<string, boolean>;
   upi: string; account: string; ifsc: string;
 }
@@ -27,7 +27,7 @@ const STEPS = ["Personal", "Vehicle", "Documents", "Bank"];
 export function KycFlow({ onSubmit }: { onSubmit: (k: KycData) => void }) {
   const [step, setStep] = useState(0);
   const [k, setK] = useState<KycData>({
-    name: "", email: "", city: "Noida", vehicle: "sedan", model: "", plate: "",
+    name: "", email: "", city: "Noida", vehicle: "sedan", model: "", plate: "", ac: true,
     docs: {}, upi: "", account: "", ifsc: "",
   });
   const set = (p: Partial<KycData>) => setK((x) => ({ ...x, ...p }));
@@ -82,7 +82,7 @@ export function KycFlow({ onSubmit }: { onSubmit: (k: KycData) => void }) {
                 {VEHICLES.map((v) => {
                   const on = v.id === k.vehicle;
                   return (
-                    <button key={v.id} onClick={() => set({ vehicle: v.id })} aria-pressed={on} className="press" style={{ ...card, padding: "10px 4px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, border: on ? "1.5px solid var(--blue)" : "1.5px solid transparent", background: on ? "var(--blue-tint)" : "var(--surface)" }}>
+                    <button key={v.id} onClick={() => set({ vehicle: v.id, ac: v.ac ? k.ac : false })} aria-pressed={on} className="press" style={{ ...card, padding: "10px 4px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, border: on ? "1.5px solid var(--blue)" : "1.5px solid transparent", background: on ? "var(--blue-tint)" : "var(--surface)" }}>
                       <VehicleArt kind={v.id} size={50} />
                       <span style={{ fontSize: 12.5, fontWeight: 600 }}>{v.name}</span>
                     </button>
@@ -90,6 +90,19 @@ export function KycFlow({ onSubmit }: { onSubmit: (k: KycData) => void }) {
                 })}
               </div>
             </div>
+            {VEHICLES.find((v) => v.id === k.vehicle)?.ac && (
+              <div>
+                <span style={label}>Air conditioning</span>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {[true, false].map((v) => {
+                    const on = k.ac === v;
+                    return <button key={String(v)} onClick={() => set({ ac: v })} aria-pressed={on} style={{ padding: "11px 10px", borderRadius: 12, cursor: "pointer", fontSize: 13.5, fontWeight: 600, textAlign: "left", background: on ? "var(--blue-tint)" : "var(--surface)", color: on ? "var(--blue)" : "var(--text-secondary)", border: on ? "1.5px solid var(--blue)" : "1.5px solid var(--line)" }}>
+                      {v ? "❄ AC vehicle" : "Non-AC vehicle"}<span style={{ display: "block", fontSize: 11, fontWeight: 500, color: "var(--ink-soft)" }}>{v ? "Get AC and Non-AC rides" : "Get Non-AC rides only"}</span>
+                    </button>;
+                  })}
+                </div>
+              </div>
+            )}
             <div><label style={label} htmlFor="km">Make, model & colour</label><input id="km" value={k.model} onChange={(e) => set({ model: e.target.value })} placeholder="Maruti Dzire · White" style={field} /></div>
             <div><label style={label} htmlFor="kp">Registration number</label><input id="kp" value={k.plate} onChange={(e) => set({ plate: e.target.value.toUpperCase() })} placeholder="UP16 AB 1234" style={{ ...field, textTransform: "uppercase", letterSpacing: "0.04em" }} /></div>
           </>

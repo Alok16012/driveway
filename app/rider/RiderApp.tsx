@@ -15,7 +15,7 @@ import {
 } from "../components/rider/RiderPages";
 import { ChatScreen, type ChatMessage } from "../components/customer/AccountScreens";
 import { DemoButton, Toast } from "../components/ui";
-import { DRIVERS, INCENTIVES, RIDER_WALLET, RIDES, inr, nowTime, type Driver, type Ride, type WalletTxn } from "../lib/data";
+import { DRIVERS, INCENTIVES, NON_AC_FACTOR, RIDER_WALLET, RIDES, inr, nowTime, type Driver, type Ride, type WalletTxn } from "../lib/data";
 
 const SHELL_MAX_W = 430;
 const AUTH_KEY = "driveway:rider";
@@ -28,9 +28,10 @@ type Detail =
   | { k: Exclude<AccountKey, "help" | "performance"> };
 
 const REQUESTS: Omit<RideRequest, "id">[] = [
-  { customer: "Amit Sharma", initials: "AS", rating: 4.9, from: "Sector 12, Noida", to: "DLF Mall of India", pickupKm: 1.2, pickupMin: 3, km: 4.2, min: 16, fare: 160, pay: "UPI" },
-  { customer: "Priya Mehta", initials: "PM", rating: 4.7, from: "Botanical Garden Metro", to: "Sector 62, Noida", pickupKm: 0.8, pickupMin: 2, km: 6.8, min: 22, fare: 182, pay: "Cash" },
-  { customer: "Kavya Iyer", initials: "KI", rating: 5.0, from: "Great India Place", to: "Akshardham Temple", pickupKm: 1.6, pickupMin: 4, km: 9.1, min: 28, fare: 246, pay: "UPI" },
+  { customer: "Amit Sharma", initials: "AS", rating: 4.9, from: "Sector 12, Noida", to: "DLF Mall of India", pickupKm: 1.2, pickupMin: 3, km: 4.2, min: 16, fare: 160, pay: "UPI", ac: true },
+  { customer: "Priya Mehta", initials: "PM", rating: 4.7, from: "Botanical Garden Metro", to: "Sector 62, Noida", pickupKm: 0.8, pickupMin: 2, km: 6.8, min: 22, fare: 155, pay: "Cash", ac: false },
+  { customer: "Kavya Iyer", initials: "KI", rating: 5.0, from: "Great India Place", to: "Akshardham Temple", pickupKm: 1.6, pickupMin: 4, km: 9.1, min: 28, fare: 246, pay: "UPI", ac: true },
+  { customer: "Neha Gupta", initials: "NG", rating: 4.8, from: "Sector 18 Market, Noida", to: "Sector 50, Noida", pickupKm: 0.9, pickupMin: 3, km: 5.3, min: 15, fare: 96, pay: "UPI", parcel: "Documents · up to 1 kg" },
 ];
 
 const readRider = () => { try { return localStorage.getItem(AUTH_KEY) === "1"; } catch { return false; } };
@@ -95,8 +96,9 @@ export default function RiderApp() {
   const sendRequest = useCallback(() => {
     let r = REQUESTS[reqIdx.current++ % REQUESTS.length];
     if (!prefs.cash && r.pay === "Cash") r = REQUESTS[reqIdx.current++ % REQUESTS.length];
+    if (!rider.ac && r.ac) r = { ...r, ac: false, fare: Math.round(r.fare * NON_AC_FACTOR) };
     setRequest({ ...r, id: `RD${++seq}` });
-  }, [prefs.cash]);
+  }, [prefs.cash, rider.ac]);
   useEffect(() => {
     if (!online || request || trip || stage !== "app") return;
     const t = setTimeout(sendRequest, 4500);
@@ -247,7 +249,7 @@ export default function RiderApp() {
         {stage === "kyc" && (
           <>
             <KycFlow onSubmit={(k) => {
-              setRider({ ...DRIVERS[0], name: k.name, initials: k.name.split(/\s+/).map((s) => s[0]).join("").slice(0, 2).toUpperCase(), vehicle: k.vehicle, model: k.model, plate: k.plate, city: k.city, phone: `+91 ${phone.slice(0, 5)} ${phone.slice(5)}`, trips: 0, rating: 0 });
+              setRider({ ...DRIVERS[0], name: k.name, initials: k.name.split(/\s+/).map((s) => s[0]).join("").slice(0, 2).toUpperCase(), vehicle: k.vehicle, model: k.model, plate: k.plate, ac: k.ac, city: k.city, phone: `+91 ${phone.slice(0, 5)} ${phone.slice(5)}`, trips: 0, rating: 0 });
               setStage("pending");
             }} />
             <div style={{ position: "absolute", top: 20, right: 16, zIndex: 195 }}>

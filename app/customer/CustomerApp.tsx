@@ -5,17 +5,17 @@ import Link from "next/link";
 import BottomNav, { ChatGlyph, HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph } from "../components/BottomNav";
 import { OtpStep, PermissionStep, PhoneLogin, ProfileSetup, SplashScreen } from "../components/Auth";
 import HomeScreen from "../components/customer/HomeScreen";
-import { ChooseRidePage, ConfirmPage, LiveRidePage, SearchPage, TripDonePage } from "../components/customer/BookingScreens";
+import { ChooseRidePage, LiveRidePage, ParcelPage, SearchPage, TripDonePage, type BookChoice } from "../components/customer/BookingScreens";
 import {
   ChatScreen, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen,
   type ChatMessage, type ProfileKey,
 } from "../components/customer/AccountScreens";
-import type { ActiveRide, Booking } from "../components/customer/types";
+import { serviceLabel, type ActiveRide, type Booking, type RideOption } from "../components/customer/types";
 import { Toast, card } from "../components/ui";
 import { BriefcaseIcon, CardIcon, HomeIcon, UpiIcon, WalletIcon } from "../components/icons";
 import {
-  COUPONS, DRIVERS, MY_RIDES, PLACES, USER, discountFor, inr, nowTime,
-  type Place, type Ride, type VehicleKind,
+  COUPONS, DRIVERS, MY_RIDES, PLACES, USER, discountFor, inr, nowTime, vehicleById,
+  type Coupon, type PayMethod, type Place, type Ride,
 } from "../lib/data";
 
 const SHELL_MAX_W = 430;
@@ -25,9 +25,9 @@ type Tab = "home" | "rides" | "offers" | "support" | "profile";
 type Stage = "splash" | "phone" | "otp" | "setup" | "perm" | "app";
 
 type Detail =
-  | { k: "search"; to?: Place; prefer?: VehicleKind }
-  | { k: "choose" }
-  | { k: "confirm" }
+  | { k: "search"; to?: Place; prefer?: RideOption }
+  | { k: "choose"; from: Place; to: Place; prefer?: RideOption }
+  | { k: "parcel"; from: Place; to: Place; km: number; min: number; pay: PayMethod; coupon: Coupon | null }
   | { k: "live" }
   | { k: "done" }
   | { k: "ride"; id: string }
@@ -59,7 +59,6 @@ export default function CustomerApp() {
   const [user, setUser] = useState<Rider>(USER);
   const [tab, setTab] = useState<Tab>("home");
   const [stack, setStack] = useState<Detail[]>([]);
-  const [booking, setBooking] = useState<Booking | null>(null);
   const [active, setActive] = useState<ActiveRide | null>(null);
   const [rides, setRides] = useState<Ride[]>(MY_RIDES);
   const [chat, setChat] = useState<ChatMessage[]>([
@@ -67,6 +66,8 @@ export default function CustomerApp() {
   ]);
   const [typing, setTyping] = useState(false);
   const [unread, setUnread] = useState(2);
+  const [acPref, setAcPref] = useState(true);
+  const [ridesTab, setRidesTab] = useState<"past" | "upcoming">("past");
   const [pendingCoupon, setPendingCoupon] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -86,7 +87,7 @@ export default function CustomerApp() {
 
   const push = (d: Detail) => setStack((s) => [...s, d]);
   const back = () => setStack((s) => s.slice(0, -1));
-  const goTab = (t: Tab) => { setStack([]); setTab(t); };
+  const goTab = (t: Tab) => { setStack([]); setTab(t); if (t !== "rides") setRidesTab("past"); };
   const flash = (msg: string) => {
     setToast(msg);
     clearTimeout(toastTimer.current);
@@ -97,8 +98,10 @@ export default function CustomerApp() {
   const advance = (r: ActiveRide): ActiveRide => {
     switch (r.status) {
       case "Searching": {
-        const d = DRIVERS.find((x) => x.vehicle === r.vehicle && x.kyc === "Approved" && !x.suspended) ?? DRIVERS[0];
-        return { ...r, status: "Assigned", driver: d, progress: 0 };
+        // "Book Any" takes whichever Mini / Sedan / SUV is free first.
+        const fits = (k: string) => (r.service === "any" ? ["mini", "sedan", "suv"].includes(k) : k === r.vehicle);
+        const d = DRIVERS.find((x) => fits(x.vehicle) && x.kyc === "Approved" && !x.suspended && x.online) ?? DRIVERS[0];
+        return { ...r, status: "Assigned", driver: d, vehicle: d.vehicle, progress: 0 };
       }
       case "Assigned": return { ...r, status: "Arriving", progress: 0 };
       case "Arriving": return { ...r, status: "Arrived", progress: 1 };
@@ -109,9 +112,13 @@ export default function CustomerApp() {
   };
 
   const status = active?.status;
+  const parcel = active?.service === "parcel";
   useEffect(() => {
     if (!status) return;
-    const msg: Record<string, string> = {
+    const msg: Record<string, string> = parcel ? {
+      Assigned: "Delivery partner assigned! 📦", Arriving: "Partner is coming to pick up your parcel", Arrived: "Partner is at pickup — share the OTP",
+      Started: "Parcel picked up and on its way", Completed: "Your parcel has been delivered",
+    } : {
       Assigned: "Driver assigned! 🎉", Arriving: "Your driver is on the way", Arrived: "Your driver has arrived — share the OTP",
       Started: "Trip started. Have a safe ride!", Completed: "You've reached your destination",
     };
@@ -134,9 +141,9 @@ export default function CustomerApp() {
     if (!wait) return;
     const t = setTimeout(() => setActive((r) => (r && r.status === status ? advance(r) : r)), wait);
     return () => clearTimeout(t);
-  }, [status]);
+  }, [status, parcel]);
 
-  const startBooking = (to?: Place, prefer?: VehicleKind) => {
+  const startBooking = (to?: Place, prefer?: RideOption) => {
     if (active) { push({ k: "live" }); flash("You already have a ride in progress"); return; }
     push({ k: "search", to, prefer });
   };
@@ -151,8 +158,23 @@ export default function CustomerApp() {
     setStack([{ k: "live" }]);
   };
 
+  const book = (b: BookChoice, from: Place, to: Place) => {
+    if (!b.when) { confirmRide({ ...b, from, to }); return; }
+    const [date, time] = b.when.split(", ");
+    setRides((x) => [{
+      id: `RD${++seq}`, customer: user.name, driver: "To be assigned", vehicle: b.vehicle, from: from.name, to: to.name,
+      km: b.km, min: b.min, fare: b.fare, discount: discountFor(b.coupon, b.fare), pay: b.pay, paid: false,
+      status: "Scheduled", date, time, label: serviceLabel(b, vehicleById(b.vehicle).name),
+    }, ...x]);
+    setPendingCoupon(null);
+    setRidesTab("upcoming");
+    goTab("rides");
+    flash(`Ride scheduled for ${b.when}`);
+  };
+
   const record = (r: ActiveRide, extra: Partial<Ride>): Ride => ({
     id: r.id, customer: user.name, driver: r.driver.name, vehicle: r.vehicle, from: r.from.name, to: r.to.name,
+    label: serviceLabel(r, vehicleById(r.vehicle).name),
     km: r.km, min: r.min, fare: r.fare, discount: discountFor(r.coupon, r.fare), pay: r.pay, paid: true,
     status: "Completed", date: "Today", time: nowTime(), ...extra,
   });
@@ -170,7 +192,7 @@ export default function CustomerApp() {
     setRides((x) => [record(active, { rating: stars || undefined }), ...x]);
     setActive(null);
     goTab("home");
-    flash(stars ? "Thanks for rating your driver!" : "Thanks for riding with DriveWay");
+    flash(active.service === "parcel" ? "Thanks for sending with DriveWay Parcel 📦" : stars ? "Thanks for rating your driver!" : "Thanks for riding with DriveWay");
   };
 
   const sendChat = (body: string) => {
@@ -222,18 +244,19 @@ export default function CustomerApp() {
           }}>
             {/* ── Booking flow ── */}
             {detail?.k === "search" && (
-              <SearchPage initialTo={detail.to} onBack={back} onDone={(from, to) => {
-                const coupon = COUPONS.find((c) => c.code === pendingCoupon) ?? null;
-                setBooking({ from, to, vehicle: detail.prefer ?? "mini", km: 0, min: 0, fare: 0, coupon, pay: "UPI" });
-                push({ k: "choose" });
-              }} />
+              <SearchPage initialTo={detail.to} onBack={back} onDone={(from, to) => push({ k: "choose", from, to, prefer: detail.prefer })} />
             )}
-            {detail?.k === "choose" && booking && (
-              <ChooseRidePage from={booking.from} to={booking.to} prefer={booking.vehicle} onBack={back}
-                onNext={(x) => { setBooking({ ...booking, ...x }); push({ k: "confirm" }); }} />
+            {detail?.k === "choose" && (
+              <ChooseRidePage from={detail.from} to={detail.to} prefer={detail.prefer}
+                initialCoupon={COUPONS.find((c) => c.code === pendingCoupon) ?? null}
+                initialAc={acPref} onAcChange={setAcPref}
+                onBack={back} onEditRoute={back}
+                onBook={(b) => book(b, detail.from, detail.to)}
+                onParcel={(x) => push({ k: "parcel", from: detail.from, to: detail.to, ...x })} />
             )}
-            {detail?.k === "confirm" && booking && (
-              <ConfirmPage booking={booking} onBack={back} onConfirm={(coupon, pay) => confirmRide({ ...booking, coupon, pay })} />
+            {detail?.k === "parcel" && (
+              <ParcelPage from={detail.from} to={detail.to} km={detail.km} min={detail.min} user={user} pay={detail.pay} coupon={detail.coupon}
+                onBack={back} onConfirm={(b) => book(b, detail.from, detail.to)} />
             )}
             {detail?.k === "live" && active && (
               <LiveRidePage ride={active} onBack={() => goTab("home")} onCancel={cancelRide} onChat={() => push({ k: "chat" })}
@@ -256,6 +279,7 @@ export default function CustomerApp() {
             {!detail && tab === "home" && (
               <HomeScreen
                 firstName={firstName} active={active} unread={unread}
+                ac={acPref} onAc={(v) => { setAcPref(v); flash(v ? "AC vehicles selected" : "Non-AC vehicles selected — cheaper car fares"); }}
                 onSearch={(prefer) => startBooking(undefined, prefer)}
                 onQuick={(to) => startBooking(to)}
                 onTrack={() => push(active?.status === "Completed" ? { k: "done" } : { k: "live" })}
@@ -263,7 +287,7 @@ export default function CustomerApp() {
                 onNotifications={() => { setUnread(0); push({ k: "info", key: "notifications" }); }}
               />
             )}
-            {!detail && tab === "rides" && <RidesScreen rides={rides} onOpen={(r) => push({ k: "ride", id: r.id })} onBook={() => startBooking()} />}
+            {!detail && tab === "rides" && <RidesScreen key={ridesTab} initialTab={ridesTab} rides={rides} onOpen={(r) => push({ k: "ride", id: r.id })} onBook={() => startBooking()} />}
             {!detail && tab === "offers" && (
               <OffersScreen onUse={(code) => { setPendingCoupon(code); flash(`${code} will be applied to your next ride`); startBooking(); }} />
             )}

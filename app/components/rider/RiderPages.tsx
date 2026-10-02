@@ -190,7 +190,7 @@ export function VehiclePage({ rider, onBack }: { rider: Driver; onBack: () => vo
         <p style={{ margin: "4px auto 0", display: "inline-block", background: "var(--ink)", color: "white", borderRadius: 8, padding: "4px 12px", fontSize: 13, fontWeight: 700, letterSpacing: "0.06em" }}>{rider.plate}</p>
       </div>
       <div style={{ ...card, padding: "4px 14px" }}>
-        {[["Category", v.name], ["Seats", String(v.seats)], ["Base fare", inr(v.base)], ["Per km", inr(v.perKm)], ["City", rider.city]].map(([l, val], i) => (
+        {[["Category", v.name], ["Air conditioning", rider.ac ? "❄ AC — gets AC & Non-AC rides" : "Non-AC — Non-AC rides only"], ["Seats", String(v.seats)], ["Base fare", inr(v.base)], ["Per km", inr(v.perKm)], ["City", rider.city]].map(([l, val], i) => (
           <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "11px 0", borderTop: i ? "1px solid var(--line)" : "none", fontSize: 13.5 }}>
             <span style={{ color: "var(--ink-soft)" }}>{l}</span><span style={{ fontWeight: 600 }}>{val}</span>
           </div>

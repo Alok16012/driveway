@@ -6,7 +6,7 @@ Three apps in one Next.js project:
 | Route | App | For |
 |---|---|---|
 | `/` | Launcher | Pick an app |
-| `/customer` | Customer app | Book, track, pay and rate rides |
+| `/customer` | Customer app | Book rides (Book Any, Bike, Auto, Mini, Sedan, Taxi, SUV) with AC / Non-AC, hourly rentals, parcel delivery, schedule for later, book for someone else; track, pay and rate |
 | `/rider` | Rider panel | For the person driving: KYC, go online, accept requests, run trips (waiting charge, cancel, SOS, navigation), earnings, wallet & instant payout, incentives, ratings & performance, hotspots, documents, preferences (auto-accept, Go Home, cash rides), refer & earn, support |
 | `/admin` | Admin panel | Dashboard, live rides, customers, riders/KYC, pricing, coupons, payments, reports, support, broadcasts |
 

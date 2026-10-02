@@ -6,14 +6,14 @@ import {
   PinIcon, SendIcon, WalletIcon, ArrowRight, CalendarIcon, GiftIcon,
 } from "../icons";
 import { BrandMark } from "../Brand";
-import VehicleArt from "../VehicleArt";
+import VehicleArt, { ParcelArt } from "../VehicleArt";
 import { Avatar, PageHeader, StatusBadge, Tabs, card, iconBtn } from "../ui";
 import { COUPONS, discountFor, inr, vehicleById, type Ride } from "../../lib/data";
 
 /* ───────────────────────── My rides ───────────────────────── */
 
-export function RidesScreen({ rides, onBack, onOpen, onBook }: { rides: Ride[]; onBack?: () => void; onOpen: (r: Ride) => void; onBook: () => void }) {
-  const [tab, setTab] = useState<"past" | "upcoming">("past");
+export function RidesScreen({ rides, onBack, onOpen, onBook, initialTab = "past" }: { rides: Ride[]; onBack?: () => void; onOpen: (r: Ride) => void; onBook: () => void; initialTab?: "past" | "upcoming" }) {
+  const [tab, setTab] = useState<"past" | "upcoming">(initialTab);
   const rows = tab === "past" ? rides.filter((r) => r.status !== "Scheduled") : rides.filter((r) => r.status === "Scheduled");
   return (
     <div>
@@ -24,14 +24,14 @@ export function RidesScreen({ rides, onBack, onOpen, onBook }: { rides: Ride[]; 
           {rows.map((r) => (
             <button key={r.id + r.time} onClick={() => onOpen(r)} className="press" style={{ ...card, border: "none", padding: 12, cursor: "pointer", textAlign: "left", display: "flex", gap: 12 }}>
               <div style={{ width: 70, height: 70, flexShrink: 0, borderRadius: 14, background: "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <VehicleArt kind={r.vehicle} size={58} />
+                {r.label?.startsWith("Parcel") ? <ParcelArt size={58} /> : <VehicleArt kind={r.vehicle} size={58} />}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                   <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)" }}>{r.date}, {r.time}</span>
                   <StatusBadge status={r.status} />
                 </div>
-                <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--ink-soft)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.from} → {r.to}</p>
+                <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--ink-soft)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.label ? <b style={{ fontWeight: 600, color: "var(--ink)" }}>{r.label} · </b> : null}{r.from} → {r.to}</p>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
                   <span style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>{r.status === "Cancelled" ? "—" : inr(r.fare - r.discount)}</span>
                   {r.rating ? <span style={{ fontSize: 12, color: "var(--gold-dark)", fontWeight: 600 }}>{"★".repeat(r.rating)}</span>

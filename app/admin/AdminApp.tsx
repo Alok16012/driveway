@@ -11,7 +11,7 @@ import {
 } from "../components/icons";
 import { Avatar, PrimaryButton, StatusBadge, Toggle, card, field, label } from "../components/ui";
 import {
-  COUPONS, CUSTOMERS, DRIVERS, RIDES, TICKETS, TXNS, VEHICLES, WEEK, inr, vehicleById,
+  COUPONS, CUSTOMERS, DRIVERS, NON_AC_FACTOR, RIDES, TICKETS, TXNS, VEHICLES, WEEK, fareFor, inr, vehicleById,
   type Coupon, type Customer, type Driver, type Ride, type Ticket, type Vehicle,
 } from "../lib/data";
 
@@ -488,7 +488,7 @@ function DriversSection({ rows, onUpdate }: { rows: Driver[]; onUpdate: (id: str
           </div>
           <div style={{ ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 }}>
             <VehicleArt kind={sel.vehicle} size={64} />
-            <div><p style={{ margin: 0, fontWeight: 700 }}>{sel.model}</p><p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>{vehicleById(sel.vehicle).name} · {sel.plate}</p></div>
+            <div><p style={{ margin: 0, fontWeight: 700 }}>{sel.model}</p><p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>{vehicleById(sel.vehicle).name} · {sel.ac ? "AC" : "Non-AC"} · {sel.plate}</p></div>
           </div>
           <Panel title="KYC documents">
             {["Profile photo", "Driving licence", "Vehicle RC", "Insurance", "Aadhaar"].map((doc) => (
@@ -524,10 +524,10 @@ function PricingSection({ vehicles, setVehicles, commission, setCommission, surg
   const cols: [keyof Vehicle, string][] = [["base", "Base ₹"], ["perKm", "₹ / km"], ["perMin", "₹ / min"], ["minFare", "Min fare ₹"], ["cancelFee", "Cancel fee ₹"]];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Panel title="Vehicle categories & fares" right={<PrimaryButton onClick={onSave} style={{ width: "auto", padding: "10px 18px", fontSize: 13.5 }}>Save changes</PrimaryButton>}>
+      <Panel title={`Vehicle categories & fares · Non-AC is ${Math.round((1 - NON_AC_FACTOR) * 100)}% cheaper`} right={<PrimaryButton onClick={onSave} style={{ width: "auto", padding: "10px 18px", fontSize: 13.5 }}>Save changes</PrimaryButton>}>
         <div className="adm-table-wrap">
           <table className="adm-table">
-            <thead><tr><th>Category</th>{cols.map(([, l]) => <th key={l}>{l}</th>)}<th>Sample 5 km / 15 min</th><th>Enabled</th></tr></thead>
+            <thead><tr><th>Category</th>{cols.map(([, l]) => <th key={l}>{l}</th>)}<th>AC option</th><th>Sample 5 km / 15 min</th><th>Enabled</th></tr></thead>
             <tbody>
               {vehicles.map((v) => (
                 <tr key={v.id} style={{ cursor: "default" }}>
@@ -536,7 +536,10 @@ function PricingSection({ vehicles, setVehicles, commission, setCommission, surg
                     <td key={k}><input type="number" min={0} step={k === "perMin" ? 0.5 : 1} value={v[k] as number} aria-label={`${v.name} ${k}`}
                       onChange={(e) => upd(v.id, k, Number(e.target.value))} style={num} /></td>
                   ))}
-                  <td style={{ fontWeight: 700 }}>{inr(Math.max(v.minFare, v.base + v.perKm * 5 + v.perMin * 15))}</td>
+                  <td><Toggle on={v.ac} onChange={(on) => upd(v.id, "ac", on)} label={`${v.name} offers AC`} /></td>
+                  <td style={{ fontWeight: 700 }}>
+                    {v.ac ? <>AC {inr(fareFor(v, 5, 15))}<br /><span style={{ fontWeight: 500, color: "var(--ink-soft)" }}>Non-AC {inr(fareFor(v, 5, 15, 1, false))}</span></> : <>{inr(fareFor(v, 5, 15))} <span style={{ fontWeight: 500, color: "var(--ink-soft)" }}>Non-AC</span></>}
+                  </td>
                   <td><Toggle on={v.enabled} onChange={(on) => upd(v.id, "enabled", on)} label={`${v.name} enabled`} /></td>
                 </tr>
               ))}

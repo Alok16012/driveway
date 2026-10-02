@@ -1,7 +1,7 @@
 /* Sample data shared by the Customer app, Driver app and Admin panel.
  * Stand-ins until the REST API from the PRD is live — every screen reads through these shapes. */
 
-export type VehicleKind = "bike" | "auto" | "mini" | "sedan" | "suv";
+export type VehicleKind = "bike" | "auto" | "mini" | "sedan" | "taxi" | "suv";
 
 export interface Vehicle {
   id: VehicleKind;
@@ -15,15 +15,21 @@ export interface Vehicle {
   cancelFee: number;
   eta: number;      // minutes to pickup
   enabled: boolean;
+  ac: boolean;      // offers an AC option (Non-AC is always available and cheaper)
+  nearby: number;   // vehicles near the customer right now; 0 → "no cabs"
 }
 
 export const VEHICLES: Vehicle[] = [
-  { id: "bike",  name: "Bike",  tagline: "Beat the traffic",       seats: 1, base: 20, perKm: 6,  perMin: 1,   minFare: 30,  cancelFee: 15, eta: 2, enabled: true },
-  { id: "auto",  name: "Auto",  tagline: "No bargaining",          seats: 3, base: 30, perKm: 10, perMin: 1.5, minFare: 45,  cancelFee: 20, eta: 4, enabled: true },
-  { id: "mini",  name: "Mini",  tagline: "Compact AC hatchbacks",   seats: 4, base: 45, perKm: 12, perMin: 2,   minFare: 80,  cancelFee: 30, eta: 5, enabled: true },
-  { id: "sedan", name: "Sedan", tagline: "Comfy rides, extra legroom", seats: 4, base: 60, perKm: 15, perMin: 2, minFare: 110, cancelFee: 40, eta: 6, enabled: true },
-  { id: "suv",   name: "SUV",   tagline: "Room for 6 + luggage",    seats: 6, base: 90, perKm: 20, perMin: 2.5, minFare: 160, cancelFee: 50, eta: 8, enabled: true },
+  { id: "bike",  name: "Bike",  tagline: "Beat the traffic on a bike", seats: 1, base: 20, perKm: 6,  perMin: 1,   minFare: 30,  cancelFee: 15, eta: 3, enabled: true, ac: false, nearby: 9 },
+  { id: "auto",  name: "Auto",  tagline: "No bargaining, doorstep pickup", seats: 3, base: 30, perKm: 10, perMin: 1.5, minFare: 45,  cancelFee: 20, eta: 4, enabled: true, ac: false, nearby: 6 },
+  { id: "mini",  name: "Mini",  tagline: "Comfy, economical cars",   seats: 4, base: 45, perKm: 12, perMin: 2,   minFare: 80,  cancelFee: 30, eta: 7, enabled: true, ac: true, nearby: 5 },
+  { id: "sedan", name: "Sedan", tagline: "Top-rated drivers, more legroom", seats: 4, base: 60, perKm: 15, perMin: 2, minFare: 110, cancelFee: 40, eta: 6, enabled: true, ac: true, nearby: 4 },
+  { id: "taxi",  name: "Taxi",  tagline: "Classic yellow-top city taxi", seats: 4, base: 40, perKm: 11, perMin: 1.5, minFare: 70,  cancelFee: 25, eta: 0, enabled: true, ac: true, nearby: 0 },
+  { id: "suv",   name: "SUV",   tagline: "Extra legroom, 6 seats + luggage", seats: 6, base: 90, perKm: 20, perMin: 2.5, minFare: 160, cancelFee: 50, eta: 8, enabled: true, ac: true, nearby: 3 },
 ];
+
+/** Non-AC rides are this much of the AC fare. */
+export const NON_AC_FACTOR = 0.85;
 
 export const vehicleById = (id: VehicleKind) => VEHICLES.find((v) => v.id === id)!;
 
@@ -50,8 +56,44 @@ export function tripEstimate(a: string, b: string) {
   return { km: Math.round(km * 10) / 10, min };
 }
 
-export function fareFor(v: Vehicle, km: number, min: number, surge = 1) {
-  return Math.max(v.minFare, Math.round((v.base + v.perKm * km + v.perMin * min) * surge));
+export function fareFor(v: Vehicle, km: number, min: number, surge = 1, ac = true) {
+  const f = Math.max(v.minFare, Math.round((v.base + v.perKm * km + v.perMin * min) * surge));
+  return v.ac && !ac ? Math.round(f * NON_AC_FACTOR) : f;
+}
+
+/* ───────────── Hourly rentals & parcel delivery ───────────── */
+
+export interface RentalPackage { id: string; hours: number; km: number; price: number; extraKm: number; extraHour: number }
+
+/** Mini prices; other cars scale by RENTAL_SCALE. */
+export const RENTAL_PACKAGES: RentalPackage[] = [
+  { id: "r1", hours: 1, km: 10, price: 249, extraKm: 12, extraHour: 120 },
+  { id: "r2", hours: 2, km: 20, price: 449, extraKm: 12, extraHour: 120 },
+  { id: "r4", hours: 4, km: 40, price: 849, extraKm: 12, extraHour: 110 },
+  { id: "r8", hours: 8, km: 80, price: 1599, extraKm: 12, extraHour: 100 },
+];
+
+export const RENTAL_SCALE: Partial<Record<VehicleKind, number>> = { mini: 1, sedan: 1.25, suv: 1.6 };
+
+export function rentalPrice(p: RentalPackage, v: VehicleKind, ac = true) {
+  const f = Math.round(p.price * (RENTAL_SCALE[v] ?? 1));
+  return ac ? f : Math.round(f * NON_AC_FACTOR);
+}
+
+export type ParcelWeight = "light" | "medium" | "heavy";
+
+/** Bike carries up to 5 kg; heavier parcels go by Auto (base fare + a handling fee). */
+export const PARCEL_WEIGHTS: { id: ParcelWeight; label: string; sub: string; vehicle: VehicleKind; fee: number }[] = [
+  { id: "light", label: "Up to 1 kg", sub: "Documents, keys, small items", vehicle: "bike", fee: 0 },
+  { id: "medium", label: "1 – 5 kg", sub: "Food, clothes, a small box", vehicle: "bike", fee: 15 },
+  { id: "heavy", label: "5 – 20 kg", sub: "Big boxes, appliances", vehicle: "auto", fee: 40 },
+];
+
+export const PARCEL_TYPES = ["Documents", "Food", "Clothes", "Electronics", "Medicines", "Groceries", "Other"];
+
+export function parcelFare(weight: ParcelWeight, km: number, min: number) {
+  const w = PARCEL_WEIGHTS.find((x) => x.id === weight)!;
+  return fareFor(VEHICLES.find((x) => x.id === w.vehicle)!, km, min) + w.fee;
 }
 
 export interface Coupon { code: string; title: string; body: string; off: number; pct?: boolean; max?: number; expires: string; uses?: number; active?: boolean }
@@ -78,18 +120,19 @@ export type PayMethod = "UPI" | "Cash" | "Card" | "Wallet";
 export interface Driver {
   id: string; name: string; initials: string; phone: string; rating: number; trips: number;
   vehicle: VehicleKind; model: string; plate: string; city: string;
+  ac: boolean;   // vehicle has working AC (bikes and autos never do)
   kyc: "Approved" | "Pending" | "Rejected"; online: boolean; suspended?: boolean; joined: string; earnings: number;
 }
 
 export const DRIVERS: Driver[] = [
-  { id: "DRV1001", name: "Rohit Kumar", initials: "RK", phone: "+91 98100 12345", rating: 4.8, trips: 1284, vehicle: "sedan", model: "Maruti Dzire · White", plate: "UP16 AB 1234", city: "Noida", kyc: "Approved", online: true, joined: "12 Jan 2026", earnings: 186400 },
-  { id: "DRV1002", name: "Suresh Pal", initials: "SP", phone: "+91 98111 45678", rating: 4.6, trips: 842, vehicle: "auto", model: "Bajaj RE · Green", plate: "DL 1C 5678", city: "Delhi", kyc: "Approved", online: true, joined: "03 Feb 2026", earnings: 98200 },
-  { id: "DRV1003", name: "Rakesh Das", initials: "RD", phone: "+91 98222 90120", rating: 4.2, trips: 311, vehicle: "mini", model: "Hyundai i10 · Grey", plate: "BR01 CD 9012", city: "Noida", kyc: "Approved", online: false, joined: "20 Mar 2026", earnings: 54100 },
-  { id: "DRV1004", name: "Manoj Tiwari", initials: "MT", phone: "+91 98333 34560", rating: 4.9, trips: 2031, vehicle: "suv", model: "Toyota Innova · Silver", plate: "UP32 EF 3456", city: "Lucknow", kyc: "Approved", online: true, joined: "08 Nov 2025", earnings: 312900 },
-  { id: "DRV1005", name: "Imran Khan", initials: "IK", phone: "+91 98444 11223", rating: 4.7, trips: 564, vehicle: "bike", model: "Honda Shine · Black", plate: "DL 3S AB 1122", city: "Delhi", kyc: "Approved", online: true, joined: "14 Apr 2026", earnings: 41800 },
-  { id: "DRV1006", name: "Vikram Singh", initials: "VS", phone: "+91 98555 66778", rating: 0, trips: 0, vehicle: "sedan", model: "Honda Amaze · Blue", plate: "HR26 GH 6677", city: "Gurugram", kyc: "Pending", online: false, joined: "26 Sep 2026", earnings: 0 },
-  { id: "DRV1007", name: "Arjun Yadav", initials: "AY", phone: "+91 98666 22334", rating: 0, trips: 0, vehicle: "auto", model: "Piaggio Ape · Yellow", plate: "UP16 JK 2233", city: "Noida", kyc: "Pending", online: false, joined: "27 Sep 2026", earnings: 0 },
-  { id: "DRV1008", name: "Deepak Sharma", initials: "DS", phone: "+91 98777 88990", rating: 3.9, trips: 128, vehicle: "mini", model: "Maruti Swift · Red", plate: "DL 8C LM 8899", city: "Delhi", kyc: "Approved", online: false, suspended: true, joined: "02 Jun 2026", earnings: 18700 },
+  { id: "DRV1001", name: "Rohit Kumar", initials: "RK", phone: "+91 98100 12345", rating: 4.8, trips: 1284, vehicle: "sedan", model: "Maruti Dzire · White", plate: "UP16 AB 1234", ac: true, city: "Noida", kyc: "Approved", online: true, joined: "12 Jan 2026", earnings: 186400 },
+  { id: "DRV1002", name: "Suresh Pal", initials: "SP", phone: "+91 98111 45678", rating: 4.6, trips: 842, vehicle: "auto", model: "Bajaj RE · Green", plate: "DL 1C 5678", ac: false, city: "Delhi", kyc: "Approved", online: true, joined: "03 Feb 2026", earnings: 98200 },
+  { id: "DRV1003", name: "Rakesh Das", initials: "RD", phone: "+91 98222 90120", rating: 4.2, trips: 311, vehicle: "mini", model: "Hyundai i10 · Grey", plate: "BR01 CD 9012", ac: false, city: "Noida", kyc: "Approved", online: false, joined: "20 Mar 2026", earnings: 54100 },
+  { id: "DRV1004", name: "Manoj Tiwari", initials: "MT", phone: "+91 98333 34560", rating: 4.9, trips: 2031, vehicle: "suv", model: "Toyota Innova · Silver", plate: "UP32 EF 3456", ac: true, city: "Lucknow", kyc: "Approved", online: true, joined: "08 Nov 2025", earnings: 312900 },
+  { id: "DRV1005", name: "Imran Khan", initials: "IK", phone: "+91 98444 11223", rating: 4.7, trips: 564, vehicle: "bike", model: "Honda Shine · Black", plate: "DL 3S AB 1122", ac: false, city: "Delhi", kyc: "Approved", online: true, joined: "14 Apr 2026", earnings: 41800 },
+  { id: "DRV1006", name: "Vikram Singh", initials: "VS", phone: "+91 98555 66778", rating: 0, trips: 0, vehicle: "sedan", model: "Honda Amaze · Blue", plate: "HR26 GH 6677", ac: true, city: "Gurugram", kyc: "Pending", online: false, joined: "26 Sep 2026", earnings: 0 },
+  { id: "DRV1007", name: "Arjun Yadav", initials: "AY", phone: "+91 98666 22334", rating: 0, trips: 0, vehicle: "auto", model: "Piaggio Ape · Yellow", plate: "UP16 JK 2233", ac: false, city: "Noida", kyc: "Pending", online: false, joined: "27 Sep 2026", earnings: 0 },
+  { id: "DRV1008", name: "Deepak Sharma", initials: "DS", phone: "+91 98777 88990", rating: 3.9, trips: 128, vehicle: "mini", model: "Maruti Swift · Red", plate: "DL 8C LM 8899", ac: true, city: "Delhi", kyc: "Approved", online: false, suspended: true, joined: "02 Jun 2026", earnings: 18700 },
 ];
 
 export interface Customer {
@@ -111,6 +154,7 @@ export interface Ride {
   from: string; to: string; km: number; min: number;
   fare: number; discount: number; pay: PayMethod; paid: boolean;
   status: RideStatus; date: string; time: string; rating?: number; cancelReason?: string;
+  label?: string;   // what was booked when it isn't a plain ride, e.g. "Parcel · Bike", "Sedan · Non-AC"
 }
 
 export const RIDES: Ride[] = [
