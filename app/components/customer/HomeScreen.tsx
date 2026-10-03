@@ -36,7 +36,7 @@ const STATUS_LINE: Record<string, string> = {
   Completed: "Trip completed",
 };
 
-const SERVICES: RideOption[] = ["bike", "auto", "mini", "sedan", "suv", "any", "rental", "parcel"];
+const SERVICES: RideOption[] = ["bike", "auto", "erick", "mini", "sedan", "suv", "any", "rental", "parcel"];
 
 export default function HomeScreen(p: HomeProps) {
   const quick = PLACES.filter((x) => x.kind);

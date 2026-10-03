@@ -1,7 +1,7 @@
 /* Sample data shared by the Customer app, Driver app and Admin panel.
  * Stand-ins until the REST API from the PRD is live — every screen reads through these shapes. */
 
-export type VehicleKind = "bike" | "auto" | "mini" | "sedan" | "taxi" | "suv";
+export type VehicleKind = "bike" | "auto" | "erick" | "mini" | "sedan" | "taxi" | "suv";
 
 export interface Vehicle {
   id: VehicleKind;
@@ -22,6 +22,7 @@ export interface Vehicle {
 export const VEHICLES: Vehicle[] = [
   { id: "bike",  name: "Bike",  tagline: "Beat the traffic on a bike", seats: 1, base: 20, perKm: 6,  perMin: 1,   minFare: 30,  cancelFee: 15, eta: 3, enabled: true, ac: false, nearby: 9 },
   { id: "auto",  name: "Auto",  tagline: "No bargaining, doorstep pickup", seats: 3, base: 30, perKm: 10, perMin: 1.5, minFare: 45,  cancelFee: 20, eta: 4, enabled: true, ac: false, nearby: 6 },
+  { id: "erick", name: "E-Rickshaw", tagline: "Eco-friendly, cheap short hops", seats: 4, base: 20, perKm: 7, perMin: 1, minFare: 30, cancelFee: 10, eta: 5, enabled: true, ac: false, nearby: 7 },
   { id: "mini",  name: "Mini",  tagline: "Comfy, economical cars",   seats: 4, base: 45, perKm: 12, perMin: 2,   minFare: 80,  cancelFee: 30, eta: 7, enabled: true, ac: true, nearby: 5 },
   { id: "sedan", name: "Sedan", tagline: "Top-rated drivers, more legroom", seats: 4, base: 60, perKm: 15, perMin: 2, minFare: 110, cancelFee: 40, eta: 6, enabled: true, ac: true, nearby: 4 },
   { id: "taxi",  name: "Taxi",  tagline: "Classic yellow-top city taxi", seats: 4, base: 40, perKm: 11, perMin: 1.5, minFare: 70,  cancelFee: 25, eta: 0, enabled: true, ac: true, nearby: 0 },

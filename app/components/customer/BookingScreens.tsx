@@ -120,7 +120,7 @@ const PAYS: { id: PayMethod; label: string; sub: string; Icon: typeof CardIcon }
 
 const ANY: VehicleKind[] = ["mini", "sedan", "suv"];
 const RENTAL_CARS: VehicleKind[] = ["mini", "sedan", "suv"];
-const ORDER: RideOption[] = ["any", "bike", "auto", "mini", "sedan", "rental", "taxi", "suv", "parcel"];
+const ORDER: RideOption[] = ["any", "bike", "auto", "erick", "mini", "sedan", "rental", "taxi", "suv", "parcel"];
 
 /** Next few half-hour slots for "schedule for later". */
 function slots() {
