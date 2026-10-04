@@ -39,181 +39,220 @@ function Wheel({ id, x, y = 38, r = 5.6 }: { id: string; x: number; y?: number; 
 }
 
 type CarSpec = {
-  rear: number;      // x of rear bumper
-  roof: number;      // y of roof line
-  roofEnd: number;   // x where the roof starts falling to the rear
-  tail: number;      // x where the rear glass meets the beltline
-  belt: number;      // y of beltline at the rear
+  rear: number;     // x of rear bumper
+  cabin: number;    // x where the cabin starts at the back
+  roof: number;     // y of roof line
   body: [string, string, string];
-  stripe?: string;
+  accent?: [string, string, string];  // rear-quarter colour band
   wheelR?: number;
 };
 
+const WHITE: [string, string, string] = ["#ffffff", "#f1f3f7", "#cdd3dd"];
+const YELLOW: [string, string, string] = ["#ffe066", "#f7c600", "#d9a400"];
+
 const CARS: Record<"mini" | "sedan" | "suv" | "taxi", CarSpec> = {
-  mini:  { rear: 70, roof: 12.5, roofEnd: 57, tail: 66, belt: 25,   body: ["#ffffff", "#eef1f6", "#c9d0dc"], stripe: "#1d5fe0" },
-  sedan: { rear: 76, roof: 12,   roofEnd: 54, tail: 63, belt: 24.5, body: ["#ffffff", "#e8ebf1", "#b9c1cf"], stripe: "#0b2a6b" },
-  suv:   { rear: 76, roof: 8.5,  roofEnd: 69, tail: 73, belt: 23,   body: ["#ffffff", "#e9edf3", "#bcc4d1"], stripe: "#1d5fe0", wheelR: 6.4 },
-  taxi:  { rear: 75, roof: 12,   roofEnd: 54, tail: 63, belt: 24.5, body: ["#ffe27a", "#f9c80e", "#d9a400"] },
+  mini:  { rear: 9, cabin: 14, roof: 11,  body: WHITE, accent: YELLOW },
+  sedan: { rear: 4, cabin: 21, roof: 11.5, body: WHITE, accent: YELLOW },
+  suv:   { rear: 6, cabin: 8,  roof: 8,   body: WHITE, accent: YELLOW, wheelR: 6.2 },
+  taxi:  { rear: 7, cabin: 15, roof: 11,  body: YELLOW },
 };
 
+/** Rounded compact car, three-quarter view facing right (front at right). */
 function Car({ kind }: { kind: keyof typeof CARS }) {
   const id = useGid();
   const s = CARS[kind];
+  const { rear: R, cabin: C, roof: Y } = s;
   const wr = s.wheelR ?? 5.6;
-  const bottom = 38.5;
+  const B = 37.8;
+  const side = `M${R} 35.6 Q${R - 1} 27.4 ${R + 6} 25.6 L56 23.2 Q62.6 23.2 63 28 V${B} H${R + 3} Q${R} ${B} ${R} 35.6 Z`;
+  const face = `M63 28 Q63 23.4 58 23.2 L66 23.6 Q73 25 74 30 V35.6 Q74 ${B} 71.4 ${B} H63 Z`;
+  const mid = (R + 56) / 2 - 2;
   return (
     <>
       <Defs id={id} body={s.body} />
-      {/* far-side front wheel peeking out */}
-      <ellipse cx="9.5" cy={bottom - 0.5} rx="2.6" ry="4" fill="#161b26" />
-      {/* side panel */}
-      <path d={`M18 27 L${s.rear - 4} ${s.belt} Q${s.rear} ${s.belt + 0.5} ${s.rear} ${s.belt + 4.5} V${bottom - 2.5} Q${s.rear} ${bottom - 0.5} ${s.rear - 2.5} ${bottom - 0.5} L18 ${bottom} Z`} fill={`url(#${id}b)`} />
-      {/* front face (angled away, a touch darker) */}
-      <path d={`M6 30.5 Q6 27.4 9 27 L18 27 L18 ${bottom} L8.5 ${bottom - 0.6} Q6 ${bottom - 1} 6 ${bottom - 3} Z`} fill={`url(#${id}b)`} />
-      <path d={`M6 30.5 Q6 27.4 9 27 L18 27 L18 ${bottom} L8.5 ${bottom - 0.6} Q6 ${bottom - 1} 6 ${bottom - 3} Z`} fill="#0f1729" opacity="0.1" />
-      {/* hood */}
-      <path d={`M8.5 27.2 L18 27.2 L28 ${s.belt - 2.5} L17.5 ${s.belt - 2.2} Z`} fill={s.body[0]} />
-      <path d={`M8.5 27.2 L18 27.2 L28 ${s.belt - 2.5} L17.5 ${s.belt - 2.2} Z`} fill="#0f1729" opacity="0.05" />
-      {/* upper body around the glass */}
-      <path d={`M17.5 ${s.belt - 2.2} L27 ${s.roof + 0.6} L${s.roofEnd} ${s.roof} L${s.tail} ${s.belt - 0.3} L${s.rear - 3} ${s.belt} L18 27 Z`} fill={`url(#${id}b)`} />
+      {s.accent && (
+        <linearGradient id={`${id}a`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={s.accent[0]} /><stop offset="0.55" stopColor={s.accent[1]} /><stop offset="1" stopColor={s.accent[2]} />
+        </linearGradient>
+      )}
+      {/* far-side front wheel */}
+      <ellipse cx="71" cy={B - 0.6} rx="2.6" ry="4" fill="#161b26" />
+      {/* cabin dome */}
+      <path d={`M${C} 25.4 Q${C + 2} ${Y + 1.4} ${C + 14} ${Y} L45 ${Y - 0.2} Q51.5 ${Y} 56 ${Y + 4.6} L63 23.4 L${C} 25.4 Z`} fill={`url(#${id}b)`} />
+      {/* side windows + pillar */}
+      <path d={`M${C + 4} 24.6 Q${C + 5.4} ${Y + 3.2} ${C + 14} ${Y + 2.4} L44 ${Y + 2.1} Q48 ${Y + 2.1} 50.4 ${Y + 4.8} L54.4 23.3 Z`} fill={`url(#${id}g)`} />
+      <path d={`M${(C + 58) / 2} ${Y + 2.3} L${(C + 58) / 2 + 0.8} 24`} stroke={s.body[1]} strokeWidth="1.8" />
       {/* windscreen */}
-      <path d={`M18.6 ${s.belt - 2.4} L27.6 ${s.belt - 2.8} L35 ${s.roof + 1.3} L27.4 ${s.roof + 1.6} Z`} fill={`url(#${id}g)`} />
-      {/* side windows */}
-      <path d={`M30 ${s.belt - 2.6} L${s.tail - 2} ${s.belt - 1.4} L${s.roofEnd - 1} ${s.roof + 1.6} L37 ${s.roof + 1.5} Z`} fill={`url(#${id}g)`} />
-      <path d={`M${(30 + s.tail) / 2 + 1} ${s.belt - 2} L${(37 + s.roofEnd) / 2 + 1} ${s.roof + 1.5}`} stroke={s.body[1]} strokeWidth="1.6" />
-      {/* glass reflection */}
-      <path d={`M22 ${s.belt - 3} L28.5 ${s.roof + 2}`} stroke="white" strokeOpacity="0.28" strokeWidth="1.4" strokeLinecap="round" />
+      <path d={`M51.6 ${Y + 2} Q55 ${Y + 1.6} 58 ${Y + 5} L64.6 23.4 L57.6 23.2 Z`} fill={`url(#${id}g)`} />
+      <path d={`M56 ${Y + 3} L60.6 21`} stroke="white" strokeOpacity="0.3" strokeWidth="1.1" strokeLinecap="round" />
       {/* roof highlight */}
-      <path d={`M27.5 ${s.roof + 0.4} L${s.roofEnd - 1} ${s.roof - 0.1}`} stroke="white" strokeWidth="1.1" strokeLinecap="round" opacity="0.9" />
-      {/* door seam, handle */}
-      <path d={`M${(30 + s.tail) / 2 + 1} ${s.belt - 1.4} V${bottom - 1.5}`} stroke="#0f1729" strokeOpacity="0.14" strokeWidth="0.7" />
-      <rect x={(30 + s.tail) / 2 + 3} y={s.belt + 2.2} width="3.4" height="1" rx="0.5" fill="#0f1729" opacity="0.3" />
-      {/* brand stripe / taxi chequer */}
-      {s.stripe && <path d={`M18 31.6 L${s.rear} ${s.belt + 4.8}`} stroke={s.stripe} strokeWidth="1.5" />}
+      <path d={`M${C + 8} ${Y + 0.8} Q${C + 12} ${Y - 0.1} ${C + 16} ${Y}  L44 ${Y - 0.1}`} stroke="white" strokeWidth="1.1" strokeLinecap="round" fill="none" />
+      {/* body */}
+      <path d={side} fill={`url(#${id}b)`} />
+      {s.accent && <path d={`M${R} 35.6 Q${R - 1} 27.4 ${R + 6} 25.6 L${mid} 24.4 L${mid - 2.4} ${B} H${R + 3} Q${R} ${B} ${R} 35.6 Z`} fill={`url(#${id}a)`} />}
       {kind === "taxi" && (
         <>
-          <path d={`M18 31.2 L${s.rear} ${s.belt + 4.4}`} stroke="#111827" strokeWidth="2.2" strokeDasharray="2 2" />
-          <path d={`M27.5 ${s.roof + 0.5} l3 -3.4 h9 l2 3.2 z`} fill="#111827" />
-          <rect x="31.4" y={s.roof - 2.4} width="7" height="1.6" rx="0.5" fill="#f9c80e" />
+          <path d={`M${R + 1} 30.4 L63 29.4`} stroke="#111827" strokeWidth="2" strokeDasharray="2 2" />
+          <path d={`M${C + 12} ${Y + 0.2} l2 -3.4 h8 l1.6 3.2 z`} fill="#111827" />
+          <rect x={C + 15.2} y={Y - 2.6} width="5.8" height="1.4" rx="0.5" fill="#f7c600" />
         </>
       )}
-      {kind === "suv" && <path d={`M28 ${s.roof - 1} L${s.roofEnd - 1} ${s.roof - 1.4}`} stroke="#1f2937" strokeWidth="1.3" strokeLinecap="round" />}
-      {/* lower body shading + sill */}
-      <path d={`M18 ${bottom - 3} L${s.rear} ${bottom - 3.4} V${bottom - 2.5} Q${s.rear} ${bottom - 0.5} ${s.rear - 2.5} ${bottom - 0.5} L18 ${bottom} Z`} fill="#0f1729" opacity="0.12" />
-      {/* face: grille + headlights */}
-      <rect x="9" y="32.4" width="7.5" height="2.6" rx="1" fill="#1f2937" />
-      <path d="M6.6 29.2 Q8 28.4 10.6 28.6 L10.4 30.6 Q8 30.8 6.6 30.6 Z" fill="#fff7d6" stroke="#9aa3b2" strokeWidth="0.4" />
-      <path d="M14.2 28.7 L17.6 28.8 L17.6 30.8 L14.2 30.6 Z" fill="#fff7d6" stroke="#9aa3b2" strokeWidth="0.4" />
-      <path d={`M${s.rear - 1.6} ${s.belt + 1.4} V${s.belt + 4}`} stroke="#e23d3d" strokeWidth="1.6" strokeLinecap="round" />
-      {/* wheel arches + wheels */}
-      <ellipse cx="25" cy={bottom - 0.5} rx={wr * 1.02} ry={wr * 1.15} fill="#0f1729" opacity="0.55" />
-      <ellipse cx={s.rear - 11} cy={bottom - 0.8} rx={wr * 1.02} ry={wr * 1.15} fill="#0f1729" opacity="0.55" />
-      <Wheel id={id} x={25} y={bottom} r={wr} />
-      <Wheel id={id} x={s.rear - 11} y={bottom - 0.3} r={wr} />
+      {kind === "suv" && <path d={`M${C + 7} ${Y - 1} L44 ${Y - 1.3}`} stroke="#1f2937" strokeWidth="1.3" strokeLinecap="round" />}
+      <path d={`M${R + 5} 27.2 L62 25.6`} stroke="white" strokeOpacity="0.8" strokeWidth="0.9" strokeLinecap="round" />
+      {/* door seam + handle */}
+      <path d={`M${(C + 58) / 2 + 0.8} 24.2 V${B - 1.6}`} stroke="#0f1729" strokeOpacity="0.16" strokeWidth="0.7" />
+      <rect x={(C + 58) / 2 + 2.4} y="27.2" width="3.2" height="0.9" rx="0.45" fill="#0f1729" opacity="0.3" />
+      <path d={`M${R + 0.6} 28.2 V31`} stroke="#e23d3d" strokeWidth="1.5" strokeLinecap="round" />
+      {/* front face */}
+      <path d={face} fill={`url(#${id}b)`} />
+      <path d={face} fill="#0f1729" opacity="0.07" />
+      <ellipse cx="65.6" cy="28" rx="1.7" ry="1.25" fill="#fff7d6" stroke="#9aa3b2" strokeWidth="0.4" />
+      <ellipse cx="72.4" cy="29.4" rx="1.2" ry="1.15" fill="#fff7d6" stroke="#9aa3b2" strokeWidth="0.4" />
+      <rect x="66.4" y="31.6" width="6" height="2.2" rx="1" fill="#1f2937" />
+      {/* sill shade */}
+      <path d={`M${R + 1} ${B - 3} L74 ${B - 3.4} V35.6 Q74 ${B} 71.4 ${B} H${R + 3} Q${R} ${B} ${R} 35.6 Z`} fill="#0f1729" opacity="0.12" />
+      {/* wheels */}
+      <ellipse cx={R + 12} cy={B - 0.6} rx={wr * 1.04} ry={wr * 1.14} fill="#0f1729" opacity="0.5" />
+      <ellipse cx="55" cy={B - 0.6} rx={wr * 1.04} ry={wr * 1.14} fill="#0f1729" opacity="0.5" />
+      <Wheel id={id} x={R + 12} y={B} r={wr} />
+      <Wheel id={id} x={55} y={B} r={wr} />
     </>
   );
 }
 
-/** Motorbike with rider in helmet. */
+/** Commuter motorcycle, glossy white with black seat — no rider. */
 function Bike() {
   const id = useGid();
   return (
     <>
-      <Defs id={id} body={["#3b82f6", "#1d5fe0", "#0b3aa8"]} />
+      <Defs id={id} body={["#ffffff", "#eef1f6", "#bfc7d4"]} />
       {/* rear wheel */}
-      <ellipse cx="58" cy="37" rx="6.4" ry="7.4" fill="#161b26" />
-      <ellipse cx="58.3" cy="37" rx="3.4" ry="4.2" fill={`url(#${id}r)`} />
-      {/* frame + exhaust */}
-      <path d="M60 33 L46 31 L34 33" stroke="#1f2937" strokeWidth="2.4" strokeLinecap="round" />
-      <path d="M44 36 L64 35.2" stroke="#9aa3b2" strokeWidth="2" strokeLinecap="round" />
-      {/* tank + body */}
-      <path d="M30 27 Q33 22 42 22.5 L52 24 Q57 25 58 29 L46 30.5 Q36 31 30 27 Z" fill={`url(#${id}b)`} />
-      <path d="M33 24.5 Q38 22.8 44 23.6" stroke="white" strokeOpacity="0.6" strokeWidth="1" strokeLinecap="round" />
+      <ellipse cx="59" cy="36" rx="7.4" ry="8.4" fill="#161b26" />
+      <ellipse cx="59.4" cy="36" rx="4.2" ry="5" fill={`url(#${id}r)`} />
+      <ellipse cx="59.4" cy="36" rx="1.4" ry="1.7" fill="#4b5563" />
+      {/* swing arm + chain guard */}
+      <path d="M44 33 L59 36" stroke="#1f2937" strokeWidth="2.6" strokeLinecap="round" />
+      {/* engine block */}
+      <path d="M33 27 L45 27.5 L46 35 Q40 37.5 34 35 Z" fill="#2b3240" />
+      <path d="M35 29 H43 M35 31.5 H43" stroke="#6b7280" strokeWidth="0.8" />
+      {/* exhaust */}
+      <path d="M38 36.5 L62 33.2" stroke="#d1d5db" strokeWidth="2.6" strokeLinecap="round" />
+      <path d="M50 35 L62 33.2" stroke="#9aa3b2" strokeWidth="1" strokeLinecap="round" />
+      {/* tail / side panel */}
+      <path d="M44 22 L62 19.5 Q67 19.5 68 22 L66 23.5 L56 27 L45 28 Z" fill={`url(#${id}b)`} />
+      <path d="M45 27.5 L56 27 L66 23.5" stroke="#0f1729" strokeOpacity="0.15" strokeWidth="0.7" fill="none" />
+      <path d="M66.6 21.2 L68.6 21.6" stroke="#e23d3d" strokeWidth="1.6" strokeLinecap="round" />
       {/* seat */}
-      <path d="M44 23.5 Q52 21.5 61 24.5 L60 26.5 Q52 25 45 25.6 Z" fill="#111827" />
-      {/* engine */}
-      <rect x="37" y="29" width="10" height="6" rx="2" fill="#4b5563" />
-      {/* front fork + wheel */}
-      <path d="M28 21 L22 37" stroke="#9aa3b2" strokeWidth="2.2" strokeLinecap="round" />
-      <ellipse cx="21" cy="37.5" rx="6" ry="7" fill="#161b26" />
-      <ellipse cx="21.3" cy="37.5" rx="3.2" ry="4" fill={`url(#${id}r)`} />
-      <path d="M15.5 30 Q21 26.5 26.5 30" stroke="#1d5fe0" strokeWidth="2" fill="none" strokeLinecap="round" />
-      {/* headlight + bars */}
-      <ellipse cx="27" cy="21.5" rx="2.6" ry="3" fill="#fff7d6" stroke="#4b5563" strokeWidth="0.8" />
-      <path d="M29 18.5 L34 17" stroke="#111827" strokeWidth="1.8" strokeLinecap="round" />
-      {/* rider: leg, torso, arm, helmet */}
-      <path d="M50 22 L43 27.5 L41 33" stroke="#334155" strokeWidth="4.2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M41 33.2 L44.5 33.4" stroke="#111827" strokeWidth="2.6" strokeLinecap="round" />
-      <path d="M47 23 Q46 15 42 11 L50 9 Q54 15 53 22.5 Z" fill="#16a34a" />
-      <path d="M44 13 L36 17.5" stroke="#16a34a" strokeWidth="3.4" strokeLinecap="round" />
-      <circle cx="35.2" cy="17.7" r="1.4" fill="#f1c7a3" />
-      <circle cx="46" cy="7" r="5.2" fill="#facc15" />
-      <path d="M41 6.5 Q41.2 3 45 2.2" stroke="white" strokeOpacity="0.7" strokeWidth="1" strokeLinecap="round" fill="none" />
-      <path d="M40.8 7.4 Q42.5 10.4 46 10.6 L46.4 7 Z" fill="#111827" />
+      <path d="M40 19.5 Q48 16.8 60 17.6 Q64 18 63 19.8 L45 22.2 Q41 22.4 40 19.5 Z" fill="#1a1f2b" />
+      <path d="M44 18.6 Q51 17.4 59 17.9" stroke="white" strokeOpacity="0.25" strokeWidth="0.8" strokeLinecap="round" />
+      {/* fuel tank */}
+      <path d="M26 21 Q27 15 35 14.6 L41 15 Q44 16 44 20 L43 24 Q34 26.5 27 24.5 Z" fill={`url(#${id}b)`} />
+      <path d="M28.5 17.8 Q32 15.6 38 15.6" stroke="white" strokeWidth="1.3" strokeLinecap="round" />
+      <path d="M29 22.5 Q35 23.8 42 22" stroke="#f5b400" strokeWidth="1.3" strokeLinecap="round" />
+      <path d="M27 24.5 Q34 26.5 43 24 L44 27.6 L33 27.4 Z" fill="#1f2937" />
+      {/* front fork + mudguard */}
+      <path d="M23.5 16 L17 36" stroke="#c7cdd8" strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M21.5 15.5 L15.5 35.5" stroke="#9aa3b2" strokeWidth="1.6" strokeLinecap="round" />
+      {/* front wheel */}
+      <ellipse cx="16" cy="36.5" rx="6.6" ry="7.8" fill="#161b26" />
+      <ellipse cx="16.4" cy="36.5" rx="3.7" ry="4.6" fill={`url(#${id}r)`} />
+      <ellipse cx="16.4" cy="36.5" rx="1.2" ry="1.5" fill="#4b5563" />
+      <path d="M9.5 30 Q15 24.8 22 28.4" stroke="#f3f4f6" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+      {/* headlight cowl */}
+      <path d="M18 14 Q20 9.6 25.5 10.4 L27 16.8 Q22.5 19 19 18 Z" fill={`url(#${id}b)`} />
+      <ellipse cx="20.6" cy="15.2" rx="2.7" ry="3.1" fill="#fff7d6" stroke="#9aa3b2" strokeWidth="0.9" />
+      <ellipse cx="20" cy="14.4" rx="0.9" ry="1" fill="white" />
+      {/* handlebars + mirrors */}
+      <path d="M24 11 L31 9 M24 11 L19 9.6" stroke="#1f2937" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M29.5 9.4 L30.2 6.6 M20.4 10 L19.6 7.4" stroke="#1f2937" strokeWidth="0.8" />
+      <ellipse cx="30.5" cy="6" rx="1.6" ry="1.1" fill="#1f2937" />
+      <ellipse cx="19.4" cy="6.8" rx="1.5" ry="1.05" fill="#1f2937" />
     </>
   );
 }
 
-/** Classic Indian auto-rickshaw: green body, yellow canopy. */
+/** Classic Indian auto-rickshaw, three-quarter view facing right: yellow canopy, green body. */
 function Auto() {
   const id = useGid();
   return (
     <>
-      <Defs id={id} body={["#34d399", "#16a34a", "#0f7a3a"]} />
-      <ellipse cx="12" cy="37.5" rx="2.6" ry="4" fill="#161b26" />
-      {/* canopy */}
-      <path d="M14 21 Q15 9 28 7.5 L64 7 Q70 7.4 70 13 L70 22 L60 22 L58 12 L30 12 Q22 13 21 21 Z" fill="#facc15" />
-      <path d="M28 8 L64 7.6" stroke="white" strokeOpacity="0.7" strokeWidth="1" strokeLinecap="round" />
-      <path d="M14 21 Q15 9 28 7.5 L30 12 Q22 13 21 21 Z" fill="#0f1729" opacity="0.08" />
-      {/* windscreen */}
-      <path d="M16 22 Q17 13.5 27 12.8 L29 22 Z" fill={`url(#${id}g)`} />
-      {/* open cabin interior */}
-      <path d="M31 12.5 L57 12.4 L59 22 L31 22 Z" fill="#1f2937" />
-      <rect x="42" y="16" width="12" height="6" rx="1.5" fill="#7c2d12" />
+      <Defs id={id} body={["#4ade80", "#16a34a", "#0f7a3a"]} />
+      <linearGradient id={`${id}y`} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#ffe066" /><stop offset="1" stopColor="#e9b500" />
+      </linearGradient>
+      <g transform="translate(16 0) scale(0.78 1)">
+      {/* canopy side with open doorway */}
+      <path d="M11 26 V14.5 Q11 8 18.5 7.6 L51 7 Q56 7 57.6 10.4 L58.6 26 Z" fill={`url(#${id}y)`} />
+      <path d="M17 25.6 V15.4 Q17 12.6 20.6 12.4 L54 12 L54.6 25.6 Z" fill="#111827" />
+      <rect x="36" y="17" width="15" height="8.6" rx="1.4" fill="#2b3240" />
+      <path d="M17 18.6 H54.2" stroke="#3a4658" strokeWidth="0.8" />
+      <path d="M18.5 8.6 L51 8" stroke="white" strokeOpacity="0.7" strokeWidth="1" strokeLinecap="round" />
+      {/* canopy front + windscreen */}
+      <path d="M57.6 10.4 Q60 7.2 64.4 7.8 Q70.6 9.4 71 16.6 L71 25.2 L58.6 26 Z" fill={`url(#${id}y)`} />
+      <path d="M57.6 10.4 Q60 7.2 64.4 7.8 Q70.6 9.4 71 16.6 L71 25.2 L58.6 26 Z" fill="#0f1729" opacity="0.08" />
+      <path d="M60.2 12.4 Q64 10.4 68.2 12.6 L68.8 21.6 L60.6 22.2 Z" fill={`url(#${id}g)`} />
+      <path d="M62 13 L63 20.6" stroke="white" strokeOpacity="0.3" strokeWidth="1" strokeLinecap="round" />
       {/* lower body */}
-      <path d="M8 27 Q9 22.5 14 22 L70 21.5 Q72 22 72 25 V34 Q72 36 70 36 L14 37 Q8 36.5 8 33 Z" fill={`url(#${id}b)`} />
-      <path d="M8 27 Q9 22.5 14 22 L20 22 L19 37 L14 37 Q8 36.5 8 33 Z" fill="#0f1729" opacity="0.1" />
-      <path d="M20 26.5 L71 26" stroke="#facc15" strokeWidth="1.4" />
-      <ellipse cx="12.5" cy="29.5" rx="2" ry="2.2" fill="#fff7d6" stroke="#4b5563" strokeWidth="0.6" />
-      <path d="M70.6 23.5 V27" stroke="#e23d3d" strokeWidth="1.6" strokeLinecap="round" />
-      <Wheel id={id} x={22} y={38} r={5.2} />
-      <ellipse cx="60" cy="37" rx="5.6" ry="6.2" fill="#0f1729" opacity="0.5" />
-      <Wheel id={id} x={60} y={38} r={5.2} />
+      <path d="M9 30.6 Q9 25.6 13 25.6 L58.6 25.2 L71 24.6 Q73.4 25.4 73.4 28.4 L72.6 34.4 Q72 36.4 69 36.4 L13 37.2 Q9 37 9 34.6 Z" fill={`url(#${id}b)`} />
+      <path d="M58.6 25.2 L71 24.6 Q73.4 25.4 73.4 28.4 L72.6 34.4 Q72 36.4 69 36.4 L58.6 36.6 Z" fill="#0f1729" opacity="0.1" />
+      <path d="M10 28.6 L72.6 27.6" stroke="#f7c600" strokeWidth="1.3" />
+      <path d="M10 34.6 L72 33.8" stroke="#111827" strokeWidth="1.6" opacity="0.7" />
+      <path d="M9.6 27 V30" stroke="#e23d3d" strokeWidth="1.5" strokeLinecap="round" />
+      {/* headlight on the nose */}
+      <circle cx="66.4" cy="30.8" r="1.7" fill="#fff7d6" stroke="#4b5563" strokeWidth="0.5" />
+      {/* wheels: rear on the visible side, single front wheel under the nose */}
+      <ellipse cx="23" cy="37.2" rx="5.8" ry="6.4" fill="#0f1729" opacity="0.5" />
+      <Wheel id={id} x={23} y={38} r={5.4} />
+      <Wheel id={id} x={65.4} y={39} r={4.6} />
+      </g>
     </>
   );
 }
 
-/** Battery e-rickshaw: flat roof on pillars, open sides, rear bench. */
+/** Battery e-rickshaw, side view: flat roof on poles, front handlebar, open bench, rear seat over the back wheel. */
 function ERick() {
   const id = useGid();
+  const wheel = (x: number, r: number) => (
+    <g>
+      <circle cx={x} cy={37.5} r={r} fill="#161b26" />
+      <circle cx={x} cy={37.5} r={r * 0.62} fill={`url(#${id}r)`} />
+      <circle cx={x} cy={37.5} r={r * 0.2} fill="#4b5563" />
+    </g>
+  );
   return (
     <>
-      <Defs id={id} body={["#60a5fa", "#1d5fe0", "#0b3aa8"]} />
-      <ellipse cx="11" cy="37.5" rx="2.4" ry="3.8" fill="#161b26" />
+      <Defs id={id} body={["#4f8ff7", "#1d5fe0", "#0b3aa8"]} />
       {/* roof */}
-      <path d="M12 9 L70 7.5 Q73 7.6 73 10 L72 12 L12 13 Q10 12.6 10 11 Q10 9.2 12 9 Z" fill="#e5e7eb" />
-      <path d="M12 9 L70 7.5 Q73 7.6 73 10 L72 10.6 L12 11.2 Z" fill="#16a34a" />
-      <path d="M14 9.2 L68 8" stroke="white" strokeOpacity="0.75" strokeWidth="0.9" strokeLinecap="round" />
-      {/* pillars */}
-      <path d="M15 13 L16.5 24 M35 12.6 L35 24 M70.5 12 L70.5 24" stroke="#9aa3b2" strokeWidth="1.6" strokeLinecap="round" />
-      {/* windscreen */}
-      <path d="M15.6 13.4 L22 13.3 L23 24 L16.6 24 Z" fill={`url(#${id}g)`} opacity="0.85" />
-      {/* driver + rear bench */}
-      <circle cx="28" cy="16" r="2.4" fill="#334155" />
-      <path d="M26 24 V20 Q28 18 30 20 V24 Z" fill="#334155" />
-      <path d="M44 15 H66 V24 H44 Z" fill="#1f2937" opacity="0.18" />
-      <rect x="47" y="17" width="16" height="7" rx="1.5" fill="#7c2d12" />
-      {/* body tub */}
-      <path d="M9 28 Q9.5 24 14 24 L72 23.5 Q74 23.6 74 26 V33.5 Q74 35.5 72 35.5 L14 36.5 Q9 36.2 9 33 Z" fill={`url(#${id}b)`} />
-      <path d="M9 28 Q9.5 24 14 24 L19 24 L18.5 36.5 L14 36.5 Q9 36.2 9 33 Z" fill="#0f1729" opacity="0.12" />
-      <path d="M19 28 L73.5 27.5" stroke="white" strokeOpacity="0.55" strokeWidth="1" />
-      <text x="40" y="33.6" fontSize="4.6" fontWeight="700" fill="white" fontFamily="sans-serif">E</text>
-      <path d="M43.6 29.6 l-1.2 2.2 h1.6 l-1.2 2.2" stroke="#facc15" strokeWidth="0.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      <ellipse cx="13" cy="29.6" rx="1.9" ry="2.1" fill="#fff7d6" stroke="#4b5563" strokeWidth="0.6" />
-      <path d="M73.3 25.6 V29" stroke="#e23d3d" strokeWidth="1.5" strokeLinecap="round" />
-      <Wheel id={id} x={21} y={38} r={4.8} />
-      <ellipse cx="62" cy="37" rx="5.2" ry="5.8" fill="#0f1729" opacity="0.5" />
-      <Wheel id={id} x={62} y={38} r={4.8} />
+      <path d="M17.5 5.4 H72 Q75 5.4 75 7.2 Q75 9 72 9 H17.5 Q16 9 16 7.2 Q16 5.4 17.5 5.4 Z" fill={`url(#${id}b)`} />
+      <path d="M19 6.3 H71" stroke="white" strokeOpacity="0.55" strokeWidth="0.8" strokeLinecap="round" />
+      {/* poles */}
+      <path d="M37.5 9 V27 M70.5 9 V25" stroke="#1d5fe0" strokeWidth="1.3" />
+      <rect x="36.3" y="16.5" width="2.4" height="8" rx="0.8" fill="#0b3aa8" />
+      <rect x="69.4" y="14.5" width="2.2" height="9" rx="0.8" fill="#0b3aa8" />
+      {/* rear body */}
+      <path d="M46 36 L48 30.5 Q49 28.4 52 28.2 L71 27.6 Q72.6 27.6 72.6 29.4 V36.4 Q72.6 37.6 71.4 37.6 H69 A7.6 7.6 0 0 0 54 37.6 Z" fill={`url(#${id}b)`} />
+      <path d="M49 30.4 L71.6 29.8" stroke="white" strokeOpacity="0.5" strokeWidth="0.8" />
+      <path d="M71.8 31 V33.6" stroke="#e23d3d" strokeWidth="1.4" strokeLinecap="round" />
+      {/* rear seat */}
+      <rect x="59" y="23.6" width="12.6" height="4" rx="1.6" fill="#eaf1ff" stroke="#1d5fe0" strokeWidth="0.9" />
+      <path d="M71 21 V27.6" stroke="#1d5fe0" strokeWidth="1.3" strokeLinecap="round" />
+      {/* floor + frame to the front fork */}
+      <path d="M18.5 35.2 L48 35.2 L47.4 37.6 H18.5 Z" fill="#0b3aa8" />
+      <path d="M19 23 L21 35.6" stroke="#0b3aa8" strokeWidth="2.2" strokeLinecap="round" />
+      {/* front bench */}
+      <path d="M28 28.4 H47 V35.4 H28 Z" fill={`url(#${id}b)`} />
+      <rect x="27.4" y="25.2" width="20.2" height="3.6" rx="1.4" fill="#eaf1ff" stroke="#1d5fe0" strokeWidth="0.9" />
+      <path d="M37.5 25 V28.8" stroke="#1d5fe0" strokeWidth="0.9" />
+      <path d="M29 30 H46" stroke="white" strokeOpacity="0.4" strokeWidth="0.7" />
+      {/* foot pedal */}
+      <path d="M22.5 34.6 L24 31.6" stroke="#1f2937" strokeWidth="1" strokeLinecap="round" />
+      {/* front fork, handlebar, headlight basket */}
+      <path d="M18.4 21 L12 37.5" stroke="#9aa3b2" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M16.6 20.6 L22 19.8 M18.4 21 L17 19.6" stroke="#1f2937" strokeWidth="1.3" strokeLinecap="round" />
+      <path d="M12.6 22.6 Q12.4 26.6 15.4 27 Q18.2 26.8 18.2 22.8 Z" fill={`url(#${id}b)`} />
+      <ellipse cx="13.4" cy="24.4" rx="1.1" ry="1.3" fill="#fff7d6" />
+      {wheel(12, 6)}
+      {wheel(61.5, 6.6)}
     </>
   );
 }
@@ -222,7 +261,7 @@ export default function VehicleArt({ kind, size = 56 }: { kind: VehicleKind; siz
   const h = Math.round(size * 0.62);
   return (
     <svg width={size} height={h} viewBox="0 0 80 50" fill="none" aria-hidden="true">
-      <ellipse cx="41" cy="45" rx="34" ry="3.2" fill="rgba(15,23,41,0.13)" />
+      <ellipse cx={kind === "auto" ? 45 : 41} cy="45" rx={kind === "auto" ? 28 : 34} ry="3.2" fill="rgba(15,23,41,0.13)" />
       {kind === "bike" ? <Bike /> : kind === "auto" ? <Auto /> : kind === "erick" ? <ERick /> : <Car kind={kind} />}
     </svg>
   );
