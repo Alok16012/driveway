@@ -26,7 +26,7 @@ export const VEHICLES: Vehicle[] = [
   { id: "mini",  name: "Mini",  tagline: "Comfy, economical cars",   seats: 4, base: 45, perKm: 12, perMin: 2,   minFare: 80,  cancelFee: 30, eta: 7, enabled: true, ac: true, nearby: 5 },
   { id: "sedan", name: "Sedan", tagline: "Top-rated drivers, more legroom", seats: 4, base: 60, perKm: 15, perMin: 2, minFare: 110, cancelFee: 40, eta: 6, enabled: true, ac: true, nearby: 4 },
   { id: "taxi",  name: "Taxi",  tagline: "Classic yellow-top city taxi", seats: 4, base: 40, perKm: 11, perMin: 1.5, minFare: 70,  cancelFee: 25, eta: 0, enabled: true, ac: true, nearby: 0 },
-  { id: "suv",   name: "SUV",   tagline: "Extra legroom, 6 seats + luggage", seats: 6, base: 90, perKm: 20, perMin: 2.5, minFare: 160, cancelFee: 50, eta: 8, enabled: true, ac: true, nearby: 3 },
+  { id: "suv",   name: "XL",    tagline: "Extra legroom, 6 seats + luggage", seats: 6, base: 90, perKm: 20, perMin: 2.5, minFare: 160, cancelFee: 50, eta: 8, enabled: true, ac: true, nearby: 3 },
 ];
 
 /** Non-AC rides are this much of the AC fare. */
@@ -103,7 +103,7 @@ export const COUPONS: Coupon[] = [
   { code: "FIRST50", title: "50% off your first ride", body: "Up to ₹100 off on any vehicle", off: 50, pct: true, max: 100, expires: "31 Oct 2026", uses: 1284, active: true },
   { code: "AUTO20", title: "Flat ₹20 off on Auto", body: "Valid on Auto rides above ₹80", off: 20, expires: "15 Oct 2026", uses: 642, active: true },
   { code: "WEEKEND", title: "15% off weekend rides", body: "Sat & Sun · up to ₹75 off", off: 15, pct: true, max: 75, expires: "30 Nov 2026", uses: 311, active: true },
-  { code: "AIRPORT99", title: "₹99 off airport drops", body: "Sedan & SUV to IGI Airport", off: 99, expires: "31 Dec 2026", uses: 87, active: false },
+  { code: "AIRPORT99", title: "₹99 off airport drops", body: "Sedan & XL to IGI Airport", off: 99, expires: "31 Dec 2026", uses: 87, active: false },
 ];
 
 export function discountFor(c: Coupon | null, fare: number) {
@@ -187,7 +187,7 @@ export const TICKETS: Ticket[] = [
   { id: "TK501", from: "Priya Mehta", role: "Customer", subject: "Charged twice for ride RD1282", ride: "RD1282", status: "Open", at: "28 Sep, 09:10 AM", notes: [] },
   { id: "TK500", from: "Suresh Pal", role: "Driver", subject: "Payout for 21–27 Sep not received", status: "In Progress", at: "27 Sep, 06:44 PM", notes: ["Checked with finance — settlement batch runs Monday."] },
   { id: "TK499", from: "Vikash Singh", role: "Customer", subject: "Driver was rude, cancelled ride", ride: "RD1286", status: "Open", at: "27 Sep, 03:20 PM", notes: [] },
-  { id: "TK498", from: "Kavya Iyer", role: "Customer", subject: "Left my umbrella in the SUV", ride: "RD1280", status: "Resolved", at: "26 Sep, 10:02 AM", notes: ["Driver returned the item on 26 Sep."] },
+  { id: "TK498", from: "Kavya Iyer", role: "Customer", subject: "Left my umbrella in the XL", ride: "RD1280", status: "Resolved", at: "26 Sep, 10:02 AM", notes: ["Driver returned the item on 26 Sep."] },
 ];
 
 export const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");

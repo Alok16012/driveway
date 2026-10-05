@@ -1,6 +1,6 @@
 import type { Coupon, Driver, ParcelWeight, PayMethod, Place, RentalPackage, RideStatus, VehicleKind } from "../../lib/data";
 
-/** What kind of trip the customer is booking. "any" = first free Mini / Sedan / SUV. */
+/** What kind of trip the customer is booking. "any" = first free Mini / Sedan / XL. */
 export type Service = "ride" | "any" | "rental" | "parcel";
 
 export interface ParcelInfo {

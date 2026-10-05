@@ -615,7 +615,7 @@ export function LiveRidePage({ ride, onBack, onCancel, onChat, onDemoNext, onSha
         {searching ? (
           <div style={{ ...card, padding: 16, textAlign: "center" }}>
             <div className="spin" style={{ width: 34, height: 34, margin: "0 auto", borderRadius: "50%", border: "3.5px solid var(--blue-tint)", borderTopColor: "var(--blue)" }} />
-            <p style={{ margin: "12px 0 2px", fontSize: 14.5, fontWeight: 600 }}>{parcel ? `Connecting you to a ${v.name.toLowerCase()} delivery partner` : ride.service === "any" ? "Connecting you to the nearest Mini, Sedan or SUV" : `Connecting you to nearby ${v.name} drivers`}</p>
+            <p style={{ margin: "12px 0 2px", fontSize: 14.5, fontWeight: 600 }}>{parcel ? `Connecting you to a ${v.name.toLowerCase()} delivery partner` : ride.service === "any" ? "Connecting you to the nearest Mini, Sedan or XL" : `Connecting you to nearby ${v.name} drivers`}</p>
             <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>This usually takes under a minute</p>
           </div>
         ) : (

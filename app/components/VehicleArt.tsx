@@ -257,8 +257,22 @@ function ERick() {
   );
 }
 
+/** Rendered vehicle photos (trimmed, from public/vehicles); kinds not listed fall back to the SVG art. */
+const PHOTOS: Partial<Record<VehicleKind, string>> = {
+  bike: "/vehicles/bike.webp",
+  auto: "/vehicles/auto.webp",
+  erick: "/vehicles/erick.webp",
+  mini: "/vehicles/mini.webp",
+  sedan: "/vehicles/sedan.webp",
+};
+
 export default function VehicleArt({ kind, size = 56 }: { kind: VehicleKind; size?: number }) {
   const h = Math.round(size * 0.62);
+  const photo = PHOTOS[kind];
+  if (photo) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={photo} alt="" aria-hidden="true" width={size} height={h} draggable={false} style={{ width: size, height: h, objectFit: "contain", display: "block" }} />;
+  }
   return (
     <svg width={size} height={h} viewBox="0 0 80 50" fill="none" aria-hidden="true">
       <ellipse cx={kind === "auto" ? 45 : 41} cy="45" rx={kind === "auto" ? 28 : 34} ry="3.2" fill="rgba(15,23,41,0.13)" />
@@ -292,43 +306,9 @@ export function RentalArt({ size = 56 }: { size?: number }) {
   );
 }
 
-/** Parcel — delivery rider on an orange scooter with a red box. */
+/** Parcel — delivery rider on a scooter (photo). */
 export function ParcelArt({ size = 56 }: { size?: number }) {
-  const id = useGid();
-  return (
-    <svg width={size} height={Math.round(size * 0.62)} viewBox="0 0 80 50" fill="none" aria-hidden="true">
-      <Defs id={id} body={["#fdba4d", "#f59e0b", "#d97706"]} />
-      <ellipse cx="41" cy="45" rx="32" ry="3" fill="rgba(15,23,41,0.13)" />
-      {/* delivery box */}
-      <rect x="9" y="12" width="17" height="14" rx="1.6" fill="#e23d3d" />
-      <rect x="9" y="12" width="17" height="3.4" rx="1.4" fill="#b91c1c" />
-      <path d="M11 17.5 H24" stroke="white" strokeOpacity="0.35" strokeWidth="0.8" />
-      {/* rear body + seat */}
-      <path d="M10 33 Q9 26 16 26 L36 26 Q38 31 34 35 L16 36 Q11 36 10 33 Z" fill={`url(#${id}b)`} />
-      <path d="M14 26.5 Q22 23.5 34 25.5 L34 27.5 L15 28 Z" fill="#1f2937" />
-      {/* floorboard + front shield */}
-      <path d="M33 35 L50 35 L50 32 L36 32 Z" fill="#1f2937" />
-      <path d="M50 35.5 Q49 25 54 16 L58 15 Q59 15.4 58.6 17 Q55 26 56.5 35.5 Z" fill={`url(#${id}b)`} />
-      <path d="M55 17.5 Q52.5 24 52.6 33" stroke="white" strokeOpacity="0.55" strokeWidth="1" strokeLinecap="round" />
-      {/* handlebar + mirror */}
-      <path d="M56.5 15.5 L53.5 13.2" stroke="#1f2937" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M57 15 L59 9.5" stroke="#1f2937" strokeWidth="0.9" />
-      <ellipse cx="59.3" cy="8.8" rx="1.4" ry="1" fill="#1f2937" />
-      {/* front mudguard + wheels */}
-      <path d="M52.5 35.5 Q58 30 63.5 35.5" stroke="#f59e0b" strokeWidth="2.4" fill="none" strokeLinecap="round" />
-      <ellipse cx="58" cy="38.5" rx="5" ry="5.8" fill="#161b26" />
-      <ellipse cx="58.3" cy="38.5" rx="2.6" ry="3.2" fill={`url(#${id}r)`} />
-      <ellipse cx="19" cy="38.5" rx="5" ry="5.8" fill="#161b26" />
-      <ellipse cx="19.3" cy="38.5" rx="2.6" ry="3.2" fill={`url(#${id}r)`} />
-      {/* rider: legs, torso, arm, head, helmet */}
-      <path d="M29 26 L40 27 L44 33.5" stroke="#1f2937" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M43.5 34 L47.5 34" stroke="#111827" strokeWidth="2.4" strokeLinecap="round" />
-      <path d="M26 26 Q25 17 30 12 L36 12.5 Q38.5 18 34 26.5 Z" fill="#e23d3d" />
-      <path d="M33 15 L42 17 L52.5 13.6" stroke="#e23d3d" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="53" cy="13.4" r="1.3" fill="#f1c7a3" />
-      <circle cx="33.6" cy="8" r="3.4" fill="#f1c7a3" />
-      <path d="M29.6 7.6 Q29.4 2.2 34.4 2 Q38.6 2.2 38.4 6.8 L35 7 L34.4 9 Q31 9 29.6 7.6 Z" fill="#e23d3d" />
-      <path d="M31 4.4 Q32.4 2.8 34.6 2.8" stroke="white" strokeOpacity="0.7" strokeWidth="0.8" strokeLinecap="round" fill="none" />
-    </svg>
-  );
+  const h = Math.round(size * 0.62);
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src="/vehicles/parcel.webp" alt="" aria-hidden="true" width={size} height={h} draggable={false} style={{ width: size, height: h, objectFit: "contain", display: "block" }} />;
 }

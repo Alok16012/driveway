@@ -12,7 +12,7 @@ const poppins = Poppins({
 
 export const metadata: Metadata = {
   title: "DriveWay",
-  description: "DriveWay — book a Bike, Auto, Mini, Sedan or SUV. Ride · Reach · Relax.",
+  description: "DriveWay — book a Bike, Auto, Mini, Sedan or XL. Ride · Reach · Relax.",
 };
 
 export const viewport: Viewport = {

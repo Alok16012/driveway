@@ -3,7 +3,7 @@ import { ArrowRight, GridIcon, SteeringIcon, UserIcon } from "./components/icons
 
 /* Entry point: pick which DriveWay app to open. Each app lives on its own route. */
 const APPS = [
-  { href: "/customer", title: "Customer", body: "Book a Bike, Auto, Mini, Sedan or SUV, track it live and pay.", Icon: UserIcon, tone: "var(--blue)", tint: "var(--blue-tint)" },
+  { href: "/customer", title: "Customer", body: "Book a Bike, Auto, Mini, Sedan or XL, track it live and pay.", Icon: UserIcon, tone: "var(--blue)", tint: "var(--blue-tint)" },
   { href: "/rider", title: "Rider", body: "Go online, accept ride requests, run trips and manage earnings.", Icon: SteeringIcon, tone: "var(--green)", tint: "var(--success)" },
   { href: "/admin", title: "Admin", body: "Live rides, riders & KYC, customers, pricing, payments and support.", Icon: GridIcon, tone: "var(--gold-dark)", tint: "var(--gold-tint)" },
 ];

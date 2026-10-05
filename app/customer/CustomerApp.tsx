@@ -98,7 +98,7 @@ export default function CustomerApp() {
   const advance = (r: ActiveRide): ActiveRide => {
     switch (r.status) {
       case "Searching": {
-        // "Book Any" takes whichever Mini / Sedan / SUV is free first.
+        // "Book Any" takes whichever Mini / Sedan / XL is free first.
         const fits = (k: string) => (r.service === "any" ? ["mini", "sedan", "suv"].includes(k) : k === r.vehicle);
         const d = DRIVERS.find((x) => fits(x.vehicle) && x.kyc === "Approved" && !x.suspended && x.online) ?? DRIVERS[0];
         return { ...r, status: "Assigned", driver: d, vehicle: d.vehicle, progress: 0 };
@@ -389,7 +389,7 @@ function ProfileInfo({ which, onBack }: { which: ProfileKey | "notifications"; o
         <InfoPage title="About DriveWay" onBack={onBack}>
           <div style={{ ...card, padding: 16 }}>
             <p style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>DriveWay</p>
-            <p style={small}>Book a Bike, Auto, Mini, Sedan or SUV in a few taps. Verified drivers, live tracking and upfront fares — Ride · Reach · Relax.</p>
+            <p style={small}>Book a Bike, Auto, Mini, Sedan or XL in a few taps. Verified drivers, live tracking and upfront fares — Ride · Reach · Relax.</p>
           </div>
         </InfoPage>
       );
