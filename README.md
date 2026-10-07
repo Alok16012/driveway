@@ -35,9 +35,6 @@ Open http://localhost:3000 and pick an app. The mobile apps are capped at 430px 
 
 ## Database setup (Supabase → SQL Editor)
 
-Run each file on its own, as a whole, in this order:
+**Easiest:** open `supabase/full_setup.sql`, copy the whole file, paste it into a new SQL Editor query and click Run. It creates every table, loads the sample data and applies all the migrations in one go. It drops and recreates the DriveWay tables, so use it on a fresh database only.
 
-1. `supabase/setup.sql` — fresh database only: drops the DriveWay tables, creates the schema (0001) and loads the sample data.
-2. `supabase/migrations/0002_auth.sql` through `0007_integrity.sql`, in number order.
-
-Don't run `seed.sql` after `0007`: the sample data has two active rides for one rider, which 0007's one-active-ride rule rejects. `setup.sql` already includes it.
+Doing it step by step instead? Run each file on its own, as a whole, in this order — `supabase/setup.sql`, then `supabase/migrations/0002_auth.sql` through `0007_integrity.sql`. The migrations fail with `relation "customers" does not exist` if `setup.sql` hasn't run first. Don't run `seed.sql` after `0007`: `setup.sql` already loads it, and 0007's one-active-ride rule rejects it.
