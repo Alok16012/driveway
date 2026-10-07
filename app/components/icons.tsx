@@ -65,5 +65,5 @@ export const GiftIcon = (p: P) => <Svg {...p}><rect x="3.5" y="8" width="17" hei
 export const LockIcon = (p: P) => <Svg {...p}><rect x="4.5" y="10.5" width="15" height="10" rx="2" /><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" /></Svg>;
 export const AlertIcon = (p: P) => <Svg {...p}><path d="M12 3.5L2.5 20h19z" /><path d="M12 10v4.5M12 17.5h.01" /></Svg>;
 export const CarIcon = (p: P) => <Svg {...p}><path d="M5 11l1.7-4.5A2 2 0 0 1 8.6 5h6.8a2 2 0 0 1 1.9 1.5L19 11" /><rect x="3" y="11" width="18" height="6.5" rx="2" /><path d="M5.5 17.5V19.5M18.5 17.5V19.5" /><circle cx="7.5" cy="14.2" r="1" /><circle cx="16.5" cy="14.2" r="1" /></Svg>;
-export const AlarmIcon = (p: P) => <Svg {...p}><circle cx="12" cy="13" r="7.5" /><path d="M12 9.5V13l2.5 1.5M4.5 4.5l3 -2M19.5 4.5l-3 -2" /></Svg>;
-export const ExpandIcon = (p: P) => <Svg {...p} w={p.w ?? 2.4}><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></Svg>;
+export const BoxIcon = (p: P) => <Svg {...p}><path d="M12 3l8.5 4.5v9L12 21l-8.5-4.5v-9z" /><path d="M3.5 7.5L12 12l8.5-4.5M12 12v9M7.8 5.3l8.5 4.5" /></Svg>;
+export const SnowIcon = (p: P) => <Svg {...p}><path d="M12 2.5v19M3.8 7.2l16.4 9.6M3.8 16.8l16.4-9.6" /><path d="M9.5 4.5L12 7l2.5-2.5M9.5 19.5L12 17l2.5 2.5M4.4 10.6l3.4-.9-.9-3.4M19.6 13.4l-3.4.9.9 3.4M6.9 17.7l.9-3.4-3.4-.9M17.1 6.3l-.9 3.4 3.4.9" /></Svg>;

@@ -1,7 +1,8 @@
-/* Sample data shared by the Customer app, Driver app and Admin panel.
- * Stand-ins until the REST API from the PRD is live — every screen reads through these shapes. */
+/* Shared types, pricing helpers and sample data for the Customer app, Rider app and Admin panel.
+ * The catalog (vehicles, parcel weights, coupons, hotspots, incentives) lives in Supabase — see lib/catalog.ts.
+ * Everything else here is still sample data until those screens move to Supabase too. */
 
-export type VehicleKind = "bike" | "auto" | "erick" | "mini" | "sedan" | "taxi" | "suv";
+export type VehicleKind = "bike" | "auto" | "mini" | "sedan" | "suv";
 
 export interface Vehicle {
   id: VehicleKind;
@@ -15,24 +16,32 @@ export interface Vehicle {
   cancelFee: number;
   eta: number;      // minutes to pickup
   enabled: boolean;
-  ac: boolean;      // offers an AC option (Non-AC is always available and cheaper)
-  nearby: number;   // vehicles near the customer right now; 0 → "no cabs"
+  acOption: boolean;   // offered as both AC and Non-AC (cars only)
+  parcelMaxKg: number; // heaviest parcel this vehicle carries (0 = no parcels)
 }
 
-export const VEHICLES: Vehicle[] = [
-  { id: "bike",  name: "Bike",  tagline: "Beat the traffic on a bike", seats: 1, base: 20, perKm: 6,  perMin: 1,   minFare: 30,  cancelFee: 15, eta: 3, enabled: true, ac: false, nearby: 9 },
-  { id: "auto",  name: "Auto",  tagline: "No bargaining, doorstep pickup", seats: 3, base: 30, perKm: 10, perMin: 1.5, minFare: 45,  cancelFee: 20, eta: 4, enabled: true, ac: false, nearby: 6 },
-  { id: "erick", name: "E-Rickshaw", tagline: "Eco-friendly, cheap short hops", seats: 4, base: 20, perKm: 7, perMin: 1, minFare: 30, cancelFee: 10, eta: 5, enabled: true, ac: false, nearby: 7 },
-  { id: "mini",  name: "Mini",  tagline: "Comfy, economical cars",   seats: 4, base: 45, perKm: 12, perMin: 2,   minFare: 80,  cancelFee: 30, eta: 7, enabled: true, ac: true, nearby: 5 },
-  { id: "sedan", name: "Sedan", tagline: "Top-rated drivers, more legroom", seats: 4, base: 60, perKm: 15, perMin: 2, minFare: 110, cancelFee: 40, eta: 6, enabled: true, ac: true, nearby: 4 },
-  { id: "taxi",  name: "Taxi",  tagline: "Classic yellow-top city taxi", seats: 4, base: 40, perKm: 11, perMin: 1.5, minFare: 70,  cancelFee: 25, eta: 0, enabled: true, ac: true, nearby: 0 },
-  { id: "suv",   name: "XL",    tagline: "Extra legroom, 6 seats + luggage", seats: 6, base: 90, perKm: 20, perMin: 2.5, minFare: 160, cancelFee: 50, eta: 8, enabled: true, ac: true, nearby: 3 },
-];
+/** Non-AC cars are priced this much below the AC fare. */
+export const NON_AC_DISCOUNT = 0.15;
 
-/** Non-AC rides are this much of the AC fare. */
-export const NON_AC_FACTOR = 0.85;
+/* ───────────── Parcel delivery ───────────── */
 
-export const vehicleById = (id: VehicleKind) => VEHICLES.find((v) => v.id === id)!;
+export type Service = "ride" | "parcel";
+
+export const PARCEL_TYPES = ["Documents", "Food", "Clothes", "Electronics", "Groceries", "Medicines", "Other"] as const;
+
+/** Weight slabs — `extra` is the handling charge added on top of the distance fare. */
+export interface ParcelWeight { id: string; label: string; kg: number; extra: number }
+
+/** Parcels ride 10% cheaper than people (no waiting, no seat), plus the weight charge. */
+export const PARCEL_RATE = 0.9;
+
+export interface ParcelInfo {
+  type: (typeof PARCEL_TYPES)[number];
+  weight: string;       // ParcelWeight label
+  receiver: string;
+  receiverPhone: string;
+  note?: string;
+}
 
 export interface Place { id: string; name: string; address: string; kind?: "home" | "work" | "recent" }
 
@@ -59,52 +68,34 @@ export function tripEstimate(a: string, b: string) {
 
 export function fareFor(v: Vehicle, km: number, min: number, surge = 1, ac = true) {
   const f = Math.max(v.minFare, Math.round((v.base + v.perKm * km + v.perMin * min) * surge));
-  return v.ac && !ac ? Math.round(f * NON_AC_FACTOR) : f;
+  return v.acOption && !ac ? Math.round(f * (1 - NON_AC_DISCOUNT)) : f;
 }
 
-/* ───────────── Hourly rentals & parcel delivery ───────────── */
-
-export interface RentalPackage { id: string; hours: number; km: number; price: number; extraKm: number; extraHour: number }
-
-/** Mini prices; other cars scale by RENTAL_SCALE. */
-export const RENTAL_PACKAGES: RentalPackage[] = [
-  { id: "r1", hours: 1, km: 10, price: 249, extraKm: 12, extraHour: 120 },
-  { id: "r2", hours: 2, km: 20, price: 449, extraKm: 12, extraHour: 120 },
-  { id: "r4", hours: 4, km: 40, price: 849, extraKm: 12, extraHour: 110 },
-  { id: "r8", hours: 8, km: 80, price: 1599, extraKm: 12, extraHour: 100 },
-];
-
-export const RENTAL_SCALE: Partial<Record<VehicleKind, number>> = { mini: 1, sedan: 1.25, suv: 1.6 };
-
-export function rentalPrice(p: RentalPackage, v: VehicleKind, ac = true) {
-  const f = Math.round(p.price * (RENTAL_SCALE[v] ?? 1));
-  return ac ? f : Math.round(f * NON_AC_FACTOR);
+export function parcelFareFor(v: Vehicle, km: number, min: number, w: ParcelWeight, surge = 1) {
+  return Math.round(fareFor(v, km, min, surge) * PARCEL_RATE) + w.extra;
 }
 
-export type ParcelWeight = "light" | "medium" | "heavy";
+/* ───────────── Platform settings (admin → Pricing & Settings) ───────────── */
 
-/** Bike carries up to 5 kg; heavier parcels go by Auto (base fare + a handling fee). */
-export const PARCEL_WEIGHTS: { id: ParcelWeight; label: string; sub: string; vehicle: VehicleKind; fee: number }[] = [
-  { id: "light", label: "Up to 1 kg", sub: "Documents, keys, small items", vehicle: "bike", fee: 0 },
-  { id: "medium", label: "1 – 5 kg", sub: "Food, clothes, a small box", vehicle: "bike", fee: 15 },
-  { id: "heavy", label: "5 – 20 kg", sub: "Big boxes, appliances", vehicle: "auto", fee: 40 },
-];
+export interface ServiceArea { city: string; active: boolean }
 
-export const PARCEL_TYPES = ["Documents", "Food", "Clothes", "Electronics", "Medicines", "Groceries", "Other"];
+export interface Settings {
+  commissionPct: number;
+  surgeOn: boolean; surgeMult: number;
+  cash: boolean; online: boolean; autoAssign: boolean; sos: boolean; scheduled: boolean; maintenance: boolean;
+  serviceAreas: ServiceArea[];
+}
 
-export function parcelFare(weight: ParcelWeight, km: number, min: number) {
-  const w = PARCEL_WEIGHTS.find((x) => x.id === weight)!;
-  return fareFor(VEHICLES.find((x) => x.id === w.vehicle)!, km, min) + w.fee;
+export const AUDIENCES = ["All customers", "All drivers", "Noida only", "Inactive riders"] as const;
+export interface Announcement { id: string; audience: (typeof AUDIENCES)[number]; title: string; body: string; at: string }
+
+/** Surge applies on weekdays, 8–11 AM and 6–9 PM. */
+export function isPeak(d = new Date()) {
+  const day = d.getDay(), h = d.getHours();
+  return day >= 1 && day <= 5 && ((h >= 8 && h < 11) || (h >= 18 && h < 21));
 }
 
 export interface Coupon { code: string; title: string; body: string; off: number; pct?: boolean; max?: number; expires: string; uses?: number; active?: boolean }
-
-export const COUPONS: Coupon[] = [
-  { code: "FIRST50", title: "50% off your first ride", body: "Up to ₹100 off on any vehicle", off: 50, pct: true, max: 100, expires: "31 Oct 2026", uses: 1284, active: true },
-  { code: "AUTO20", title: "Flat ₹20 off on Auto", body: "Valid on Auto rides above ₹80", off: 20, expires: "15 Oct 2026", uses: 642, active: true },
-  { code: "WEEKEND", title: "15% off weekend rides", body: "Sat & Sun · up to ₹75 off", off: 15, pct: true, max: 75, expires: "30 Nov 2026", uses: 311, active: true },
-  { code: "AIRPORT99", title: "₹99 off airport drops", body: "Sedan & XL to IGI Airport", off: 99, expires: "31 Dec 2026", uses: 87, active: false },
-];
 
 export function discountFor(c: Coupon | null, fare: number) {
   if (!c) return 0;
@@ -119,21 +110,20 @@ export const RIDE_STEPS: RideStatus[] = ["Searching", "Assigned", "Arriving", "A
 export type PayMethod = "UPI" | "Cash" | "Card" | "Wallet";
 
 export interface Driver {
-  id: string; name: string; initials: string; phone: string; rating: number; trips: number;
+  id: string; name: string; initials: string; phone: string; email?: string; rating: number; trips: number;
   vehicle: VehicleKind; model: string; plate: string; city: string;
-  ac: boolean;   // vehicle has working AC (bikes and autos never do)
   kyc: "Approved" | "Pending" | "Rejected"; online: boolean; suspended?: boolean; joined: string; earnings: number;
 }
 
 export const DRIVERS: Driver[] = [
-  { id: "DRV1001", name: "Rohit Kumar", initials: "RK", phone: "+91 98100 12345", rating: 4.8, trips: 1284, vehicle: "sedan", model: "Maruti Dzire · White", plate: "UP16 AB 1234", ac: true, city: "Noida", kyc: "Approved", online: true, joined: "12 Jan 2026", earnings: 186400 },
-  { id: "DRV1002", name: "Suresh Pal", initials: "SP", phone: "+91 98111 45678", rating: 4.6, trips: 842, vehicle: "auto", model: "Bajaj RE · Green", plate: "DL 1C 5678", ac: false, city: "Delhi", kyc: "Approved", online: true, joined: "03 Feb 2026", earnings: 98200 },
-  { id: "DRV1003", name: "Rakesh Das", initials: "RD", phone: "+91 98222 90120", rating: 4.2, trips: 311, vehicle: "mini", model: "Hyundai i10 · Grey", plate: "BR01 CD 9012", ac: false, city: "Noida", kyc: "Approved", online: false, joined: "20 Mar 2026", earnings: 54100 },
-  { id: "DRV1004", name: "Manoj Tiwari", initials: "MT", phone: "+91 98333 34560", rating: 4.9, trips: 2031, vehicle: "suv", model: "Toyota Innova · Silver", plate: "UP32 EF 3456", ac: true, city: "Lucknow", kyc: "Approved", online: true, joined: "08 Nov 2025", earnings: 312900 },
-  { id: "DRV1005", name: "Imran Khan", initials: "IK", phone: "+91 98444 11223", rating: 4.7, trips: 564, vehicle: "bike", model: "Honda Shine · Black", plate: "DL 3S AB 1122", ac: false, city: "Delhi", kyc: "Approved", online: true, joined: "14 Apr 2026", earnings: 41800 },
-  { id: "DRV1006", name: "Vikram Singh", initials: "VS", phone: "+91 98555 66778", rating: 0, trips: 0, vehicle: "sedan", model: "Honda Amaze · Blue", plate: "HR26 GH 6677", ac: true, city: "Gurugram", kyc: "Pending", online: false, joined: "26 Sep 2026", earnings: 0 },
-  { id: "DRV1007", name: "Arjun Yadav", initials: "AY", phone: "+91 98666 22334", rating: 0, trips: 0, vehicle: "auto", model: "Piaggio Ape · Yellow", plate: "UP16 JK 2233", ac: false, city: "Noida", kyc: "Pending", online: false, joined: "27 Sep 2026", earnings: 0 },
-  { id: "DRV1008", name: "Deepak Sharma", initials: "DS", phone: "+91 98777 88990", rating: 3.9, trips: 128, vehicle: "mini", model: "Maruti Swift · Red", plate: "DL 8C LM 8899", ac: true, city: "Delhi", kyc: "Approved", online: false, suspended: true, joined: "02 Jun 2026", earnings: 18700 },
+  { id: "DRV1001", name: "Rohit Kumar", initials: "RK", phone: "+91 98100 12345", rating: 4.8, trips: 1284, vehicle: "sedan", model: "Maruti Dzire · White", plate: "UP16 AB 1234", city: "Noida", kyc: "Approved", online: true, joined: "12 Jan 2026", earnings: 186400 },
+  { id: "DRV1002", name: "Suresh Pal", initials: "SP", phone: "+91 98111 45678", rating: 4.6, trips: 842, vehicle: "auto", model: "Bajaj RE · Green", plate: "DL 1C 5678", city: "Delhi", kyc: "Approved", online: true, joined: "03 Feb 2026", earnings: 98200 },
+  { id: "DRV1003", name: "Rakesh Das", initials: "RD", phone: "+91 98222 90120", rating: 4.2, trips: 311, vehicle: "mini", model: "Hyundai i10 · Grey", plate: "BR01 CD 9012", city: "Noida", kyc: "Approved", online: false, joined: "20 Mar 2026", earnings: 54100 },
+  { id: "DRV1004", name: "Manoj Tiwari", initials: "MT", phone: "+91 98333 34560", rating: 4.9, trips: 2031, vehicle: "suv", model: "Toyota Innova · Silver", plate: "UP32 EF 3456", city: "Lucknow", kyc: "Approved", online: true, joined: "08 Nov 2025", earnings: 312900 },
+  { id: "DRV1005", name: "Imran Khan", initials: "IK", phone: "+91 98444 11223", rating: 4.7, trips: 564, vehicle: "bike", model: "Honda Shine · Black", plate: "DL 3S AB 1122", city: "Delhi", kyc: "Approved", online: true, joined: "14 Apr 2026", earnings: 41800 },
+  { id: "DRV1006", name: "Vikram Singh", initials: "VS", phone: "+91 98555 66778", rating: 0, trips: 0, vehicle: "sedan", model: "Honda Amaze · Blue", plate: "HR26 GH 6677", city: "Gurugram", kyc: "Pending", online: false, joined: "26 Sep 2026", earnings: 0 },
+  { id: "DRV1007", name: "Arjun Yadav", initials: "AY", phone: "+91 98666 22334", rating: 0, trips: 0, vehicle: "auto", model: "Piaggio Ape · Yellow", plate: "UP16 JK 2233", city: "Noida", kyc: "Pending", online: false, joined: "27 Sep 2026", earnings: 0 },
+  { id: "DRV1008", name: "Deepak Sharma", initials: "DS", phone: "+91 98777 88990", rating: 3.9, trips: 128, vehicle: "mini", model: "Maruti Swift · Red", plate: "DL 8C LM 8899", city: "Delhi", kyc: "Approved", online: false, suspended: true, joined: "02 Jun 2026", earnings: 18700 },
 ];
 
 export interface Customer {
@@ -155,27 +145,32 @@ export interface Ride {
   from: string; to: string; km: number; min: number;
   fare: number; discount: number; pay: PayMethod; paid: boolean;
   status: RideStatus; date: string; time: string; rating?: number; cancelReason?: string;
-  label?: string;   // what was booked when it isn't a plain ride, e.g. "Parcel · Bike", "Sedan · Non-AC"
+  service?: Service;   // defaults to "ride"
+  ac?: boolean;        // only for AC-optional vehicles
+  parcel?: ParcelInfo;
 }
 
 export const RIDES: Ride[] = [
-  { id: "RD1289", customer: "Amit Sharma", driver: "Rohit Kumar", vehicle: "sedan", from: "Sector 12, Noida", to: "DLF Mall of India", km: 4.2, min: 16, fare: 160, discount: 0, pay: "UPI", paid: true, status: "Completed", date: "28 Sep 2026", time: "10:38 AM", rating: 5 },
+  { id: "PD1291", service: "parcel", customer: "Rahul Verma", driver: "Imran Khan", vehicle: "bike", from: "Sector 29, Gurugram", to: "Cyber City, Gurugram", km: 4.8, min: 15, fare: 62, discount: 0, pay: "UPI", paid: true, status: "Started", date: "28 Sep 2026", time: "10:50 AM", parcel: { type: "Documents", weight: "Up to 1 kg", receiver: "Sneha Verma", receiverPhone: "+91 98100 77881" } },
+  { id: "PD1290", service: "parcel", customer: "Kavya Iyer", driver: "Suresh Pal", vehicle: "auto", from: "Sector 18, Noida", to: "Okhla, Delhi", km: 9.4, min: 29, fare: 196, discount: 0, pay: "Cash", paid: true, status: "Completed", date: "28 Sep 2026", time: "09:15 AM", rating: 5, parcel: { type: "Groceries", weight: "10 – 20 kg", receiver: "Lata Iyer", receiverPhone: "+91 98111 22334", note: "Ring the bell twice" } },
+  { id: "RD1289", customer: "Amit Sharma", driver: "Rohit Kumar", vehicle: "sedan", ac: true, from: "Sector 12, Noida", to: "DLF Mall of India", km: 4.2, min: 16, fare: 160, discount: 0, pay: "UPI", paid: true, status: "Completed", date: "28 Sep 2026", time: "10:38 AM", rating: 5 },
   { id: "RD1288", customer: "Priya Mehta", driver: "Suresh Pal", vehicle: "auto", from: "Botanical Garden Metro", to: "Sector 62, Noida", km: 6.8, min: 22, fare: 132, discount: 0, pay: "Cash", paid: false, status: "Started", date: "28 Sep 2026", time: "10:21 AM" },
-  { id: "RD1287", customer: "Neha Gupta", driver: "Manoj Tiwari", vehicle: "suv", from: "Connaught Place", to: "IGI Airport T3", km: 16.4, min: 46, fare: 533, discount: 99, pay: "Card", paid: true, status: "Completed", date: "28 Sep 2026", time: "09:52 AM", rating: 4 },
-  { id: "RD1286", customer: "Vikash Singh", driver: "Rakesh Das", vehicle: "mini", from: "Great India Place", to: "Akshardham Temple", km: 9.1, min: 28, fare: 180, discount: 0, pay: "Cash", paid: false, status: "Cancelled", date: "28 Sep 2026", time: "09:40 AM", cancelReason: "Driver taking too long" },
+  { id: "RD1287", customer: "Neha Gupta", driver: "Manoj Tiwari", vehicle: "suv", ac: true, from: "Connaught Place", to: "IGI Airport T3", km: 16.4, min: 46, fare: 533, discount: 99, pay: "Card", paid: true, status: "Completed", date: "28 Sep 2026", time: "09:52 AM", rating: 4 },
+  { id: "RD1286", customer: "Vikash Singh", driver: "Rakesh Das", vehicle: "mini", ac: false, from: "Great India Place", to: "Akshardham Temple", km: 9.1, min: 28, fare: 180, discount: 0, pay: "Cash", paid: false, status: "Cancelled", date: "28 Sep 2026", time: "09:40 AM", cancelReason: "Driver taking too long" },
   { id: "RD1285", customer: "Kavya Iyer", driver: "Imran Khan", vehicle: "bike", from: "Sector 18, Noida", to: "Sector 50, Noida", km: 5.3, min: 14, fare: 66, discount: 0, pay: "UPI", paid: true, status: "Arriving", date: "28 Sep 2026", time: "10:44 AM" },
   { id: "RD1284", customer: "Amit Sharma", driver: "Suresh Pal", vehicle: "auto", from: "Yesterday · Noida", to: "Okhla, Delhi", km: 11.2, min: 34, fare: 240, discount: 20, pay: "Wallet", paid: true, status: "Completed", date: "27 Sep 2026", time: "08:20 PM", rating: 4 },
-  { id: "RD1283", customer: "Rahul Verma", driver: "Rohit Kumar", vehicle: "sedan", from: "Cyber City, Gurugram", to: "Sector 29, Gurugram", km: 5.6, min: 19, fare: 182, discount: 0, pay: "UPI", paid: true, status: "Completed", date: "27 Sep 2026", time: "07:05 PM", rating: 5 },
-  { id: "RD1282", customer: "Priya Mehta", driver: "Deepak Sharma", vehicle: "mini", from: "Lajpat Nagar", to: "Saket", km: 6.1, min: 24, fare: 166, discount: 0, pay: "Cash", paid: true, status: "Completed", date: "27 Sep 2026", time: "05:48 PM", rating: 3 },
+  { id: "RD1283", customer: "Rahul Verma", driver: "Rohit Kumar", vehicle: "sedan", ac: false, from: "Cyber City, Gurugram", to: "Sector 29, Gurugram", km: 5.6, min: 19, fare: 182, discount: 0, pay: "UPI", paid: true, status: "Completed", date: "27 Sep 2026", time: "07:05 PM", rating: 5 },
+  { id: "RD1282", customer: "Priya Mehta", driver: "Deepak Sharma", vehicle: "mini", ac: true, from: "Lajpat Nagar", to: "Saket", km: 6.1, min: 24, fare: 166, discount: 0, pay: "Cash", paid: true, status: "Completed", date: "27 Sep 2026", time: "05:48 PM", rating: 3 },
   { id: "RD1281", customer: "Neha Gupta", driver: "Imran Khan", vehicle: "bike", from: "Sector 62, Noida", to: "Sector 15, Noida", km: 7.2, min: 18, fare: 81, discount: 0, pay: "UPI", paid: true, status: "Completed", date: "26 Sep 2026", time: "09:12 AM", rating: 5 },
-  { id: "RD1280", customer: "Kavya Iyer", driver: "Manoj Tiwari", vehicle: "suv", from: "Home", to: "Jewar Airport", km: 38.5, min: 64, fare: 1020, discount: 75, pay: "Card", paid: true, status: "Completed", date: "26 Sep 2026", time: "06:30 AM", rating: 5 },
+  { id: "RD1280", customer: "Kavya Iyer", driver: "Manoj Tiwari", vehicle: "suv", ac: true, from: "Home", to: "Jewar Airport", km: 38.5, min: 64, fare: 1020, discount: 75, pay: "Card", paid: true, status: "Completed", date: "26 Sep 2026", time: "06:30 AM", rating: 5 },
 ];
 
 /** The signed-in customer's own trips (Customer app → My Rides). */
 export const MY_RIDES: Ride[] = [
-  { id: "RD1289", customer: "Amit Sharma", driver: "Rohit Kumar", vehicle: "sedan", from: "Sector 12, Noida", to: "DLF Mall of India", km: 4.2, min: 16, fare: 160, discount: 0, pay: "UPI", paid: true, status: "Completed", date: "Today", time: "10:38 AM", rating: 5 },
+  { id: "RD1289", customer: "Amit Sharma", driver: "Rohit Kumar", vehicle: "sedan", ac: true, from: "Sector 12, Noida", to: "DLF Mall of India", km: 4.2, min: 16, fare: 160, discount: 0, pay: "UPI", paid: true, status: "Completed", date: "Today", time: "10:38 AM", rating: 5 },
   { id: "RD1284", customer: "Amit Sharma", driver: "Suresh Pal", vehicle: "auto", from: "Noida Sector 18", to: "Okhla, Delhi", km: 11.2, min: 34, fare: 240, discount: 20, pay: "Wallet", paid: true, status: "Completed", date: "Yesterday", time: "08:20 PM", rating: 4 },
-  { id: "RD1270", customer: "Amit Sharma", driver: "Manoj Tiwari", vehicle: "suv", from: "Airport T3", to: "Home", km: 34.0, min: 58, fare: 380, discount: 0, pay: "Card", paid: true, status: "Completed", date: "18 Sep 2026", time: "11:15 PM", rating: 5 },
+  { id: "RD1270", customer: "Amit Sharma", driver: "Manoj Tiwari", vehicle: "suv", ac: true, from: "Airport T3", to: "Home", km: 34.0, min: 58, fare: 380, discount: 0, pay: "Card", paid: true, status: "Completed", date: "18 Sep 2026", time: "11:15 PM", rating: 5 },
+  { id: "PD1276", service: "parcel", customer: "Amit Sharma", driver: "Imran Khan", vehicle: "bike", from: "Home", to: "Work", km: 21.0, min: 52, fare: 182, discount: 0, pay: "UPI", paid: true, status: "Completed", date: "22 Sep 2026", time: "01:10 PM", rating: 5, parcel: { type: "Documents", weight: "Up to 1 kg", receiver: "Ravi (Reception)", receiverPhone: "+91 99990 12345" } },
   { id: "RD1262", customer: "Amit Sharma", driver: "Imran Khan", vehicle: "bike", from: "Work", to: "Botanical Garden", km: 6.4, min: 17, fare: 70, discount: 0, pay: "Cash", paid: true, status: "Cancelled", date: "12 Sep 2026", time: "06:40 PM", cancelReason: "Changed my plans" },
 ];
 
@@ -223,21 +218,8 @@ export const TXNS: Txn[] = [
 /** High-demand zones shown to riders who are online. */
 export interface Hotspot { id: string; area: string; km: number; surge: number; waiting: number }
 
-export const HOTSPOTS: Hotspot[] = [
-  { id: "hs1", area: "Sector 18 Market, Noida", km: 1.4, surge: 1.5, waiting: 23 },
-  { id: "hs2", area: "Botanical Garden Metro", km: 2.1, surge: 1.3, waiting: 17 },
-  { id: "hs3", area: "Great India Place", km: 2.8, surge: 1.2, waiting: 11 },
-  { id: "hs4", area: "Film City, Sector 16A", km: 3.5, surge: 1.1, waiting: 6 },
-];
-
 /** Incentive programmes. `kind` decides which counter moves the progress bar. */
 export interface Incentive { id: string; title: string; body: string; target: number; reward: number; kind: "today" | "week" | "peak"; ends: string }
-
-export const INCENTIVES: Incentive[] = [
-  { id: "in1", title: "Daily Target", body: "Complete 5 trips today", target: 5, reward: 500, kind: "today", ends: "Ends 11:59 PM" },
-  { id: "in2", title: "Peak Hour Hero", body: "3 trips between 6 PM – 9 PM", target: 3, reward: 250, kind: "peak", ends: "Today, 6 – 9 PM" },
-  { id: "in3", title: "Weekly Streak", body: "Complete 60 trips this week", target: 60, reward: 2000, kind: "week", ends: "Ends Sun, 5 Oct" },
-];
 
 export type WalletKind = "Trip Earning" | "Cash Commission" | "Incentive" | "Payout" | "Dues Paid";
 

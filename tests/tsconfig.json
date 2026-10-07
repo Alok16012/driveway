@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "commonjs", "moduleResolution": "node", "esModuleInterop": true,
+    "skipLibCheck": true, "strict": true, "outDir": "../.test-build", "rootDir": "../app/lib", "noEmit": false,
+    "types": ["node"]
+  },
+  "files": ["../app/lib/rides-server.ts", "../app/lib/profile-server.ts", "../app/lib/data.ts", "../app/lib/mappers.ts"]
+}

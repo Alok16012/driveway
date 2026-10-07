@@ -19,7 +19,7 @@ function Car({ x, y, angle, size = 1 }: { x: number; y: number; angle: number; s
   return (
     <g transform={`translate(${x} ${y}) rotate(${angle}) scale(${size})`}>
       <rect x="-11" y="-6.5" width="22" height="13" rx="4.5" fill="#0f1729" />
-      <rect x="-9.5" y="-5.2" width="19" height="10.4" rx="3.6" fill="#f5a623" />
+      <rect x="-9.5" y="-5.2" width="19" height="10.4" rx="3.6" fill="var(--gold)" />
       <rect x="1.5" y="-4.4" width="4.5" height="8.8" rx="1.4" fill="#0f1729" opacity="0.75" />
       <rect x="-7" y="-4.4" width="3.2" height="8.8" rx="1.2" fill="#0f1729" opacity="0.55" />
     </g>
@@ -66,7 +66,7 @@ export default function MapView({ mode = "idle", progress = 0, height = 220, rad
           <path d="M-10 50 H410 M-10 160 H410 M60 -10 V310 M210 -10 V310 M340 -10 V310" strokeWidth="6" />
           <path d="M20 300 L 380 20" strokeWidth="9" />
         </g>
-        <g stroke="#f6d77b" strokeWidth="1.4" strokeDasharray="6 7" fill="none" opacity="0.8">
+        <g stroke="#ffffff" strokeWidth="1.4" strokeDasharray="6 7" fill="none" opacity="0.8">
           <path d="M-10 110 H410" />
           <path d="M20 300 L 380 20" />
         </g>

@@ -7,12 +7,11 @@ import {
 import VehicleArt from "../VehicleArt";
 import { Sheet } from "../customer/BookingScreens";
 import { InfoPage } from "../customer/AccountScreens";
-import { COMMISSION, RouteLines } from "./RiderScreens";
+import { RouteLines } from "./RiderScreens";
 import { DemoButton, PageHeader, PrimaryButton, StatusBadge, Stars, Toggle, card, field, label } from "../ui";
-import {
-  HOTSPOTS, INCENTIVES, PLACES, RIDER_FEEDBACK, inr, vehicleById,
-  type Driver, type Incentive, type Ride, type WalletTxn,
-} from "../../lib/data";
+import { PLACES, inr, type Driver, type Incentive, type Ride, type WalletTxn } from "../../lib/data";
+import type { Feedback } from "../../lib/mappers";
+import { useCatalog } from "../../lib/CatalogProvider";
 
 const row: React.CSSProperties = { ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 };
 const small: React.CSSProperties = { margin: "2px 0 0", fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.5 };
@@ -28,7 +27,7 @@ export function WalletPage({ balance, dues, txns, onWithdraw, onPayDues, onBack 
   return (
     <InfoPage title="Rider Wallet" onBack={onBack}>
       <div style={{ borderRadius: 22, padding: 18, background: "linear-gradient(150deg,var(--blue-dark),var(--blue))", color: "white", boxShadow: "0 10px 28px rgba(11,92,255,0.28)", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", right: -50, top: -60, width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, rgba(245,166,35,0.3), transparent 70%)" }} />
+        <div style={{ position: "absolute", right: -50, top: -60, width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, rgba(120,190,255,0.3), transparent 70%)" }} />
         <p style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.75)" }}>Wallet balance</p>
         <p style={{ margin: "2px 0 0", fontSize: 32, fontWeight: 800 }}>{inr(balance)}</p>
         <div style={{ display: "flex", gap: 18, marginTop: 10, fontSize: 12 }}>
@@ -37,7 +36,7 @@ export function WalletPage({ balance, dues, txns, onWithdraw, onPayDues, onBack 
         </div>
       </div>
       <div style={{ display: "flex", gap: 10 }}>
-        <PrimaryButton tone="gold" onClick={onWithdraw} disabled={payable < 100} style={{ flex: 1 }}>Instant Payout</PrimaryButton>
+        <PrimaryButton onClick={onWithdraw} disabled={payable < 100} style={{ flex: 1 }}>Instant Payout</PrimaryButton>
         <PrimaryButton tone="ghost" onClick={onPayDues} disabled={dues <= 0} style={{ flex: 1 }}>Clear Dues</PrimaryButton>
       </div>
       <p style={{ ...small, margin: 0, textAlign: "center" }}>
@@ -58,17 +57,18 @@ export function WalletPage({ balance, dues, txns, onWithdraw, onPayDues, onBack 
 /* ───────────────────────── Incentives ───────────────────────── */
 
 export function IncentivesScreen({ progress }: { progress: Record<Incentive["kind"], number> }) {
-  const total = INCENTIVES.reduce((s, i) => s + (progress[i.kind] >= i.target ? i.reward : 0), 0);
+  const { incentives } = useCatalog();
+  const total = incentives.reduce((s, i) => s + (progress[i.kind] >= i.target ? i.reward : 0), 0);
   return (
     <div>
       <PageHeader title="Incentives" sub="Hit targets, earn bonuses" />
       <div style={{ padding: "0 16px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ borderRadius: 20, padding: 18, background: "linear-gradient(135deg,var(--gold),var(--gold-dark))", color: "var(--blue-dark)", boxShadow: "0 10px 24px rgba(245,166,35,0.35)" }}>
+        <div style={{ borderRadius: 20, padding: 18, background: "linear-gradient(135deg,var(--gold),var(--gold-dark))", color: "var(--blue-dark)", boxShadow: "0 10px 24px rgba(120,190,255,0.35)" }}>
           <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600 }}>Unlocked so far</p>
           <p style={{ margin: "2px 0 0", fontSize: 30, fontWeight: 800 }}>{inr(total)}</p>
           <p style={{ margin: "4px 0 0", fontSize: 12 }}>Bonuses are credited to your wallet when each target is met.</p>
         </div>
-        {INCENTIVES.map((i) => {
+        {incentives.map((i) => {
           const done = Math.min(progress[i.kind], i.target);
           const hit = done >= i.target;
           return (
@@ -94,8 +94,8 @@ export function IncentivesScreen({ progress }: { progress: Record<Incentive["kin
 
 /* ───────────────────────── Ratings & performance ───────────────────────── */
 
-export function PerformancePage({ rider, stats, onBack }: {
-  rider: Driver; stats: { acceptance: number; cancellation: number; accepted: number; declined: number; cancelled: number }; onBack: () => void;
+export function PerformancePage({ rider, stats, feedback, onBack }: {
+  rider: Driver; stats: { acceptance: number; cancellation: number; accepted: number; declined: number; cancelled: number }; feedback: Feedback[]; onBack: () => void;
 }) {
   const dist = [[5, 78], [4, 15], [3, 4], [2, 2], [1, 1]];
   const meter = (l: string, v: number, good: boolean, hint: string) => (
@@ -129,7 +129,8 @@ export function PerformancePage({ rider, stats, onBack }: {
       {meter("Acceptance rate", stats.acceptance, stats.acceptance >= 80, `${stats.accepted} accepted · ${stats.declined} declined or missed. Keep it above 80% for priority dispatch.`)}
       {meter("Cancellation rate", stats.cancellation, stats.cancellation <= 5, `${stats.cancelled} cancelled by you. Stay under 5% to keep incentives.`)}
       <p style={{ margin: "4px 2px 0", fontSize: 13.5, fontWeight: 700 }}>What customers say</p>
-      {RIDER_FEEDBACK.map((f) => (
+      {feedback.length === 0 && <p style={{ ...small, margin: "0 2px" }}>No feedback yet — it shows up here after your first rated trips.</p>}
+      {feedback.map((f) => (
         <div key={f.who + f.at} style={{ ...card, padding: 14 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 13.5, fontWeight: 600 }}>{f.who}</span>
@@ -181,6 +182,7 @@ export function DocumentsPage({ onBack, onUploaded }: { onBack: () => void; onUp
 }
 
 export function VehiclePage({ rider, onBack }: { rider: Driver; onBack: () => void }) {
+  const { vehicleById } = useCatalog();
   const v = vehicleById(rider.vehicle);
   return (
     <InfoPage title="Vehicle Details" onBack={onBack}>
@@ -190,7 +192,7 @@ export function VehiclePage({ rider, onBack }: { rider: Driver; onBack: () => vo
         <p style={{ margin: "4px auto 0", display: "inline-block", background: "var(--ink)", color: "white", borderRadius: 8, padding: "4px 12px", fontSize: 13, fontWeight: 700, letterSpacing: "0.06em" }}>{rider.plate}</p>
       </div>
       <div style={{ ...card, padding: "4px 14px" }}>
-        {[["Category", v.name], ["Air conditioning", rider.ac ? "❄ AC — gets AC & Non-AC rides" : "Non-AC — Non-AC rides only"], ["Seats", String(v.seats)], ["Base fare", inr(v.base)], ["Per km", inr(v.perKm)], ["City", rider.city]].map(([l, val], i) => (
+        {[["Category", v.name], ["Seats", String(v.seats)], ["Base fare", inr(v.base)], ["Per km", inr(v.perKm)], ["City", rider.city]].map(([l, val], i) => (
           <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "11px 0", borderTop: i ? "1px solid var(--line)" : "none", fontSize: 13.5 }}>
             <span style={{ color: "var(--ink-soft)" }}>{l}</span><span style={{ fontWeight: 600 }}>{val}</span>
           </div>
@@ -229,9 +231,11 @@ export function BankPage({ onBack, onSaved }: { onBack: () => void; onSaved: () 
 
 /* ───────────────────────── Preferences ───────────────────────── */
 
-export interface RiderPrefs { autoAccept: boolean; goHome: string | null; cash: boolean; sound: boolean; nav: "Google Maps" | "In-app" }
+export interface RiderPrefs { autoAccept: boolean; goHome: string | null; cash: boolean; sound: boolean; nav: "Google Maps" | "In-app"; parcels: boolean; ac: boolean }
 
-export function PreferencesPage({ prefs, onChange, onBack }: { prefs: RiderPrefs; onChange: (p: Partial<RiderPrefs>) => void; onBack: () => void }) {
+export function PreferencesPage({ prefs, vehicle, onChange, onBack }: { prefs: RiderPrefs; vehicle: Driver["vehicle"]; onChange: (p: Partial<RiderPrefs>) => void; onBack: () => void }) {
+  const { vehicleById } = useCatalog();
+  const v = vehicleById(vehicle);
   const homes = PLACES.filter((p) => p.kind === "home" || p.kind === "work");
   const switchRow = (t: string, b: string, on: boolean, set: (v: boolean) => void) => (
     <div style={row}>
@@ -243,6 +247,8 @@ export function PreferencesPage({ prefs, onChange, onBack }: { prefs: RiderPrefs
     <InfoPage title="Ride Preferences" onBack={onBack}>
       {switchRow("Auto-accept rides", "Requests are accepted for you after 3 seconds.", prefs.autoAccept, (v) => onChange({ autoAccept: v }))}
       {switchRow("Accept cash rides", "Turn off to only get UPI / online-paid rides.", prefs.cash, (v) => onChange({ cash: v }))}
+      {v.parcelMaxKg > 0 && switchRow("Accept parcel deliveries", `Get parcel orders up to ${v.parcelMaxKg} kg alongside rides.`, prefs.parcels, (x) => onChange({ parcels: x }))}
+      {v.acOption && switchRow("My AC is working", prefs.ac ? "You get AC ride requests (higher fares)." : "You only get Non-AC ride requests.", prefs.ac, (x) => onChange({ ac: x }))}
       {switchRow("Request sound", "Play a ringtone for new ride requests.", prefs.sound, (v) => onChange({ sound: v }))}
       <div style={{ ...card, padding: 14 }}>
         <p style={{ margin: 0, fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}><HomeIcon s={18} c="var(--blue)" /> Go Home mode</p>
@@ -272,7 +278,7 @@ export function PreferencesPage({ prefs, onChange, onBack }: { prefs: RiderPrefs
 export function ReferPage({ code, onShare, onBack }: { code: string; onShare: () => void; onBack: () => void }) {
   return (
     <InfoPage title="Refer & Earn" onBack={onBack}>
-      <div style={{ borderRadius: 20, padding: 20, background: "linear-gradient(150deg,#04246b,#020b24)", color: "white", textAlign: "center" }}>
+      <div style={{ borderRadius: 20, padding: 20, background: "var(--hero)", color: "white", textAlign: "center" }}>
         <p style={{ margin: 0, fontSize: 13, color: "rgba(255,255,255,0.7)" }}>Invite a rider, you both earn</p>
         <p style={{ margin: "4px 0 0", fontSize: 30, fontWeight: 800, color: "var(--gold)" }}>{inr(1000)}</p>
         <p style={{ margin: "4px 0 14px", fontSize: 12.5, color: "rgba(255,255,255,0.7)" }}>when they complete 25 trips in their first 30 days</p>
@@ -293,11 +299,12 @@ export function ReferPage({ code, onShare, onBack }: { code: string; onShare: ()
 /* ───────────────────────── Hotspots ───────────────────────── */
 
 export function HotspotsPage({ online, onNavigate, onGoOnline, onBack }: { online: boolean; onNavigate: (area: string) => void; onGoOnline: () => void; onBack: () => void }) {
+  const { hotspots } = useCatalog();
   return (
     <InfoPage title="Demand Hotspots" onBack={onBack}>
       <p style={{ ...small, margin: 0 }}>Live demand around you. Surge fares apply to rides that start in these zones.</p>
       {!online && <PrimaryButton onClick={onGoOnline} style={{ background: "linear-gradient(135deg,#34c38f,var(--green))" }}>Go online to get these rides</PrimaryButton>}
-      {HOTSPOTS.map((h) => (
+      {hotspots.map((h) => (
         <div key={h.id} style={row}>
           <span style={iconTile(h.surge >= 1.4 ? "var(--error)" : h.surge >= 1.2 ? "var(--warning)" : "var(--gold-tint)")}><BoltIcon s={20} c={h.surge >= 1.4 ? "var(--red)" : "var(--gold-dark)"} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -317,6 +324,7 @@ export function HotspotsPage({ online, onNavigate, onGoOnline, onBack }: { onlin
 /* ───────────────────────── Trip detail ───────────────────────── */
 
 export function TripDetailPage({ ride, onHelp, onBack }: { ride: Ride; onHelp: () => void; onBack: () => void }) {
+  const { commission } = useCatalog();
   const done = ride.status === "Completed";
   return (
     <InfoPage title={`Trip #${ride.id}`} onBack={onBack}>
@@ -328,13 +336,13 @@ export function TripDetailPage({ ride, onHelp, onBack }: { ride: Ride; onHelp: (
         <RouteLines from={ride.from} to={ride.to} />
       </div>
       <div style={{ ...card, padding: "12px 16px" }}>
-        {[["Customer", ride.customer], ["Distance · time", `${ride.km} km · ${ride.min} min`], ["Payment", ride.pay], ...(done ? [["Trip fare", inr(ride.fare)], [`Commission (${COMMISSION * 100}%)`, "− " + inr(ride.fare * COMMISSION)]] : [["Reason", ride.cancelReason ?? "—"]])].map(([l, v]) => (
+        {[["Customer", ride.customer], ["Distance · time", `${ride.km} km · ${ride.min} min`], ["Payment", ride.pay], ...(done ? [["Trip fare", inr(ride.fare)], [`Commission (${Math.round(commission * 100)}%)`, "− " + inr(ride.fare * commission)]] : [["Reason", ride.cancelReason ?? "—"]])].map(([l, v]) => (
           <div key={l} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "5px 0" }}><span style={{ color: "var(--ink-soft)" }}>{l}</span><span style={{ fontWeight: 600 }}>{v}</span></div>
         ))}
         {done && (
           <>
             <div style={{ borderTop: "1px dashed var(--line-strong)", margin: "6px 0" }} />
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700, padding: "4px 0" }}><span>You earned</span><span style={{ color: "var(--success-text)" }}>{inr(ride.fare * (1 - COMMISSION))}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700, padding: "4px 0" }}><span>You earned</span><span style={{ color: "var(--success-text)" }}>{inr(ride.fare * (1 - commission))}</span></div>
           </>
         )}
       </div>

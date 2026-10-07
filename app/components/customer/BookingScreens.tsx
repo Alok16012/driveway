@@ -2,20 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlarmIcon, AlertIcon, BackIcon, BriefcaseIcon, CardIcon, CashIcon, ChatIcon, CheckIcon, ChevronRight, ClockIcon, ExpandIcon, HomeIcon, PhoneIcon,
-  PinIcon, ShareIcon, ShieldIcon, SwapIcon, TagIcon, UpiIcon, UserIcon, WalletIcon,
+  AlertIcon, BackIcon, BoxIcon, BriefcaseIcon, CardIcon, CashIcon, ChatIcon, CheckIcon, ClockIcon, HomeIcon, PhoneIcon,
+  PinIcon, ShareIcon, ShieldIcon, SnowIcon, SwapIcon, TagIcon, UpiIcon, UserIcon, WalletIcon, XIcon,
 } from "../icons";
 import MapView from "../MapView";
-import VehicleArt, { AnyArt, ParcelArt, RentalArt } from "../VehicleArt";
-import { Avatar, DemoButton, Footer, PageHeader, PrimaryButton, Stars, StatusBadge, card, field, iconBtn } from "../ui";
+import VehicleArt from "../VehicleArt";
+import ParcelArt from "../ParcelArt";
+import { Avatar, Footer, PageHeader, PrimaryButton, Stars, StatusBadge, card, field, iconBtn } from "../ui";
 import {
-  COUPONS, CURRENT_LOCATION, NON_AC_FACTOR, PARCEL_TYPES, PARCEL_WEIGHTS, PLACES, RENTAL_PACKAGES, RIDE_STEPS, VEHICLES,
-  discountFor, fareFor, inr, parcelFare, rentalPrice, tripEstimate, vehicleById,
-  type Coupon, type ParcelWeight, type PayMethod, type Place, type RentalPackage, type VehicleKind,
+  CURRENT_LOCATION, NON_AC_DISCOUNT, PARCEL_RATE, PARCEL_TYPES, PLACES, RIDE_STEPS, discountFor, fareFor, inr, parcelFareFor, tripEstimate, type Coupon, type ParcelInfo, type ParcelWeight, type PayMethod, type Place, type Service, type Vehicle, type VehicleKind,
 } from "../../lib/data";
-import { serviceLabel, type ActiveRide, type Booking, type RideOption } from "./types";
-
-const VEHICLE_IDS = VEHICLES.map((v) => v.id);
+import type { ActiveRide, Booking } from "./types";
+import { useCatalog } from "../../lib/CatalogProvider";
 
 const dot = (color: string, square = false): React.CSSProperties => ({
   width: 10, height: 10, borderRadius: square ? 2 : "50%", background: color, flexShrink: 0,
@@ -24,7 +22,8 @@ const dot = (color: string, square = false): React.CSSProperties => ({
 
 /* ───────────────────────── 1. Set location ───────────────────────── */
 
-export function SearchPage({ initialTo, onBack, onDone }: { initialTo?: Place; onBack: () => void; onDone: (from: Place, to: Place) => void }) {
+export function SearchPage({ initialTo, service = "ride", onBack, onDone }: { initialTo?: Place; service?: Service; onBack: () => void; onDone: (from: Place, to: Place) => void }) {
+  const parcel = service === "parcel";
   const [from, setFrom] = useState<Place>(CURRENT_LOCATION);
   const [to, setTo] = useState<Place | null>(initialTo ?? null);
   const [focus, setFocus] = useState<"from" | "to">("to");
@@ -50,8 +49,8 @@ export function SearchPage({ initialTo, onBack, onDone }: { initialTo?: Place; o
         onFocus={() => { setFocus(which); setQ(""); }}
         onChange={(e) => setQ(e.target.value)}
         autoFocus={which === "to"}
-        placeholder={on ? (which === "from" ? "Search pickup location" : "Where are you going?") : val?.name ?? "Where are you going?"}
-        aria-label={which === "from" ? "Pickup location" : "Drop location"}
+        placeholder={on ? (which === "from" ? "Search pickup location" : parcel ? "Where should it be delivered?" : "Where are you going?") : val?.name ?? (parcel ? "Deliver to" : "Where are you going?")}
+        aria-label={which === "from" ? "Pickup location" : parcel ? "Delivery location" : "Drop location"}
         style={{ flex: 1, border: "none", outline: "none", background: on ? "var(--blue-tint)" : "var(--bg-secondary)", borderRadius: 12, padding: "11px 12px", fontSize: 14, fontWeight: 500, color: "var(--ink)", minWidth: 0 }}
       />
     );
@@ -59,7 +58,7 @@ export function SearchPage({ initialTo, onBack, onDone }: { initialTo?: Place; o
 
   return (
     <div>
-      <PageHeader title="Set Location" onBack={onBack} />
+      <PageHeader title={parcel ? "Send a Parcel" : "Set Location"} onBack={onBack} />
       <div style={{ padding: "0 16px" }}>
         <div style={{ ...card, padding: 12, display: "flex", gap: 10, alignItems: "center" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "0 2px" }}>
@@ -109,409 +108,180 @@ export function SearchPage({ initialTo, onBack, onDone }: { initialTo?: Place; o
   );
 }
 
-/* ───────────────────────── 2. Choose ride (one screen: service, AC, payment, coupon, who, when) ───────────────────────── */
+/* ───────────────────────── 2. Choose vehicle ───────────────────────── */
 
-const PAYS: { id: PayMethod; label: string; sub: string; Icon: typeof CardIcon }[] = [
-  { id: "Cash", label: "Cash", sub: "Pay the driver at drop", Icon: CashIcon },
-  { id: "UPI", label: "UPI", sub: "GPay, PhonePe, Paytm", Icon: UpiIcon },
-  { id: "Card", label: "Credit / Debit Card", sub: "Visa ending 4821", Icon: CardIcon },
-  { id: "Wallet", label: "DriveWay Wallet", sub: "Balance ₹240", Icon: WalletIcon },
-];
+type AcFilter = "All" | "AC" | "Non-AC";
 
-const ANY: VehicleKind[] = ["mini", "sedan", "suv"];
-const RENTAL_CARS: VehicleKind[] = ["mini", "sedan", "suv"];
-const ORDER: RideOption[] = ["any", "bike", "auto", "erick", "mini", "sedan", "rental", "taxi", "suv", "parcel"];
+/** One row in the ride list — AC-optional cars appear twice (AC and Non-AC). */
+interface RideOption { id: VehicleKind; ac: boolean; key: string }
 
-/** Next few half-hour slots for "schedule for later". */
-function slots() {
-  const out: string[] = [];
-  const t = new Date();
-  t.setMinutes(t.getMinutes() < 30 ? 30 : 60, 0, 0);
-  t.setMinutes(t.getMinutes() + 30);
-  for (let i = 0; i < 6; i++) { out.push(`Today, ${t.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}`); t.setMinutes(t.getMinutes() + 30); }
-  return [...out, "Tomorrow, 8:00 am", "Tomorrow, 9:00 am"];
+const rideOptions = (vehicles: Vehicle[], filter: AcFilter): RideOption[] =>
+  vehicles.filter((x) => x.enabled).flatMap((x) => {
+    const rows = x.acOption ? [true, false] : [false];
+    return rows
+      .filter((ac) => filter === "All" || (filter === "AC" ? ac && x.acOption : !ac))
+      .map((ac) => ({ id: x.id, ac, key: `${x.id}:${ac}` }));
+  });
+
+/** Small "AC" / "Non-AC" pill. */
+export function AcPill({ ac }: { ac: boolean }) {
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, fontWeight: 700, borderRadius: 6, padding: "1px 6px",
+      background: ac ? "var(--blue-tint)" : "var(--bg-secondary)", color: ac ? "var(--blue)" : "var(--ink-soft)",
+      border: `1px solid ${ac ? "var(--blue-ghost)" : "var(--line)"}`,
+    }}>{ac && <SnowIcon s={10} c="var(--blue)" w={2.2} />}{ac ? "AC" : "Non-AC"}</span>
+  );
 }
 
-export type BookChoice = Omit<Booking, "from" | "to">;
-
-export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = true, onAcChange, onBack, onEditRoute, onBook, onParcel }: {
-  from: Place; to: Place; prefer?: RideOption; initialCoupon: Coupon | null; initialAc?: boolean; onAcChange?: (ac: boolean) => void;
-  onBack: () => void; onEditRoute: () => void; onBook: (b: BookChoice) => void;
-  onParcel: (x: { km: number; min: number; pay: PayMethod; coupon: Coupon | null }) => void;
+export function ChooseRidePage({ from, to, prefer, preferAc = true, onBack, onNext }: {
+  from: Place; to: Place; prefer?: VehicleKind; preferAc?: boolean; onBack: () => void;
+  onNext: (b: Pick<Booking, "vehicle" | "ac" | "km" | "min" | "fare" | "surge">) => void;
 }) {
+  const { vehicles, vehicleById, vehicleLabel, surgeNow } = useCatalog();
+  const surge = surgeNow();
   const { km, min } = tripEstimate(from.id, to.id);
-  const [sel, setSel] = useState<RideOption>(prefer ?? "any");
-  const [ac, setAcState] = useState(initialAc);
-  const setAc = (v: boolean) => { setAcState(v); onAcChange?.(v); };
-  const [pay, setPay] = useState<PayMethod>("Cash");
-  const [coupon, setCoupon] = useState<Coupon | null>(initialCoupon);
-  const [when, setWhen] = useState<string | null>(null);
-  const [passenger, setPassenger] = useState<{ name: string; phone: string } | null>(null);
-  const [rental, setRental] = useState<{ pkg: RentalPackage; car: VehicleKind }>({ pkg: RENTAL_PACKAGES[1], car: "mini" });
-  const [sheet, setSheet] = useState<null | "pay" | "coupon" | "who" | "when" | "rental" | "fare">(null);
-  const [bigMap, setBigMap] = useState(false);
-
-  const fareOf = (o: RideOption) => {
-    if (o === "any") return Math.min(...ANY.map((k) => fareFor(vehicleById(k), km, min, 1, ac)));
-    if (o === "rental") return rentalPrice(rental.pkg, rental.car, ac);
-    if (o === "parcel") return parcelFare("light", km, min);
-    return fareFor(vehicleById(o), km, min, 1, ac);
-  };
-  const etaOf = (o: RideOption) =>
-    o === "any" ? Math.min(...ANY.map((k) => vehicleById(k).eta)) - 1
-      : o === "rental" ? 2 : o === "parcel" ? vehicleById("bike").eta : vehicleById(o).eta;
-  const available = (o: RideOption) => !VEHICLE_IDS.includes(o as VehicleKind) || vehicleById(o as VehicleKind).nearby > 0;
-
-  const fare = fareOf(sel);
-  const off = discountFor(coupon, fare);
-  const isParcel = sel === "parcel";
-  const nameOf = (o: RideOption) => (o === "any" ? "Book Any" : o === "rental" ? "Hourly Rental" : o === "parcel" ? "Parcel" : vehicleById(o).name);
-
-  const book = () => {
-    if (isParcel) { onParcel({ km, min, pay, coupon }); return; }
-    const vehicle: VehicleKind = sel === "any" ? "mini" : sel === "rental" ? rental.car : sel;
-    onBook({
-      vehicle, service: sel === "any" ? "any" : sel === "rental" ? "rental" : "ride",
-      ac: vehicleById(vehicle).ac ? ac : false,
-      km: sel === "rental" ? rental.pkg.km : km, min: sel === "rental" ? rental.pkg.hours * 60 : min,
-      fare, coupon, pay, when, passenger, rental: sel === "rental" ? rental.pkg : undefined,
-    });
-  };
-
-  const art = (o: RideOption, size = 58) =>
-    o === "any" ? <AnyArt size={size} /> : o === "rental" ? <RentalArt size={size} /> : o === "parcel" ? <ParcelArt size={size} /> : <VehicleArt kind={o} size={size} />;
-
-  const barBtn: React.CSSProperties = { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: "6px 4px", fontSize: 14.5, fontWeight: 500, color: "var(--ink)", minWidth: 0 };
-  const PayIcon = PAYS.find((x) => x.id === pay)!.Icon;
+  const [filter, setFilter] = useState<AcFilter>("All");
+  const first = prefer ?? "mini";
+  const [sel, setSel] = useState<string>(`${first}:${vehicleById(first).acOption ? preferAc : false}`);
+  const options = rideOptions(vehicles, filter);
+  const picked = options.find((o) => o.key === sel) ?? options[0];
+  const v = vehicleById(picked.id);
+  const fare = fareFor(v, km, min, surge, picked.ac);
 
   return (
-    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", background: "var(--surface)" }}>
-      {/* ── map ── */}
+    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ position: "relative" }}>
-        <MapView mode="route" height={bigMap ? 520 : 290} radius={0} />
-        <button onClick={onBack} aria-label="Back" className="press" style={{ ...iconBtn, position: "absolute", top: 16, left: 16, width: 46, height: 46, borderRadius: "50%", background: "white", justifyContent: "center", boxShadow: "var(--shadow-lg)" }}>
+        <MapView mode="route" height={250} radius={0} />
+        <button onClick={onBack} aria-label="Back" className="press" style={{ ...iconBtn, position: "absolute", top: 16, left: 16, width: 40, height: 40, borderRadius: "50%", background: "white", justifyContent: "center", boxShadow: "var(--shadow-md)" }}>
           <BackIcon c="var(--ink)" />
         </button>
-        <button onClick={() => setBigMap((x) => !x)} aria-label={bigMap ? "Shrink map" : "Expand map"} className="press" style={{ ...iconBtn, position: "absolute", right: 16, bottom: 18, width: 44, height: 44, borderRadius: "50%", background: "white", justifyContent: "center", boxShadow: "var(--shadow-lg)" }}>
-          <ExpandIcon s={18} c="var(--ink)" />
-        </button>
-        <span style={{ position: "absolute", left: 16, bottom: 18, background: "var(--ink)", color: "white", fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 999 }}>{km} km · {min} min</span>
+        <div style={{ position: "absolute", top: 16, left: 66, right: 16, background: "white", borderRadius: 14, padding: "8px 12px", boxShadow: "var(--shadow-md)" }}>
+          <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", overflow: "hidden" }}><span style={{ ...dot("var(--green)"), width: 7, height: 7, boxShadow: "none" }} />{from.name}</p>
+          <p style={{ margin: "2px 0 0", fontSize: 12.5, fontWeight: 600, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", overflow: "hidden" }}><span style={{ ...dot("var(--red)", true), width: 7, height: 7, boxShadow: "none" }} />{to.name}</p>
+        </div>
+        <span style={{ position: "absolute", bottom: 32, left: 16, background: "var(--ink)", color: "white", fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 999 }}>{km} km · {min} min</span>
       </div>
 
-      {/* ── pickup / drop + when ── */}
-      <div style={{ position: "relative", background: "var(--surface)", borderRadius: "14px 14px 0 0", marginTop: -8, boxShadow: "0 -4px 14px rgba(15,23,41,0.08)", borderBottom: "1px solid var(--line)" }}>
-        <button onClick={onEditRoute} style={{ width: "100%", display: "flex", gap: 14, padding: "14px 96px 14px 18px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
-          <span style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 6 }}>
-            <span style={{ width: 11, height: 11, borderRadius: "50%", background: "#43a047" }} />
-            <span style={{ width: 2, flex: 1, background: "var(--line-strong)", margin: "4px 0" }} />
-            <span style={{ width: 11, height: 11, borderRadius: "50%", background: "var(--red)" }} />
-          </span>
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: "block", fontSize: 15, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", padding: "2px 0 12px", borderBottom: "1px solid var(--line)" }}>{from.name}, {from.address}</span>
-            <span style={{ display: "block", fontSize: 15, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingTop: 12 }}>{to.name}, {to.address}</span>
-          </span>
-        </button>
-        <button onClick={() => setSheet("when")} className="press" style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", width: 72, padding: "10px 4px", borderRadius: 12, border: "none", background: "white", boxShadow: "0 2px 10px rgba(15,23,41,0.14)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <AlarmIcon s={24} c={when ? "var(--blue)" : "var(--ink)"} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: when ? "var(--blue)" : "var(--ink)", lineHeight: 1.15, textAlign: "center" }}>{when ? when.replace(/^(Today|Tomorrow), /, "") : "Now"}</span>
-        </button>
-      </div>
-
-      {/* ── AC / Non-AC ── */}
-      <div style={{ padding: "12px 14px 10px" }}>
-        <p style={{ margin: "0 2px 8px", fontSize: 13, fontWeight: 600, color: "var(--ink-soft)" }}>Choose AC or Non-AC vehicle</p>
-        <div role="radiogroup" aria-label="AC or Non-AC vehicle" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {[true, false].map((v) => {
-            const on = ac === v;
+      <div style={{ flex: 1, marginTop: -20, position: "relative", background: "var(--app-bg)", borderRadius: "22px 22px 0 0", padding: "8px 16px 0" }}>
+        <div style={{ width: 40, height: 4, borderRadius: 4, background: "var(--line-strong)", margin: "0 auto 12px" }} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, margin: "0 2px 10px" }}>
+          <p style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>Select a ride{surge > 1 && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: "var(--gold-dark)", background: "var(--gold-tint)", borderRadius: 6, padding: "2px 7px", verticalAlign: "middle" }}>{surge}× peak</span>}</p>
+          <div role="tablist" aria-label="AC preference" style={{ display: "flex", background: "var(--bg-secondary)", borderRadius: 999, padding: 3 }}>
+            {(["All", "AC", "Non-AC"] as AcFilter[]).map((f) => (
+              <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)} style={{
+                border: "none", cursor: "pointer", borderRadius: 999, padding: "5px 11px", fontSize: 12, fontWeight: 600,
+                background: filter === f ? "var(--surface)" : "transparent", color: filter === f ? "var(--blue)" : "var(--ink-soft)",
+                boxShadow: filter === f ? "var(--shadow-sm)" : "none", display: "flex", alignItems: "center", gap: 4,
+              }}>{f === "AC" && <SnowIcon s={12} c={filter === f ? "var(--blue)" : "var(--ink-soft)"} />}{f}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {options.map((o) => {
+            const x = vehicleById(o.id);
+            const on = o.key === picked.key;
             return (
-              <button key={String(v)} role="radio" aria-checked={on} onClick={() => setAc(v)} className="press" style={{
-                display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 14, cursor: "pointer", textAlign: "left",
-                border: on ? `2px solid ${v ? "var(--blue)" : "var(--ink)"}` : "2px solid var(--line)",
-                background: on ? (v ? "var(--blue-tint)" : "var(--bg-secondary)") : "var(--surface)",
+              <button key={o.key} onClick={() => setSel(o.key)} aria-pressed={on} className="press" style={{
+                ...card, display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", cursor: "pointer", textAlign: "left",
+                border: on ? "1.5px solid var(--blue)" : "1.5px solid transparent", background: on ? "var(--blue-tint)" : "var(--surface)",
               }}>
-                <span style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, background: v ? "#dbeafe" : "#fde68a" }}>{v ? "❄️" : "🌬️"}</span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: 15, fontWeight: 700, color: on ? (v ? "var(--blue)" : "var(--ink)") : "var(--ink)" }}>{v ? "AC" : "Non-AC"}</span>
-                  <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-soft)" }}>{v ? "Cool & comfortable" : `Save ${Math.round((1 - NON_AC_FACTOR) * 100)}% on cars`}</span>
-                </span>
-                <span style={{ width: 18, height: 18, borderRadius: "50%", flexShrink: 0, border: on ? `5px solid ${v ? "var(--blue)" : "var(--ink)"}` : "2px solid var(--line-strong)" }} />
+                <VehicleArt kind={x.id} size={62} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 14.5, fontWeight: 700, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    {x.name}
+                    {x.acOption && <AcPill ac={o.ac} />}
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 11.5, fontWeight: 500, color: "var(--ink-soft)" }}><UserIcon s={12} c="var(--ink-soft)" />{x.seats}</span>
+                  </p>
+                  <p style={{ margin: "1px 0 0", fontSize: 11.5, color: "var(--ink-soft)" }}>
+                    {x.eta} min away · {x.acOption && !o.ac ? `Windows down, ${Math.round(NON_AC_DISCOUNT * 100)}% cheaper` : x.tagline}
+                  </p>
+                </div>
+                <span style={{ fontSize: 16, fontWeight: 800, color: "var(--ink)" }}>{inr(fareFor(x, km, min, surge, o.ac))}</span>
               </button>
             );
           })}
         </div>
+        <p style={{ margin: "12px 2px 0", fontSize: 11.5, color: "var(--ink-mute)", textAlign: "center" }}>Fares are estimates · final fare depends on actual route and time</p>
       </div>
-
-      {/* ── ride options ── */}
-      <div style={{ flex: 1 }}>
-        {ORDER.map((o) => {
-          const on = o === sel;
-          const ok = available(o);
-          const v = VEHICLE_IDS.includes(o as VehicleKind) ? vehicleById(o as VehicleKind) : null;
-          const tag = o === "any" ? `${ANY.map((k) => vehicleById(k).name).join(", ")}`
-            : o === "rental" ? "Rides at hourly packages"
-            : o === "parcel" ? "Same-day city delivery"
-            : v!.tagline;
-          const showAc = ok && o !== "parcel";
-          const rowAc = (o === "any" || o === "rental" || v?.ac) ? ac : false;
-          const row = (
-            <button key={o} disabled={!ok} aria-pressed={on} onClick={() => { setSel(o); if (o === "rental") setSheet("rental"); }} style={{
-              width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", border: "none", textAlign: "left",
-              cursor: ok ? "pointer" : "not-allowed", opacity: ok ? 1 : 0.55,
-              background: on ? "var(--blue-tint)" : "transparent", boxShadow: on ? "inset 4px 0 0 var(--blue)" : "none",
-            }}>
-              <span style={{ width: 70, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                {art(o)}
-                <span style={{ fontSize: 13, color: "var(--ink-soft)" }}>{ok ? `${etaOf(o)} min` : "no cabs"}</span>
-              </span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 17, fontWeight: 600, color: "var(--ink)" }}>
-                  {nameOf(o)}
-                  {showAc && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 5, background: rowAc ? "var(--info-bg)" : "var(--surface-dim)", color: rowAc ? "var(--info-text)" : "var(--text-muted)" }}>{rowAc ? "❄ AC" : "NON-AC"}</span>}
-                </span>
-                {ok && <span style={{ display: "block", fontSize: 13, color: "var(--ink-soft)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o === "rental" && on ? `${rental.pkg.hours} hr · ${rental.pkg.km} km · ${vehicleById(rental.car).name}` : tag}</span>}
-              </span>
-              {ok && (o === "rental"
-                ? <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>{on ? inr(fareOf(o)) : ""}<ChevronRight s={18} c="var(--ink)" /></span>
-                : <span style={{ textAlign: "right" }}>
-                    <span style={{ display: "block", fontSize: 15.5, fontWeight: 700, color: "var(--ink)" }}>{o === "any" || o === "parcel" ? "from " : ""}{inr(fareOf(o))}</span>
-                    {v?.ac
-                      ? <span style={{ display: "block", fontSize: 11, color: "var(--ink-mute)" }}>{ac ? "Non-AC" : "AC"} {inr(fareFor(v, km, min, 1, !ac))}</span>
-                      : v && <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 11.5, color: "var(--ink-mute)" }}><UserIcon s={11} c="var(--ink-mute)" />{v.seats}</span>}
-                  </span>)}
-            </button>
-          );
-          // Parcel sits in its own card, like a separate service.
-          return o === "parcel"
-            ? <div key={o} style={{ margin: "10px 14px 6px", borderRadius: 12, overflow: "hidden", border: "1px solid var(--line)", boxShadow: "var(--shadow-sm)" }}>{row}</div>
-            : <div key={o} style={{ borderTop: "1px solid var(--line)" }}>{row}</div>;
-        })}
-        <button onClick={() => setSheet("fare")} style={{ display: "block", margin: "6px auto 14px", background: "none", border: "none", color: "var(--blue)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Fares are estimates · View fare details</button>
-      </div>
-
-      {/* ── payment · coupon · who + book ── */}
-      <div style={{ position: "sticky", bottom: 0, zIndex: 20, background: "var(--surface)", borderTop: "1px solid var(--line)", padding: "8px 14px calc(12px + env(safe-area-inset-bottom))", boxShadow: "0 -6px 16px rgba(15,23,41,0.06)" }}>
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
-          <button onClick={() => setSheet("pay")} style={barBtn}><PayIcon s={22} c="#43a047" /> {pay === "Card" ? "Card" : pay}</button>
-          <span style={{ width: 1, height: 26, background: "var(--line-strong)" }} />
-          <button onClick={() => setSheet("coupon")} style={{ ...barBtn, color: coupon ? "var(--success-text)" : "var(--ink)" }}><TagIcon s={21} c="#43a047" /> <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{coupon ? coupon.code : "Coupon"}</span></button>
-          <span style={{ width: 1, height: 26, background: "var(--line-strong)" }} />
-          <button onClick={() => setSheet("who")} style={barBtn}><UserIcon s={21} c="var(--ink-soft)" /> <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{passenger ? passenger.name.split(" ")[0] : "Myself"}</span></button>
-        </div>
-        <PrimaryButton onClick={book}>
-          {isParcel ? "Book Parcel" : `${when ? "Schedule" : "Book"} ${sel === "any" ? "Any" : sel === "rental" ? "Rental" : nameOf(sel)}`}{!isParcel && ` · ${inr(fare - off)}`}
-        </PrimaryButton>
-      </div>
-
-      {/* ── sheets ── */}
-      {sheet === "pay" && (
-        <Sheet onClose={() => setSheet(null)}>
-          <p style={sheetTitle}>Payment method</p>
-          <div style={{ ...card, padding: "4px 14px" }}>
-            {PAYS.map(({ id, label: l, sub, Icon }, i) => {
-              const on = id === pay;
-              return (
-                <button key={id} onClick={() => { setPay(id); setSheet(null); }} aria-pressed={on} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 0", background: "none", border: "none", borderTop: i ? "1px solid var(--line)" : "none", cursor: "pointer", textAlign: "left" }}>
-                  <span style={{ width: 38, height: 38, borderRadius: 12, background: on ? "var(--blue-tint)" : "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon s={19} c={on ? "var(--blue)" : "var(--ink-soft)"} /></span>
-                  <span style={{ flex: 1 }}><span style={{ display: "block", fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{l}</span><span style={{ display: "block", fontSize: 11.5, color: "var(--ink-soft)" }}>{sub}</span></span>
-                  <span style={{ width: 20, height: 20, borderRadius: "50%", border: on ? "6px solid var(--blue)" : "2px solid var(--line-strong)" }} />
-                </button>
-              );
-            })}
-          </div>
-        </Sheet>
-      )}
-      {sheet === "coupon" && <CouponSheet fare={fare} current={coupon} onClose={() => setSheet(null)} onApply={(c) => { setCoupon(c); setSheet(null); }} />}
-      {sheet === "who" && <PassengerSheet current={passenger} onClose={() => setSheet(null)} onPick={(p) => { setPassenger(p); setSheet(null); }} />}
-      {sheet === "when" && (
-        <Sheet onClose={() => setSheet(null)}>
-          <p style={sheetTitle}>When do you need a ride?</p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            {[null, ...slots()].map((t) => {
-              const on = t === when;
-              return <button key={t ?? "now"} onClick={() => { setWhen(t); setSheet(null); }} aria-pressed={on} style={{ ...chip(on), padding: "11px 10px" }}>{t ?? "Now"}</button>;
-            })}
-          </div>
-          <p style={{ margin: "12px 0 0", fontSize: 12, color: "var(--ink-soft)", textAlign: "center" }}>Scheduled rides are confirmed 15 minutes before pickup.</p>
-        </Sheet>
-      )}
-      {sheet === "rental" && (
-        <Sheet onClose={() => setSheet(null)}>
-          <p style={sheetTitle}>Hourly Rental</p>
-          <p style={{ margin: "-6px 0 12px", fontSize: 12.5, color: "var(--ink-soft)" }}>Keep the car with you for multiple stops. Extra km and time are charged at the package rate.</p>
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            {RENTAL_CARS.map((c) => (
-              <button key={c} onClick={() => setRental((r) => ({ ...r, car: c }))} aria-pressed={rental.car === c} style={{ ...chip(rental.car === c), flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "8px 4px" }}>
-                <VehicleArt kind={c} size={46} />{vehicleById(c).name}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            {RENTAL_PACKAGES.map((pk) => {
-              const on = pk.id === rental.pkg.id;
-              return (
-                <button key={pk.id} onClick={() => setRental((r) => ({ ...r, pkg: pk }))} aria-pressed={on} style={{ ...chip(on), textAlign: "left", padding: "12px" }}>
-                  <span style={{ display: "block", fontSize: 15, fontWeight: 700 }}>{pk.hours} hr · {pk.km} km</span>
-                  <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: "var(--ink)", marginTop: 2 }}>{inr(rentalPrice(pk, rental.car, ac))}</span>
-                  <span style={{ display: "block", fontSize: 11, color: "var(--ink-soft)", fontWeight: 500 }}>+₹{pk.extraKm}/km · +₹{pk.extraHour}/hr</span>
-                </button>
-              );
-            })}
-          </div>
-          <div style={{ marginTop: 14 }}><PrimaryButton onClick={() => setSheet(null)}>Select {rental.pkg.hours} hr package · {inr(rentalPrice(rental.pkg, rental.car, ac))}</PrimaryButton></div>
-        </Sheet>
-      )}
-      {sheet === "fare" && (() => {
-        const v = vehicleById(sel === "any" ? "mini" : sel === "rental" ? rental.car : sel === "parcel" ? "bike" : sel);
-        const r = (l: string, val: string, strong = false) => <div key={l} style={{ display: "flex", justifyContent: "space-between", fontSize: strong ? 15 : 13.5, fontWeight: strong ? 700 : 500, color: strong ? "var(--ink)" : "var(--ink-soft)", padding: "4px 0" }}><span>{l}</span><span>{val}</span></div>;
-        return (
-          <Sheet onClose={() => setSheet(null)}>
-            <p style={sheetTitle}>Fare details · {nameOf(sel)}</p>
-            <div style={{ ...card, padding: "12px 16px" }}>
-              {sel === "rental" ? r(`${rental.pkg.hours} hr / ${rental.pkg.km} km package`, inr(fare)) : <>
-                {r("Base fare", inr(v.base))}
-                {r(`Distance (${km} km × ₹${v.perKm})`, inr(v.perKm * km))}
-                {r(`Ride time (~${min} min × ₹${v.perMin})`, inr(v.perMin * min))}
-                {v.ac && !ac && r(`Non-AC discount (${Math.round((1 - NON_AC_FACTOR) * 100)}%)`, "applied")}
-              </>}
-              {off > 0 && r(`Coupon ${coupon!.code}`, "− " + inr(off))}
-              <div style={{ borderTop: "1px dashed var(--line-strong)", margin: "6px 0" }} />
-              {r("Estimated total", inr(fare - off), true)}
-            </div>
-            <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.5 }}>Tolls, parking and waiting time (after 3 free minutes) are added at the end. Cancellation after the driver starts: {inr(v.cancelFee)}.</p>
-          </Sheet>
-        );
-      })()}
+      <Footer><PrimaryButton onClick={() => onNext({ vehicle: picked.id, ac: picked.ac, km, min, fare, surge })}>Choose {vehicleLabel(picked.id, v.acOption ? picked.ac : undefined)} · {inr(fare)}</PrimaryButton></Footer>
     </div>
   );
 }
 
-const sheetTitle: React.CSSProperties = { margin: "0 0 12px", fontSize: 18, fontWeight: 700, color: "var(--ink)" };
-const chip = (on: boolean): React.CSSProperties => ({
-  borderRadius: 12, cursor: "pointer", fontSize: 13, fontWeight: 600,
-  background: on ? "var(--blue-tint)" : "var(--surface)", color: on ? "var(--blue)" : "var(--text-secondary)",
-  border: on ? "1.5px solid var(--blue)" : "1.5px solid var(--line)",
-});
+/* ───────────────────────── 2b. Parcel details ───────────────────────── */
 
-function CouponSheet({ fare, current, onClose, onApply }: { fare: number; current: Coupon | null; onClose: () => void; onApply: (c: Coupon | null) => void }) {
-  const [code, setCode] = useState("");
-  const [err, setErr] = useState("");
-  const tryCode = () => {
-    const hit = COUPONS.find((x) => x.code === code.trim().toUpperCase() && x.active);
-    if (hit) onApply(hit); else setErr("That code isn't valid right now.");
-  };
-  return (
-    <Sheet onClose={onClose}>
-      <p style={sheetTitle}>Apply coupon</p>
-      <form onSubmit={(e) => { e.preventDefault(); tryCode(); }} style={{ display: "flex", gap: 8 }}>
-        <input value={code} onChange={(e) => { setCode(e.target.value.toUpperCase()); setErr(""); }} placeholder="Enter coupon code" aria-label="Coupon code" style={{ ...field, flex: 1, textTransform: "uppercase" }} />
-        <button type="submit" disabled={!code.trim()} className="press" style={{ border: "none", borderRadius: 14, padding: "0 18px", fontWeight: 700, fontSize: 14, cursor: "pointer", background: code.trim() ? "var(--blue)" : "var(--line-strong)", color: code.trim() ? "white" : "var(--ink-mute)" }}>Apply</button>
-      </form>
-      {err && <p style={{ margin: "6px 2px 0", fontSize: 12, color: "var(--error-text)" }}>{err}</p>}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-        {COUPONS.filter((c) => c.active).map((c) => {
-          const on = current?.code === c.code;
-          return (
-            <button key={c.code} onClick={() => onApply(on ? null : c)} className="press" style={{ textAlign: "left", border: `1.5px dashed ${on ? "var(--success-text)" : "var(--gold)"}`, background: on ? "var(--success)" : "var(--gold-tint)", borderRadius: 12, padding: "10px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
-              <TagIcon s={18} c={on ? "var(--success-text)" : "var(--gold-dark)"} />
-              <span style={{ flex: 1 }}>
-                <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: on ? "var(--success-text)" : "var(--gold-dark)" }}>{c.code}</span>
-                <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-soft)" }}>{c.title} · save {inr(discountFor(c, fare))}</span>
-              </span>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: on ? "var(--red)" : "var(--blue)" }}>{on ? "Remove" : "Apply"}</span>
-            </button>
-          );
-        })}
-      </div>
-    </Sheet>
-  );
-}
-
-function PassengerSheet({ current, onClose, onPick }: { current: { name: string; phone: string } | null; onClose: () => void; onPick: (p: { name: string; phone: string } | null) => void }) {
-  const [other, setOther] = useState(!!current);
-  const [name, setName] = useState(current?.name ?? "");
-  const [phone, setPhone] = useState(current?.phone ?? "");
-  return (
-    <Sheet onClose={onClose}>
-      <p style={sheetTitle}>Who is riding?</p>
-      <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={() => onPick(null)} aria-pressed={!other} style={{ ...chip(!other), flex: 1, padding: 12 }}>Myself</button>
-        <button onClick={() => setOther(true)} aria-pressed={other} style={{ ...chip(other), flex: 1, padding: 12 }}>Someone else</button>
-      </div>
-      {other && (
-        <form onSubmit={(e) => { e.preventDefault(); if (name.trim() && phone.length === 10) onPick({ name: name.trim(), phone }); }} style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Rider's name" aria-label="Rider's name" style={field} />
-          <input value={phone} inputMode="numeric" onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="Rider's mobile number" aria-label="Rider's mobile number" style={field} />
-          <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>They'll get the driver details and ride OTP by SMS.</p>
-          <PrimaryButton type="submit" disabled={!name.trim() || phone.length !== 10}>Book for {name.trim().split(" ")[0] || "them"}</PrimaryButton>
-        </form>
-      )}
-    </Sheet>
-  );
-}
-
-/* ───────────────────────── 3. Parcel details ───────────────────────── */
-
-export function ParcelPage({ from, to, km, min, user, pay: initialPay, coupon, onBack, onConfirm }: {
-  from: Place; to: Place; km: number; min: number; user: { name: string; phone: string };
-  pay: PayMethod; coupon: Coupon | null; onBack: () => void;
-  onConfirm: (b: BookChoice) => void;
+export function ParcelPage({ from, to, initial, onBack, onNext }: {
+  from: Place; to: Place; initial?: ParcelInfo; onBack: () => void;
+  onNext: (b: Pick<Booking, "vehicle" | "ac" | "km" | "min" | "fare" | "surge" | "parcel">) => void;
 }) {
-  const [type, setType] = useState("Documents");
-  const [weight, setWeight] = useState<ParcelWeight>("light");
-  const [receiver, setReceiver] = useState({ name: "", phone: "" });
-  const [note, setNote] = useState("");
-  const [agree, setAgree] = useState(false);
-  const [pay, setPay] = useState<PayMethod>(initialPay);
-  const w = PARCEL_WEIGHTS.find((x) => x.id === weight)!;
-  const fare = parcelFare(weight, km, min);
-  const off = discountFor(coupon, fare);
-  const ok = receiver.name.trim() && receiver.phone.length === 10 && agree;
-  const sender = { name: user.name, phone: user.phone.replace(/\D/g, "").slice(-10) };
+  const { parcelWeights, parcelVehicles, surgeNow } = useCatalog();
+  const surge = surgeNow();
+  const { km, min } = tripEstimate(from.id, to.id);
+  const [type, setType] = useState<ParcelInfo["type"]>(initial?.type ?? "Documents");
+  const [weightId, setWeightId] = useState(parcelWeights.find((w) => w.label === initial?.weight)?.id ?? parcelWeights[0].id);
+  const [receiver, setReceiver] = useState(initial?.receiver ?? "");
+  const [phone, setPhone] = useState(initial?.receiverPhone.replace(/\D/g, "").slice(-10) ?? "");
+  const [note, setNote] = useState(initial?.note ?? "");
+  const weight = parcelWeights.find((w) => w.id === weightId)!;
+  const fits = parcelVehicles.filter((v) => v.parcelMaxKg >= weight.kg);
+  const [vid, setVid] = useState<VehicleKind>("bike");
+  const vehicle = fits.find((v) => v.id === vid) ?? fits[0];
+  const fare = parcelFareFor(vehicle, km, min, weight, surge);
+  const ready = receiver.trim().length > 1 && phone.length === 10;
+
+  const chip = (on: boolean): React.CSSProperties => ({
+    padding: "8px 13px", borderRadius: 999, cursor: "pointer", fontSize: 12.5, fontWeight: 600, flexShrink: 0,
+    background: on ? "var(--blue-tint)" : "var(--surface)", color: on ? "var(--blue)" : "var(--text-secondary)",
+    border: on ? "1.5px solid var(--blue)" : "1.5px solid var(--line)",
+  });
+  const h = (t: string) => <p style={{ margin: "0 2px 8px", fontSize: 13.5, fontWeight: 600 }}>{t}</p>;
 
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
-      <PageHeader title="Send a Parcel" sub={`${km} km · delivered in ~${min + vehicleById(w.vehicle).eta} min`} onBack={onBack} />
-      <div style={{ padding: "0 16px 8px", display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ ...card, padding: 14, display: "flex", gap: 12 }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, paddingTop: 5 }}>
-            <span style={dot("var(--green)")} />
-            <span style={{ width: 2, flex: 1, background: "repeating-linear-gradient(var(--line-strong) 0 4px, transparent 4px 7px)" }} />
-            <span style={dot("var(--red)", true)} />
-          </div>
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-            <div><p style={capLabel}>PICK UP FROM · {sender.name}</p><p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>{from.name}, {from.address}</p></div>
-            <div><p style={capLabel}>DELIVER TO</p><p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>{to.name}, {to.address}</p></div>
+      <PageHeader title="Parcel Details" onBack={onBack} />
+      <div style={{ padding: "0 16px", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* route */}
+        <div style={{ ...card, padding: 14, display: "flex", gap: 12, alignItems: "center" }}>
+          <ParcelArt size={64} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>From <b style={{ color: "var(--ink)" }}>{from.name}</b></p>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--ink-soft)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>To <b style={{ color: "var(--ink)" }}>{to.name}</b></p>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>{km} km · ~{min} min</p>
           </div>
         </div>
 
         <div>
-          <p style={secLabel}>Receiver details</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <input value={receiver.name} onChange={(e) => setReceiver((r) => ({ ...r, name: e.target.value }))} placeholder="Receiver's name" aria-label="Receiver's name" style={field} />
-            <input value={receiver.phone} inputMode="numeric" onChange={(e) => setReceiver((r) => ({ ...r, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))} placeholder="Receiver's mobile number" aria-label="Receiver's mobile number" style={field} />
-          </div>
-        </div>
-
-        <div>
-          <p style={secLabel}>What are you sending?</p>
+          {h("What are you sending?")}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {PARCEL_TYPES.map((t) => <button key={t} onClick={() => setType(t)} aria-pressed={type === t} style={{ ...chip(type === t), padding: "8px 13px" }}>{t}</button>)}
+            {PARCEL_TYPES.map((t) => <button key={t} onClick={() => setType(t)} aria-pressed={type === t} style={chip(type === t)}>{t}</button>)}
           </div>
         </div>
 
         <div>
-          <p style={secLabel}>Package weight</p>
+          {h("Approx. weight")}
+          <div className="no-scroll" style={{ display: "flex", gap: 8, overflowX: "auto" }}>
+            {parcelWeights.map((w) => <button key={w.id} onClick={() => setWeightId(w.id)} aria-pressed={weightId === w.id} style={chip(weightId === w.id)}>{w.label}</button>)}
+          </div>
+        </div>
+
+        <div>
+          {h("Delivery vehicle")}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {PARCEL_WEIGHTS.map((x) => {
-              const on = x.id === weight;
+            {parcelVehicles.map((v) => {
+              const ok = v.parcelMaxKg >= weight.kg;
+              const on = ok && v.id === vehicle.id;
               return (
-                <button key={x.id} onClick={() => setWeight(x.id)} aria-pressed={on} className="press" style={{ ...card, display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", cursor: "pointer", textAlign: "left", border: on ? "1.5px solid var(--blue)" : "1.5px solid transparent", background: on ? "var(--blue-tint)" : "var(--surface)" }}>
-                  <VehicleArt kind={x.vehicle} size={48} />
-                  <span style={{ flex: 1 }}>
-                    <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{x.label} <span style={{ fontWeight: 500, color: "var(--ink-soft)", fontSize: 12 }}>· by {vehicleById(x.vehicle).name}</span></span>
-                    <span style={{ display: "block", fontSize: 12, color: "var(--ink-soft)" }}>{x.sub}</span>
-                  </span>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: "var(--ink)" }}>{inr(parcelFare(x.id, km, min))}</span>
+                <button key={v.id} disabled={!ok} onClick={() => setVid(v.id)} aria-pressed={on} className="press" style={{
+                  ...card, display: "flex", alignItems: "center", gap: 12, padding: "8px 14px", cursor: ok ? "pointer" : "not-allowed", textAlign: "left",
+                  border: on ? "1.5px solid var(--blue)" : "1.5px solid transparent", background: on ? "var(--blue-tint)" : "var(--surface)", opacity: ok ? 1 : 0.45,
+                }}>
+                  <VehicleArt kind={v.id} size={56} />
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{v.id === "mini" ? "Mini (car boot)" : v.name}</p>
+                    <p style={{ margin: 0, fontSize: 11.5, color: "var(--ink-soft)" }}>{ok ? `Up to ${v.parcelMaxKg} kg · ${v.eta} min away` : `Max ${v.parcelMaxKg} kg — too heavy`}</p>
+                  </div>
+                  {ok && <span style={{ fontSize: 15, fontWeight: 800 }}>{inr(parcelFareFor(v, km, min, weight, surge))}</span>}
                 </button>
               );
             })}
@@ -519,34 +289,176 @@ export function ParcelPage({ from, to, km, min, user, pay: initialPay, coupon, o
         </div>
 
         <div>
-          <p style={secLabel}>Instructions for the delivery partner <span style={{ fontWeight: 400, color: "var(--ink-mute)" }}>(optional)</span></p>
-          <textarea value={note} onChange={(e) => setNote(e.target.value.slice(0, 160))} rows={2} placeholder="e.g. Hand over at the security desk, call on arrival" aria-label="Instructions" style={{ ...field, resize: "none" }} />
-        </div>
-
-        <div>
-          <p style={secLabel}>Payment</p>
-          <div style={{ display: "flex", gap: 8 }}>
-            {(["Cash", "UPI", "Wallet"] as PayMethod[]).map((m) => <button key={m} onClick={() => setPay(m)} aria-pressed={pay === m} style={{ ...chip(pay === m), flex: 1, padding: 11 }}>{m === "Cash" ? "Cash at pickup" : m}</button>)}
+          {h("Receiver")}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <input value={receiver} onChange={(e) => setReceiver(e.target.value)} placeholder="Receiver's name" aria-label="Receiver's name" style={field} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <span style={{ ...field, width: "auto", flex: "0 0 auto", color: "var(--ink-soft)" }}>+91</span>
+              <input value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))} inputMode="numeric" placeholder="Receiver's mobile number" aria-label="Receiver's mobile number" style={{ ...field, flex: 1 }} />
+            </div>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Instructions (optional) — e.g. leave at reception" aria-label="Delivery instructions" style={field} />
           </div>
+          <p style={{ margin: "8px 2px 0", fontSize: 11.5, color: "var(--ink-mute)" }}>The receiver gets a delivery OTP by SMS. No liquids, cash, jewellery or prohibited items.</p>
         </div>
-
-        <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.5, cursor: "pointer" }}>
-          <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} style={{ marginTop: 3, width: 18, height: 18, accentColor: "var(--blue)" }} />
-          <span>The package doesn&apos;t contain prohibited items — alcohol, drugs, cash, jewellery, weapons or hazardous goods — and is packed safely.</span>
-        </label>
+        <div style={{ height: 4 }} />
       </div>
       <Footer>
-        <PrimaryButton disabled={!ok} onClick={() => onConfirm({
-          vehicle: w.vehicle, service: "parcel", ac: false, km, min, fare, coupon, pay, when: null, passenger: null,
-          parcel: { type, weight, sender, receiver: { name: receiver.name.trim(), phone: receiver.phone }, note: note.trim() },
-        })}>Book Parcel · {inr(fare - off)}</PrimaryButton>
+        <PrimaryButton disabled={!ready} onClick={() => onNext({
+          vehicle: vehicle.id, ac: false, km, min, fare, surge,
+          parcel: { type, weight: weight.label, receiver: receiver.trim(), receiverPhone: `+91 ${phone.slice(0, 5)} ${phone.slice(5)}`, note: note.trim() || undefined },
+        })}>{ready ? `Continue · ${inr(fare)}` : "Add receiver details"}</PrimaryButton>
       </Footer>
     </div>
   );
 }
 
-const capLabel: React.CSSProperties = { margin: 0, fontSize: 11, color: "var(--ink-mute)", fontWeight: 600 };
-const secLabel: React.CSSProperties = { margin: "0 2px 8px", fontSize: 13.5, fontWeight: 600, color: "var(--ink)" };
+/* ───────────────────────── 3. Offers + payment ───────────────────────── */
+
+const PAYS: { id: PayMethod; label: string; sub: string; Icon: typeof CardIcon }[] = [
+  { id: "UPI", label: "UPI", sub: "GPay, PhonePe, Paytm", Icon: UpiIcon },
+  { id: "Card", label: "Credit / Debit Card", sub: "Visa ending 4821", Icon: CardIcon },
+  { id: "Wallet", label: "DriveWay Wallet", sub: "Balance ₹240", Icon: WalletIcon },
+  { id: "Cash", label: "Cash", sub: "Pay the driver at drop", Icon: CashIcon },
+];
+
+/** Fare lines for a booking — shared by the checkout summary and the receipt so they always agree.
+ * Built from the standard (AC, passenger) fare plus any peak surge, then adjusted for parcel or Non-AC pricing. */
+function fareLines(b: Booking, v: Vehicle, weights: ParcelWeight[]) {
+  const isParcel = b.service === "parcel";
+  const plain = fareFor(v, b.km, b.min);
+  const standard = fareFor(v, b.km, b.min, b.surge);
+  const distance = Math.round(v.perKm * b.km);
+  return {
+    base: v.base, distance, time: Math.max(0, plain - v.base - distance), surge: standard - plain,
+    weight: isParcel ? weights.find((w) => w.label === b.parcel?.weight)?.extra ?? 0 : 0,
+    adjust: isParcel ? standard - Math.round(standard * PARCEL_RATE) : standard - b.fare,
+    adjustLabel: isParcel ? `Parcel rate (${Math.round((1 - PARCEL_RATE) * 100)}% off)` : `Non-AC (${Math.round(NON_AC_DISCOUNT * 100)}% off)`,
+  };
+}
+
+export function ConfirmPage({ booking, onBack, onConfirm }: { booking: Booking; onBack: () => void; onConfirm: (coupon: Coupon | null, pay: PayMethod) => void }) {
+  const { coupons, activeCoupons, parcelWeights, vehicleById, vehicleLabel, settings } = useCatalog();
+  // Admin → Settings can switch cash or online payments off.
+  const pays = PAYS.filter((p) => (p.id === "Cash" ? settings.cash : settings.online));
+  const [pay, setPay] = useState<PayMethod>(pays.some((p) => p.id === booking.pay) ? booking.pay : pays[0]?.id ?? booking.pay);
+  const [coupon, setCoupon] = useState<Coupon | null>(booking.coupon);
+  const [code, setCode] = useState("");
+  const [err, setErr] = useState("");
+  const v = vehicleById(booking.vehicle);
+  const isParcel = booking.service === "parcel";
+  const off = discountFor(coupon, booking.fare);
+  const total = booking.fare - off;
+  const { distance: distanceFare, time: timeFare, surge: surgeExtra, weight: weightCharge, adjust, adjustLabel } = fareLines(booking, v, parcelWeights);
+  const label = isParcel ? `${v.name} delivery` : vehicleLabel(v.id, v.acOption ? booking.ac : undefined);
+
+  const apply = (c?: Coupon) => {
+    const hit = c ?? coupons.find((x) => x.code === code.trim().toUpperCase() && x.active);
+    if (!hit) { setErr("That code isn't valid right now."); return; }
+    setCoupon(hit); setErr(""); setCode("");
+  };
+
+  const row = (l: string, r: string, strong = false, color?: string) => (
+    <div style={{ display: "flex", justifyContent: "space-between", fontSize: strong ? 15 : 13.5, fontWeight: strong ? 700 : 500, color: color ?? (strong ? "var(--ink)" : "var(--ink-soft)"), padding: "4px 0" }}>
+      <span>{l}</span><span>{r}</span>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
+      <PageHeader title="Confirm & Pay" onBack={onBack} />
+      <div style={{ padding: "0 16px", flex: 1, display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* trip */}
+        <div style={{ ...card, padding: 14, display: "flex", gap: 12, alignItems: "center" }}>
+          <div style={{ width: 68, height: 58, borderRadius: 14, background: "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><VehicleArt kind={v.id} size={56} /></div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>{label} · {booking.km} km</p>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--ink-soft)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{booking.from.name} → {booking.to.name}</p>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>~{booking.min} min · pickup in {v.eta} min</p>
+          </div>
+        </div>
+        {isParcel && booking.parcel && (
+          <div style={{ ...card, padding: 14, display: "flex", gap: 12, alignItems: "flex-start" }}>
+            <span style={{ width: 38, height: 38, borderRadius: 12, background: "var(--blue-tint)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><BoxIcon s={20} c="var(--blue)" /></span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{booking.parcel.type} · {booking.parcel.weight}</p>
+              <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>To {booking.parcel.receiver} · {booking.parcel.receiverPhone}</p>
+              {booking.parcel.note && <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>“{booking.parcel.note}”</p>}
+            </div>
+          </div>
+        )}
+
+        {/* coupon */}
+        <div>
+          <p style={{ margin: "0 2px 8px", fontSize: 13.5, fontWeight: 600 }}>Apply Coupon</p>
+          {coupon ? (
+            <div style={{ borderRadius: 16, padding: "12px 14px", background: "var(--success)", border: "1.5px dashed var(--success-text)", display: "flex", alignItems: "center", gap: 10 }}>
+              <TagIcon s={20} c="var(--success-text)" />
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "var(--success-text)" }}>{coupon.code} applied</p>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--success-text)" }}>You save {inr(off)} on this {isParcel ? "delivery" : "ride"}</p>
+              </div>
+              <button onClick={() => setCoupon(null)} aria-label="Remove coupon" style={iconBtn}><XIcon s={18} c="var(--success-text)" /></button>
+            </div>
+          ) : (
+            <>
+              <form onSubmit={(e) => { e.preventDefault(); apply(); }} style={{ display: "flex", gap: 8 }}>
+                <input value={code} onChange={(e) => { setCode(e.target.value.toUpperCase()); setErr(""); }} placeholder="Enter coupon code" aria-label="Coupon code" style={{ ...field, flex: 1, textTransform: "uppercase" }} />
+                <button type="submit" disabled={!code.trim()} className="press" style={{ border: "none", borderRadius: 14, padding: "0 18px", fontWeight: 700, fontSize: 14, cursor: "pointer", background: code.trim() ? "var(--blue)" : "var(--line-strong)", color: code.trim() ? "white" : "var(--ink-mute)" }}>Apply</button>
+              </form>
+              {err && <p style={{ margin: "6px 2px 0", fontSize: 12, color: "var(--error-text)" }}>{err}</p>}
+              <div className="no-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", marginTop: 10 }}>
+                {activeCoupons.map((c) => (
+                  <button key={c.code} onClick={() => apply(c)} className="press" style={{ flexShrink: 0, textAlign: "left", border: "1.5px dashed var(--gold)", background: "var(--gold-tint)", borderRadius: 12, padding: "8px 12px", cursor: "pointer" }}>
+                    <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--gold-dark)" }}>{c.code}</span>
+                    <span style={{ display: "block", fontSize: 11, color: "var(--ink-soft)" }}>{c.title}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* payment */}
+        <div>
+          <p style={{ margin: "0 2px 8px", fontSize: 13.5, fontWeight: 600 }}>Payment Method</p>
+          <div style={{ ...card, padding: "4px 14px" }}>
+            {pays.length === 0 && <p style={{ margin: "12px 0", fontSize: 13, color: "var(--ink-soft)" }}>Payments are paused right now — please try again shortly.</p>}
+            {pays.map(({ id, label: l, sub, Icon }, i) => {
+              const on = id === pay;
+              return (
+                <button key={id} onClick={() => setPay(id)} aria-pressed={on} style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 0", background: "none", border: "none",
+                  borderTop: i ? "1px solid var(--line)" : "none", cursor: "pointer", textAlign: "left",
+                }}>
+                  <span style={{ width: 38, height: 38, borderRadius: 12, background: on ? "var(--blue-tint)" : "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon s={19} c={on ? "var(--blue)" : "var(--ink-soft)"} /></span>
+                  <span style={{ flex: 1 }}>
+                    <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{l}</span>
+                    <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-soft)" }}>{sub}</span>
+                  </span>
+                  <span style={{ width: 20, height: 20, borderRadius: "50%", border: on ? "6px solid var(--blue)" : "2px solid var(--line-strong)", transition: "border 0.15s" }} />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* fare */}
+        <div style={{ ...card, padding: "12px 16px", marginBottom: 8 }}>
+          {row("Base fare", inr(v.base))}
+          {row(`Distance (${booking.km} km × ₹${v.perKm})`, inr(distanceFare))}
+          {row(`Time (~${booking.min} min)`, inr(timeFare))}
+          {surgeExtra > 0 && row(`Peak pricing (${booking.surge}×)`, inr(surgeExtra))}
+          {adjust > 0 && row(adjustLabel, "− " + inr(adjust), false, "var(--success-text)")}
+          {weightCharge > 0 && row(`Weight (${booking.parcel!.weight})`, inr(weightCharge))}
+          {off > 0 && row(`Coupon ${coupon!.code}`, "− " + inr(off), false, "var(--success-text)")}
+          <div style={{ borderTop: "1px dashed var(--line-strong)", margin: "6px 0" }} />
+          {row("Total Fare", inr(total), true)}
+        </div>
+      </div>
+      <Footer><PrimaryButton disabled={pays.length === 0} onClick={() => onConfirm(coupon, pay)}>{isParcel ? "Confirm Delivery" : "Confirm Ride"} · {inr(total)}</PrimaryButton></Footer>
+    </div>
+  );
+}
 
 /* ───────────────────────── 4. Live tracking ───────────────────────── */
 
@@ -556,21 +468,23 @@ const LABEL: Record<string, string> = {
 };
 
 const PARCEL_LABEL: Record<string, string> = {
-  Searching: "Finding a delivery partner", Assigned: "Delivery partner assigned", Arriving: "Partner is coming for pickup",
-  Arrived: "Partner is at pickup", Started: "Package is on the way", Completed: "Package delivered",
+  Searching: "Finding a delivery partner", Assigned: "Partner assigned", Arriving: "Partner coming for pickup",
+  Arrived: "Partner at pickup", Started: "Parcel on the way", Completed: "Parcel delivered",
 };
 
 const CANCEL_REASONS = ["Driver taking too long", "Changed my plans", "Booked by mistake", "Driver asked me to cancel", "Other"];
 
-export function LiveRidePage({ ride, onBack, onCancel, onChat, onDemoNext, onShare }: {
-  ride: ActiveRide; onBack: () => void; onCancel: (reason: string) => void; onChat: () => void; onDemoNext: () => void; onShare: () => void;
+export function LiveRidePage({ ride, onBack, onCancel, onChat, onShare }: {
+  ride: ActiveRide; onBack: () => void; onCancel: (reason: string) => void; onChat: () => void; onShare: () => void;
 }) {
+  const { vehicleById, vehicleLabel } = useCatalog();
   const [asking, setAsking] = useState(false);
   const step = RIDE_STEPS.indexOf(ride.status);
   const v = vehicleById(ride.vehicle);
+  const isParcel = ride.service === "parcel";
+  const noun = isParcel ? "delivery" : "ride";
   const total = ride.fare - discountFor(ride.coupon, ride.fare);
   const searching = ride.status === "Searching";
-  const parcel = ride.service === "parcel";
   const mode = searching ? "route" : ride.status === "Started" || ride.status === "Completed" ? "trip" : "approach";
   const progress = ride.status === "Arrived" ? 1 : ride.progress;
   const eta = ride.status === "Started" ? Math.max(1, Math.round(ride.min * (1 - ride.progress))) : Math.max(1, Math.round(ride.eta * (1 - ride.progress)));
@@ -601,7 +515,7 @@ export function LiveRidePage({ ride, onBack, onCancel, onChat, onDemoNext, onSha
       <div style={{ flex: 1, marginTop: -20, position: "relative", background: "var(--app-bg)", borderRadius: "22px 22px 0 0", padding: "8px 16px 24px" }}>
         <div style={{ width: 40, height: 4, borderRadius: 4, background: "var(--line-strong)", margin: "0 auto 12px" }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--ink)" }}>{(parcel ? PARCEL_LABEL : LABEL)[ride.status]}</p>
+          <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--ink)" }}>{(isParcel ? PARCEL_LABEL : LABEL)[ride.status]}</p>
           <StatusBadge status={ride.status} />
         </div>
 
@@ -615,7 +529,7 @@ export function LiveRidePage({ ride, onBack, onCancel, onChat, onDemoNext, onSha
         {searching ? (
           <div style={{ ...card, padding: 16, textAlign: "center" }}>
             <div className="spin" style={{ width: 34, height: 34, margin: "0 auto", borderRadius: "50%", border: "3.5px solid var(--blue-tint)", borderTopColor: "var(--blue)" }} />
-            <p style={{ margin: "12px 0 2px", fontSize: 14.5, fontWeight: 600 }}>{parcel ? `Connecting you to a ${v.name.toLowerCase()} delivery partner` : ride.service === "any" ? "Connecting you to the nearest Mini, Sedan or XL" : `Connecting you to nearby ${v.name} drivers`}</p>
+            <p style={{ margin: "12px 0 2px", fontSize: 14.5, fontWeight: 600 }}>Connecting you to nearby {isParcel ? `${v.name} delivery partners` : `${v.name} drivers`}</p>
             <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>This usually takes under a minute</p>
           </div>
         ) : (
@@ -636,7 +550,7 @@ export function LiveRidePage({ ride, onBack, onCancel, onChat, onDemoNext, onSha
               </div>
               {(ride.status === "Assigned" || ride.status === "Arriving" || ride.status === "Arrived") && (
                 <div style={{ marginTop: 12, borderRadius: 12, background: "var(--blue-tint)", padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 12.5, color: "var(--info-text)", fontWeight: 500 }}>{parcel ? "Share this OTP with the partner at pickup" : ride.passenger ? `OTP sent to ${ride.passenger.name.split(" ")[0]} by SMS` : "Share this OTP to start the ride"}</span>
+                  <span style={{ fontSize: 12.5, color: "var(--info-text)", fontWeight: 500 }}>{isParcel ? "Share this OTP when handing over the parcel" : "Share this OTP to start the ride"}</span>
                   <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: "0.25em", color: "var(--blue-dark)" }}>{ride.otp}</span>
                 </div>
               )}
@@ -666,33 +580,28 @@ export function LiveRidePage({ ride, onBack, onCancel, onChat, onDemoNext, onSha
             </div>
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
               <div><p style={{ margin: 0, fontSize: 11, color: "var(--ink-mute)", fontWeight: 600 }}>PICKUP</p><p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>{ride.from.name}</p></div>
-              <div><p style={{ margin: 0, fontSize: 11, color: "var(--ink-mute)", fontWeight: 600 }}>{parcel ? `DELIVER TO · ${ride.parcel?.receiver.name}` : "DROP"}</p><p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>{ride.to.name}</p></div>
+              <div><p style={{ margin: 0, fontSize: 11, color: "var(--ink-mute)", fontWeight: 600 }}>{isParcel ? "DELIVER TO" : "DROP"}</p><p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>{ride.to.name}</p>
+                {isParcel && ride.parcel && <p style={{ margin: "1px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>{ride.parcel.receiver} · {ride.parcel.receiverPhone}</p>}</div>
             </div>
           </div>
-          {parcel && ride.parcel && (
-            <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-soft)", background: "var(--bg-secondary)", borderRadius: 10, padding: "8px 10px" }}>
-              📦 {ride.parcel.type} · {PARCEL_WEIGHTS.find((w) => w.id === ride.parcel!.weight)!.label}{ride.parcel.note ? ` · “${ride.parcel.note}”` : ""}
-            </p>
-          )}
           <div style={{ borderTop: "1px solid var(--line)", marginTop: 12, paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 13, color: "var(--ink-soft)" }}>{ride.pay} · {serviceLabel(ride, v.name)}</span>
+            <span style={{ fontSize: 13, color: "var(--ink-soft)" }}>{ride.pay} · {isParcel ? `${ride.parcel?.type ?? "Parcel"} by ${v.name}` : vehicleLabel(v.id, v.acOption ? ride.ac : undefined)}</span>
             <span style={{ fontSize: 17, fontWeight: 800 }}>{inr(total)}</span>
           </div>
         </div>
 
         {step < 4 && (
           <button onClick={() => setAsking(true)} className="press" style={{ width: "100%", marginTop: 12, background: "var(--surface)", color: "var(--red)", border: "none", borderRadius: 16, padding: 14, fontSize: 14.5, fontWeight: 600, cursor: "pointer" }}>
-            Cancel Ride
+            Cancel {isParcel ? "Delivery" : "Ride"}
           </button>
         )}
-        <div style={{ textAlign: "center", marginTop: 14 }}><DemoButton onClick={onDemoNext}>skip to next step</DemoButton></div>
       </div>
 
       {asking && (
         <Sheet onClose={() => setAsking(false)}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <AlertIcon s={22} c="var(--red)" />
-            <p style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Cancel this ride?</p>
+            <p style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Cancel this {noun}?</p>
           </div>
           <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "var(--ink-soft)" }}>
             {step >= 2 ? `A cancellation fee of ${inr(v.cancelFee)} may apply as the driver is already on the way.` : "No cancellation fee — no driver has started towards you yet."}
@@ -700,7 +609,7 @@ export function LiveRidePage({ ride, onBack, onCancel, onChat, onDemoNext, onSha
           {CANCEL_REASONS.map((r) => (
             <button key={r} onClick={() => onCancel(r)} className="press" style={{ width: "100%", textAlign: "left", background: "var(--bg-secondary)", border: "none", borderRadius: 12, padding: "12px 14px", marginBottom: 8, fontSize: 14, fontWeight: 500, color: "var(--ink)", cursor: "pointer" }}>{r}</button>
           ))}
-          <PrimaryButton tone="ghost" onClick={() => setAsking(false)}>Keep my ride</PrimaryButton>
+          <PrimaryButton tone="ghost" onClick={() => setAsking(false)}>Keep my {noun}</PrimaryButton>
         </Sheet>
       )}
     </div>
@@ -723,14 +632,16 @@ export function Sheet({ children, onClose }: { children: React.ReactNode; onClos
 /* ───────────────────────── 5. Payment + rating ───────────────────────── */
 
 const TAGS = ["Clean vehicle", "Polite driver", "Safe driving", "On time", "Good music", "Smooth route"];
-const PARCEL_TAGS = ["On-time delivery", "Handled with care", "Polite partner", "Kept me updated"];
 
-export function TripDonePage({ ride, onDone, onReceipt }: { ride: ActiveRide; onDone: (stars: number) => void; onReceipt: () => void }) {
+/** `onPay` charges an online payment (simulated gateway); `onDone` sends the rating and tags. */
+export function TripDonePage({ ride, onPay, onDone }: { ride: ActiveRide; onPay: () => Promise<void>; onDone: (stars: number, tags: string[]) => void }) {
   const total = ride.fare - discountFor(ride.coupon, ride.fare);
   const cash = ride.pay === "Cash";
+  const isParcel = ride.service === "parcel";
   const [paid, setPaid] = useState<"no" | "busy" | "yes">(ride.pay === "Wallet" ? "yes" : "no");
   const [stars, setStars] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
+  const [receipt, setReceipt] = useState(false);
 
   // Cash: the driver confirms collection on their side a moment later.
   useEffect(() => {
@@ -739,7 +650,7 @@ export function TripDonePage({ ride, onDone, onReceipt }: { ride: ActiveRide; on
     return () => clearTimeout(t);
   }, [cash, paid]);
 
-  const payNow = () => { setPaid("busy"); setTimeout(() => setPaid("yes"), 1500); };
+  const payNow = async () => { setPaid("busy"); await onPay(); setPaid("yes"); };
 
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
@@ -747,11 +658,12 @@ export function TripDonePage({ ride, onDone, onReceipt }: { ride: ActiveRide; on
         <div className="fade-up" style={{ width: 76, height: 76, margin: "0 auto", borderRadius: "50%", background: "linear-gradient(135deg,#34c38f,var(--green))", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 10px 24px rgba(47,158,118,0.35)" }}>
           <CheckIcon s={38} c="white" w={3} />
         </div>
-        <p style={{ margin: "14px 0 0", fontSize: 22, fontWeight: 800 }}>{ride.service === "parcel" ? "Package Delivered!" : "Trip Completed!"}</p>
+        <p style={{ margin: "14px 0 0", fontSize: 22, fontWeight: 800 }}>{isParcel ? "Parcel Delivered!" : "Trip Completed!"}</p>
+        {isParcel && ride.parcel && <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--ink-soft)" }}>Handed to {ride.parcel.receiver}</p>}
         <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--ink-soft)" }}>{ride.from.name} → {ride.to.name}</p>
         <p style={{ margin: "14px 0 0", fontSize: 38, fontWeight: 800, letterSpacing: "-0.02em" }}>{inr(total)}</p>
         <p style={{ margin: "4px 0 0", fontSize: 13, fontWeight: 600, color: paid === "yes" ? "var(--success-text)" : "var(--warning-text)" }}>
-          {paid === "yes" ? `✓ Paid Successfully · ${ride.pay}` : cash ? `Please pay ${inr(total)} in cash to your driver` : paid === "busy" ? "Processing payment…" : `Payment pending · ${ride.pay}`}
+          {paid === "yes" ? `✓ Paid Successfully · ${ride.pay}` : cash ? `Please pay ${inr(total)} in cash to your ${isParcel ? "delivery partner" : "driver"}` : paid === "busy" ? "Processing payment…" : `Payment pending · ${ride.pay}`}
         </p>
       </div>
 
@@ -764,7 +676,7 @@ export function TripDonePage({ ride, onDone, onReceipt }: { ride: ActiveRide; on
           <Stars value={stars} onChange={setStars} size={34} />
           {stars > 0 && (
             <div className="fade-up" style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginTop: 14 }}>
-              {(ride.service === "parcel" ? PARCEL_TAGS : TAGS).map((t) => {
+              {TAGS.map((t) => {
                 const on = tags.includes(t);
                 return (
                   <button key={t} onClick={() => setTags((x) => (on ? x.filter((y) => y !== t) : [...x, t]))} aria-pressed={on} style={{
@@ -777,14 +689,67 @@ export function TripDonePage({ ride, onDone, onReceipt }: { ride: ActiveRide; on
             </div>
           )}
         </div>
-        <button onClick={onReceipt} style={{ display: "block", margin: "14px auto 0", background: "none", border: "none", color: "var(--blue)", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>View Receipt</button>
+        <button onClick={() => setReceipt(true)} style={{ display: "block", margin: "14px auto 0", background: "none", border: "none", color: "var(--blue)", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>View Receipt</button>
       </div>
+
+      {receipt && <ReceiptSheet ride={ride} paid={paid === "yes"} onClose={() => setReceipt(false)} />}
 
       <Footer>
         {paid !== "yes" && !cash
           ? <PrimaryButton onClick={payNow} disabled={paid === "busy"}>{paid === "busy" ? "Processing…" : `Pay ${inr(total)} with ${ride.pay}`}</PrimaryButton>
-          : <PrimaryButton onClick={() => onDone(stars)} disabled={paid !== "yes"}>{stars ? "Submit Rating" : "Done"}</PrimaryButton>}
+          : <PrimaryButton onClick={() => onDone(stars, tags)} disabled={paid !== "yes"}>{stars ? "Submit Rating" : "Done"}</PrimaryButton>}
       </Footer>
     </div>
+  );
+}
+
+/* ───────────────────────── Receipt ───────────────────────── */
+
+/** Itemised receipt shown in the app (nothing is emailed). */
+function ReceiptSheet({ ride, paid, onClose }: { ride: ActiveRide; paid: boolean; onClose: () => void }) {
+  const { vehicleById, vehicleLabel, parcelWeights } = useCatalog();
+  const v = vehicleById(ride.vehicle);
+  const isParcel = ride.service === "parcel";
+  const f = fareLines(ride, v, parcelWeights);
+  const off = discountFor(ride.coupon, ride.fare);
+  const issued = useMemo(() => new Date().toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }), []);
+  const row = (l: string, r: string, strong = false, color?: string) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: strong ? 15 : 13.5, fontWeight: strong ? 700 : 500, color: color ?? (strong ? "var(--ink)" : "var(--ink-soft)"), padding: "4px 0" }}>
+      <span>{l}</span><span style={{ textAlign: "right" }}>{r}</span>
+    </div>
+  );
+  const rule = <div style={{ borderTop: "1px dashed var(--line-strong)", margin: "8px 0" }} />;
+  return (
+    <Sheet onClose={onClose}>
+      <div role="dialog" aria-label="Receipt">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>Receipt</p>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>{isParcel ? "Parcel" : "Ride"} #{ride.id} · {issued}</p>
+          </div>
+          <StatusBadge status={paid ? "Paid" : "Pending"} />
+        </div>
+        {rule}
+        {row(isParcel ? "Delivery" : "Vehicle", isParcel ? `${v.name} delivery` : vehicleLabel(v.id, v.acOption ? ride.ac : undefined))}
+        {row(isParcel ? "Delivery partner" : "Driver", `${ride.driver.name}${ride.driver.plate ? ` · ${ride.driver.plate}` : ""}`)}
+        {row("Pickup", ride.from.name)}
+        {row(isParcel ? "Delivered to" : "Drop", ride.to.name)}
+        {row("Distance · time", `${ride.km} km · ${ride.min} min`)}
+        {isParcel && ride.parcel && row("Parcel", `${ride.parcel.type} · ${ride.parcel.weight}`)}
+        {rule}
+        {row("Base fare", inr(f.base))}
+        {row(`Distance (${ride.km} km × ₹${v.perKm})`, inr(f.distance))}
+        {row(`Time (~${ride.min} min)`, inr(f.time))}
+        {f.surge > 0 && row(`Peak pricing (${ride.surge}×)`, inr(f.surge))}
+        {f.adjust > 0 && row(f.adjustLabel, "− " + inr(f.adjust), false, "var(--success-text)")}
+        {f.weight > 0 && row(`Weight (${ride.parcel?.weight})`, inr(f.weight))}
+        {off > 0 && row(`Coupon ${ride.coupon!.code}`, "− " + inr(off), false, "var(--success-text)")}
+        {rule}
+        {row("Total", inr(ride.fare - off), true)}
+        {row("Payment", `${ride.pay} · ${paid ? "Paid" : ride.pay === "Cash" ? "Pay the driver in cash" : "Pending"}`)}
+        <p style={{ margin: "12px 0 14px", fontSize: 11.5, color: "var(--ink-mute)", textAlign: "center" }}>Thanks for {isParcel ? "sending" : "riding"} with DriveWay · fares include applicable taxes</p>
+        <PrimaryButton onClick={onClose}>Close</PrimaryButton>
+      </div>
+    </Sheet>
   );
 }

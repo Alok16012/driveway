@@ -1,7 +1,7 @@
 /* DriveWay brand pieces, cut from the official logo (public/driveway-*.png). */
 
 /** The "D + road" pin symbol on its own. */
-export function BrandMark({ size = 36 }: { size?: number }) {
+export function BrandMark({ size = 36 }: { size?: number; light?: boolean }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img src="/driveway-mark.png" alt="DriveWay" width={size} height={Math.round(size * 1.094)} style={{ display: "block", objectFit: "contain" }} />

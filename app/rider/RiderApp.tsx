@@ -1,12 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import BottomNav, { HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph, WalletGlyph } from "../components/BottomNav";
-import { OtpStep, PhoneLogin, SplashScreen } from "../components/Auth";
+import { EmailLogin, SignUpForm, SplashLink, SplashScreen } from "../components/Auth";
 import { KycFlow, PendingApproval } from "../components/rider/Kyc";
 import {
-  AlertsScreen, COMMISSION, EarningsScreen, RIDER_ALERTS, RequestPopup, RiderAccount, RiderHome, TripPage, TripsScreen,
+  AlertsScreen, EarningsScreen, RequestPopup, RiderAccount, RiderHome, TripPage, TripsScreen,
   type AccountKey, type QuickKey, type RideRequest, type RiderAlert, type TripPhase,
 } from "../components/rider/RiderScreens";
 import {
@@ -15,36 +14,45 @@ import {
 } from "../components/rider/RiderPages";
 import { ChatScreen, type ChatMessage } from "../components/customer/AccountScreens";
 import { DemoButton, Toast } from "../components/ui";
-import { DRIVERS, INCENTIVES, NON_AC_FACTOR, RIDER_WALLET, RIDES, inr, nowTime, type Driver, type Ride, type WalletTxn } from "../lib/data";
+import { inr, nowTime, type Driver, type Ride, type WalletTxn } from "../lib/data";
+import { useCatalog } from "../lib/CatalogProvider";
+import { FieldError, accessToken, hasSession, loadRider, registerRider, setRiderOnline, signIn, signOut, signUp, signUpDetails } from "../lib/account";
+import type { Feedback } from "../lib/mappers";
+import { EditProfilePage } from "../components/EditProfile";
+import { myActivity, updateRiderProfile, acceptRide, advanceRide, cancelTrip as cancelTripOnServer, cashCollected, declineRide, riderPoll } from "./actions";
 
 const SHELL_MAX_W = 430;
-const AUTH_KEY = "driveway:rider";
+/** How often the app checks for ride requests and trip changes while online. */
+const POLL_MS = 3000;
+/** How often the "verification in progress" screen re-checks for admin approval. */
+const APPROVAL_POLL_MS = 8000;
 
 type Tab = "home" | "earnings" | "trips" | "incentives" | "account";
-type Stage = "splash" | "phone" | "otp" | "kyc" | "pending" | "app";
+type Stage = "splash" | "login" | "signup" | "kyc" | "pending" | "app";
 type Detail =
   | { k: "alerts" } | { k: "support" } | { k: "trip"; id: string }
   | { k: "wallet" } | { k: "performance" } | { k: "hotspots" }
-  | { k: Exclude<AccountKey, "help" | "performance"> };
+  | { k: Exclude<AccountKey, "help" | "performance"> }
+  | { k: "editProfile" };
 
-const REQUESTS: Omit<RideRequest, "id">[] = [
-  { customer: "Amit Sharma", initials: "AS", rating: 4.9, from: "Sector 12, Noida", to: "DLF Mall of India", pickupKm: 1.2, pickupMin: 3, km: 4.2, min: 16, fare: 160, pay: "UPI", ac: true },
-  { customer: "Priya Mehta", initials: "PM", rating: 4.7, from: "Botanical Garden Metro", to: "Sector 62, Noida", pickupKm: 0.8, pickupMin: 2, km: 6.8, min: 22, fare: 155, pay: "Cash", ac: false },
-  { customer: "Kavya Iyer", initials: "KI", rating: 5.0, from: "Great India Place", to: "Akshardham Temple", pickupKm: 1.6, pickupMin: 4, km: 9.1, min: 28, fare: 246, pay: "UPI", ac: true },
-  { customer: "Neha Gupta", initials: "NG", rating: 4.8, from: "Sector 18 Market, Noida", to: "Sector 50, Noida", pickupKm: 0.9, pickupMin: 3, km: 5.3, min: 15, fare: 96, pay: "UPI", parcel: "Documents · up to 1 kg" },
-];
+/** Placeholder until the signed-in rider's profile loads. */
+const NO_RIDER: Driver = { id: "", name: "", initials: "", phone: "", rating: 0, trips: 0, vehicle: "bike", model: "", plate: "", city: "", kyc: "Pending", online: false, joined: "", earnings: 0 };
 
-const readRider = () => { try { return localStorage.getItem(AUTH_KEY) === "1"; } catch { return false; } };
-const writeRider = (v: boolean) => { try { if (v) localStorage.setItem(AUTH_KEY, "1"); else localStorage.removeItem(AUTH_KEY); } catch { /* storage blocked */ } };
+const SUSPENDED = "Your rider account is suspended. Please contact rider support.";
 
-let seq = 1300;
 let txSeq = 400;
 const pct = (n: number, d: number) => (d ? Math.round((n / d) * 100) : 0);
 
 export default function RiderApp() {
+  const { incentives, vehicleById, commission, announcementsFor } = useCatalog();
+  const { settings } = useCatalog();
+  /** Cities a rider can pick: the active service areas from admin, or the KYC list if none are set up. */
+  const activeAreas = settings.serviceAreas.filter((a) => a.active).map((a) => a.city);
+  const riderCities = activeAreas.length ? activeAreas : ["Noida", "Delhi", "Gurugram", "Lucknow"];
   const [stage, setStage] = useState<Stage>("splash");
-  const [phone, setPhone] = useState("");
-  const [rider, setRider] = useState<Driver>(DRIVERS[0]);
+  /** Name, email and mobile from sign-up — prefill KYC and go on the rider record. */
+  const [signup, setSignup] = useState({ name: "", email: "", phone: "" });
+  const [rider, setRider] = useState<Driver>(NO_RIDER);
   const [tab, setTab] = useState<Tab>("home");
   const [stack, setStack] = useState<Detail[]>([]);
   const [online, setOnline] = useState(false);
@@ -56,23 +64,67 @@ export default function RiderApp() {
   const [peak, setPeak] = useState(1);
   const [stats, setStats] = useState({ accepted: 48, declined: 2, cancelled: 1 });
   const [wallet, setWallet] = useState({ balance: 1840, dues: 36 });
-  const [txns, setTxns] = useState<WalletTxn[]>(RIDER_WALLET);
-  const [prefs, setPrefs] = useState<RiderPrefs>({ autoAccept: false, goHome: null, cash: true, sound: true, nav: "Google Maps" });
-  const [trips, setTrips] = useState<Ride[]>(RIDES.filter((r) => r.driver === DRIVERS[0].name));
-  const [alerts, setAlerts] = useState<RiderAlert[]>(RIDER_ALERTS);
+  const [txns, setTxns] = useState<WalletTxn[]>([]);
+  const [feedback, setFeedback] = useState<Feedback[]>([]);
+  const [prefs, setPrefs] = useState<RiderPrefs>({ autoAccept: false, goHome: null, cash: true, sound: true, nav: "Google Maps", parcels: true, ac: true });
+  const [trips, setTrips] = useState<Ride[]>([]);
+  // Broadcasts from Admin → Notifications, then alerts raised during this session.
+  const [alerts, setAlerts] = useState<RiderAlert[]>(() => announcementsFor("rider").map((a) => [a.title, a.body, a.at, "policy"]));
   const [unread, setUnread] = useState(2);
   const [chat, setChat] = useState<ChatMessage[]>([{ id: 1, from: "agent", body: "Hi! 👋 How can the rider support team help?", at: "09:00 AM" }]);
   const [typing, setTyping] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const reqIdx = useRef(0);
 
-  useEffect(() => {
-    if (!readRider()) return;
-    const t = setTimeout(() => setStage("app"), 1100);
-    return () => clearTimeout(t);
+  /** Signed in → route by KYC status and load the rider's own activity. Returns an error message, or null. */
+  const enter = useCallback(async (): Promise<string | null> => {
+    try {
+      const d = await loadRider();
+      if (!d) { setSignup(await signUpDetails()); setStage("kyc"); return null; }
+      setRider(d);
+      if (d.kyc !== "Approved") { setStage("pending"); return null; }
+      if (d.suspended) { await signOut(); setStage("splash"); return SUSPENDED; }
+      const token = await accessToken();
+      const res = token ? await myActivity(token) : { data: undefined, error: "Please log in again" };
+      if (!res.data) throw new Error(res.error ?? "Couldn't load your trips");
+      const a = res.data;
+      setTrips(a.trips); setTxns(a.wallet); setFeedback(a.feedback);
+      setOnline(d.online);
+      setStage("app");
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : "Couldn't load your account";
+    }
   }, []);
+
+  // Returning riders skip login (Supabase keeps the session in this browser).
+  useEffect(() => {
+    let live = true;
+    const shown = Date.now();
+    hasSession().then(async (yes) => {
+      if (!yes || !live) return;
+      await new Promise((r) => setTimeout(r, Math.max(0, 1100 - (Date.now() - shown))));
+      if (!live) return;
+      const err = await enter();
+      if (err) flash(err);
+    });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, []);
+
+  // Waiting for KYC review → re-check until an admin approves.
+  useEffect(() => {
+    if (stage !== "pending") return;
+    const t = setInterval(async () => {
+      const d = await loadRider().catch(() => null);
+      if (!d) return;
+      if (d.kyc === "Approved") { await enter(); flash("You're approved! Go online to start earning 🎉"); }
+      else setRider(d);
+    }, APPROVAL_POLL_MS);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- flash is recreated each render
+  }, [stage, enter]);
 
   const detail = stack[stack.length - 1];
   const detailKey = detail ? JSON.stringify(detail) : tab;
@@ -93,17 +145,37 @@ export default function RiderApp() {
 
   // Online & idle → a request arrives a few seconds later (stands in for the dispatch socket).
   // With "Accept cash rides" off, dispatch only sends online-paid rides.
-  const sendRequest = useCallback(() => {
-    let r = REQUESTS[reqIdx.current++ % REQUESTS.length];
-    if (!prefs.cash && r.pay === "Cash") r = REQUESTS[reqIdx.current++ % REQUESTS.length];
-    if (!rider.ac && r.ac) r = { ...r, ac: false, fare: Math.round(r.fare * NON_AC_FACTOR) };
-    setRequest({ ...r, id: `RD${++seq}` });
-  }, [prefs.cash, rider.ac]);
+  // Parcels only go to riders who opted in and whose vehicle can carry them; car riders get AC or Non-AC
+  // rides depending on their "My AC is working" switch.
+  // Live requests and trips come from the server: poll while online (or while a trip is on screen).
+  const tripId = trip?.req.id;
   useEffect(() => {
-    if (!online || request || trip || stage !== "app") return;
-    const t = setTimeout(sendRequest, 4500);
-    return () => clearTimeout(t);
-  }, [online, request, trip, stage, sendRequest]);
+    if (stage !== "app" || (!online && !tripId)) return;
+    let live = true;
+    const tick = async () => {
+      const token = await accessToken();
+      if (!token || !live) return;
+      const { data } = await riderPoll(token, tripId);
+      if (!live || !data) return;
+      if (data.cancelled && data.cancelled.id === tripId) {
+        setTrip(null); setSheet(null); setTab("home");
+        flash(`Trip cancelled — ${data.cancelled.reason}`);
+        refreshActivity();
+        return;
+      }
+      if (data.active && !tripId) {
+        const phase: TripPhase = data.active.status === "Started" ? "onTrip" : data.active.status === "Arrived" ? "arrived" : "toPickup";
+        setRequest(null);
+        setTrip({ req: data.active, phase, progress: phase === "arrived" ? 1 : 0 });
+        return;
+      }
+      if (!tripId) setRequest((cur) => (data.offer ? (cur?.id === data.offer.id ? cur : data.offer) : null));
+    };
+    tick();
+    const t = setInterval(tick, POLL_MS);
+    return () => { live = false; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restarts when going online/offline or the trip changes
+  }, [stage, online, tripId]);
 
   // Online-time ticker.
   useEffect(() => {
@@ -121,55 +193,74 @@ export default function RiderApp() {
     return () => clearInterval(t);
   }, [phase]);
 
-  const decline = useCallback((expired: boolean) => {
+  const decline = useCallback(async (expired: boolean) => {
+    const id = request?.id;
     setRequest(null);
+    const token = await accessToken();
+    if (id && token) await declineRide(token, id);
     setStats((s) => ({ ...s, declined: s.declined + 1 }));
     flash(expired ? "Request expired — counted as missed" : "Request declined");
-  }, [flash]);
+  }, [flash, request]);
 
-  const accept = useCallback(() => {
+  const accept = useCallback(async () => {
     if (!request) return;
-    setTrip({ req: request, phase: "toPickup", progress: 0 });
+    const token = await accessToken();
+    const { data, error } = token ? await acceptRide(token, request.id) : { data: undefined, error: "Please log in again" };
+    if (!data) { setRequest(null); flash(error ?? "This request is no longer available"); return; }
+    setTrip({ req: data, phase: "toPickup", progress: 0 });
     setRequest(null);
     setStack([]);
     setStats((s) => ({ ...s, accepted: s.accepted + 1 }));
     setAlerts((a) => [["Ride Accepted", `${request.from} → ${request.to} · ${inr(request.fare)}`, "just now", "ride"], ...a]);
-  }, [request]);
+  }, [request, flash]);
 
-  const cancelTrip = (reason: string) => {
+  /** Saves the trip's next step on the server, then updates the screen. */
+  const step = async (to: "Arrived" | "Started" | "Completed", opts: { otp?: string }, then: (serverWaitFee: number) => void) => {
+    if (!trip) return;
+    const token = await accessToken();
+    const { data, error } = token ? await advanceRide(token, trip.req.id, to, opts) : { data: undefined, error: "Please log in again" };
+    if (error) { flash(error); if (/cancelled/i.test(error)) { setTrip(null); setTab("home"); refreshActivity(); } return; }
+    then(data?.waitFee ?? 0);
+  };
+
+  /** Trips, wallet and feedback, fresh from the database. */
+  const refreshActivity = async () => {
+    if (!rider.id) return;
+    const token = await accessToken();
+    const a = token ? (await myActivity(token)).data : undefined;
+    if (a) { setTrips(a.trips); setTxns(a.wallet); setFeedback(a.feedback); }
+  };
+
+  const cancelTrip = async (reason: string) => {
     if (!trip) return;
     const { req } = trip;
-    setTrips((t) => [{
-      id: req.id, customer: req.customer, driver: rider.name, vehicle: rider.vehicle, from: req.from, to: req.to, km: req.km, min: req.min,
-      fare: req.fare, discount: 0, pay: req.pay, paid: false, status: "Cancelled", date: "Today", time: nowTime(), cancelReason: reason,
-    }, ...t]);
+    const token = await accessToken();
+    const { error } = token ? await cancelTripOnServer(token, req.id, reason) : { error: "Please log in again" };
+    if (error) { flash(error); return; }
+    refreshActivity();
     setStats((s) => ({ ...s, cancelled: s.cancelled + 1 }));
     setTrip(null);
     setSheet(null);
     setTab("home");
-    flash("Ride cancelled");
+    flash(req.service === "parcel" ? "Delivery cancelled" : "Ride cancelled");
   };
 
   const finish = (stars: number) => {
     if (!trip) return;
     const { req } = trip;
     const total = req.fare + (req.waitFee ?? 0);
-    const net = Math.round(total * (1 - COMMISSION));
-    const cut = Math.round(total * COMMISSION);
+    const net = Math.round(total * (1 - commission));
+    const cut = Math.round(total * commission);
     const count = today.trips + 1;
-    const daily = INCENTIVES[0];
+    const daily = incentives[0];
 
     setToday((d) => ({ ...d, earnings: d.earnings + net, trips: count }));
     setWeek((w) => w + 1);
     if (new Date().getHours() >= 18 && new Date().getHours() < 21) setPeak((p) => p + 1);
 
-    if (req.pay === "Cash") {
-      setWallet((w) => ({ ...w, dues: w.dues + cut }));
-      addTxn("Cash Commission", `Ride ${req.id} · ${COMMISSION * 100}% of ${inr(total)}`, -cut);
-    } else {
-      setWallet((w) => ({ ...w, balance: w.balance + net }));
-      addTxn("Trip Earning", `Ride ${req.id} · ${req.pay}`, net);
-    }
+    // The server records the trip and its wallet entry when the trip ends; this only updates the on-screen totals.
+    if (req.pay === "Cash") setWallet((w) => ({ ...w, dues: w.dues + cut }));
+    else setWallet((w) => ({ ...w, balance: w.balance + net }));
     if (count === daily.target) {
       setWallet((w) => ({ ...w, balance: w.balance + daily.reward }));
       addTxn("Incentive", `${daily.title} bonus`, daily.reward);
@@ -177,10 +268,7 @@ export default function RiderApp() {
       setUnread((u) => u + 1);
     }
 
-    setTrips((t) => [{
-      id: req.id, customer: req.customer, driver: rider.name, vehicle: rider.vehicle, from: req.from, to: req.to, km: req.km, min: req.min,
-      fare: total, discount: 0, pay: req.pay, paid: true, status: "Completed", date: "Today", time: nowTime(), rating: stars || undefined,
-    }, ...t]);
+    refreshActivity();
     setAlerts((a) => [["Trip Completed", req.pay === "Cash" ? `${inr(total)} collected in cash` : `${inr(net)} credited to your wallet`, "just now", "pay"], ...a]);
     setTrip(null);
     setTab("home");
@@ -215,9 +303,11 @@ export default function RiderApp() {
     }, 1300);
   };
 
-  const toggleOnline = (v: boolean) => {
+  const toggleOnline = async (v: boolean) => {
     setOnline(v);
     if (!v) setRequest(null);
+    const err = await setRiderOnline(rider.id, v);
+    if (err) { setOnline(!v); flash(`Couldn't go ${v ? "online" : "offline"} — ${err}`); return; }
     flash(v ? "You're online — looking for rides" : "You're offline");
   };
 
@@ -228,7 +318,12 @@ export default function RiderApp() {
 
   const openAccount = (k: AccountKey) => push(k === "help" ? { k: "support" } : { k });
 
-  const logout = () => { writeRider(false); setOnline(false); setTrip(null); setStack([]); setTab("home"); setStage("splash"); };
+  const logout = async () => {
+    if (online) await setRiderOnline(rider.id, false);
+    await signOut();
+    setOnline(false); setTrip(null); setStack([]); setTab("home"); setStage("splash");
+    setRider(NO_RIDER); setTrips([]); setTxns([]); setFeedback([]);
+  };
 
   const showNav = stage === "app" && !trip && !detail;
   const acceptance = pct(stats.accepted, stats.accepted + stats.declined);
@@ -239,25 +334,32 @@ export default function RiderApp() {
       <div style={{ width: "100%", maxWidth: SHELL_MAX_W, height: "100%", position: "relative", background: "var(--app-bg)", overflow: "hidden", boxShadow: "var(--shadow-float)", display: "flex", flexDirection: "column" }}>
 
         {stage === "splash" && (
-          <SplashScreen tagline="Drive · Earn · Grow" cta="Start Riding" onStart={() => setStage(readRider() ? "app" : "phone")}
-            footer={<p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.55)" }}>Demo: <Link href="/customer" style={{ color: "var(--gold)" }}>Customer app</Link> · <Link href="/admin" style={{ color: "var(--gold)" }}>Admin panel</Link></p>} />
+          <SplashScreen tagline="Drive · Earn · Grow" cta="Log in" onStart={() => setStage("login")}
+            footer={<SplashLink prompt="New rider?" cta="Create an account" onClick={() => setStage("signup")} />} />
         )}
-        {stage === "phone" && <PhoneLogin title="Welcome, Rider" accent="Let's get you earning" social={false} onSent={(p) => { setPhone(p); setStage("otp"); }} />}
-        {stage === "otp" && (
-          <OtpStep phone={phone} onBack={() => setStage("phone")} onVerified={() => setStage("kyc")} />
+        {stage === "login" && (
+          <EmailLogin title="Welcome, Rider" accent="Let's get you earning"
+            switchTo={{ prompt: "New rider?", cta: "Create an account", onClick: () => setStage("signup") }}
+            onSubmit={async (email, password) => (await signIn(email, password)) ?? (await enter())} />
+        )}
+        {stage === "signup" && (
+          <SignUpForm title="Become a" accent="DriveWay rider" cta="Create account & continue"
+            body="Create your account, then add your vehicle, documents and bank details for approval."
+            switchTo={{ prompt: "Already registered?", cta: "Log in", onClick: () => setStage("login") }}
+            onSubmit={async (d) => (await signUp(d)) ?? (await enter())} />
         )}
         {stage === "kyc" && (
-          <>
-            <KycFlow onSubmit={(k) => {
-              setRider({ ...DRIVERS[0], name: k.name, initials: k.name.split(/\s+/).map((s) => s[0]).join("").slice(0, 2).toUpperCase(), vehicle: k.vehicle, model: k.model, plate: k.plate, ac: k.ac, city: k.city, phone: `+91 ${phone.slice(0, 5)} ${phone.slice(5)}`, trips: 0, rating: 0 });
+          <KycFlow initial={signup} account={signup.email} onLogout={logout} onSubmit={async (k) => {
+            try {
+              setRider(await registerRider({ name: k.name, email: k.email, phone: k.phone, vehicle: k.vehicle, model: k.model, plate: k.plate, city: k.city }));
               setStage("pending");
-            }} />
-            <div style={{ position: "absolute", top: 20, right: 16, zIndex: 195 }}>
-              <DemoButton onClick={() => { writeRider(true); setStage("app"); }}>skip KYC</DemoButton>
-            </div>
-          </>
+              return null;
+            } catch (e) {
+              return { message: e instanceof Error ? e.message : "Couldn't submit your application", field: e instanceof FieldError ? e.field : undefined };
+            }
+          }} />
         )}
-        {stage === "pending" && <PendingApproval name={rider.name} onApproved={() => { writeRider(true); setStage("app"); flash("You're approved! Go online to start earning 🎉"); }} />}
+        {stage === "pending" && <PendingApproval name={rider.name} rejected={rider.kyc === "Rejected"} onLogout={logout} />}
 
         {stage === "app" && (detail?.k === "support" ? (
           <div style={{ flex: 1, minHeight: 0 }}>
@@ -272,22 +374,39 @@ export default function RiderApp() {
                 onNavigate={() => navigate(trip.phase === "onTrip" ? trip.req.to : trip.req.from)}
                 onCancel={() => setSheet("cancel")}
                 onSos={() => setSheet("sos")}
-                onArrived={() => { setTrip({ ...trip, phase: "arrived", progress: 1 }); flash("Customer notified that you've arrived"); }}
-                onStart={(waitFee) => setTrip({ ...trip, req: { ...trip.req, waitFee }, phase: "onTrip", progress: 0 })}
-                onEnd={() => setTrip({ ...trip, phase: "collect", progress: 1 })}
-                onCollected={() => setTrip({ ...trip, phase: "rate" })}
+                onArrived={() => step("Arrived", {}, () => { setTrip({ ...trip, phase: "arrived", progress: 1 }); flash("Customer notified that you've arrived"); })}
+                onStart={(_shownFee, otp) => step("Started", { otp }, (waitFee) => setTrip({ ...trip, req: { ...trip.req, waitFee: waitFee || undefined }, phase: "onTrip", progress: 0 }))}
+                onEnd={() => step("Completed", {}, () => setTrip({ ...trip, phase: "collect", progress: 1 }))}
+                onCollected={async () => {
+                  const token = await accessToken();
+                  if (token && trip.req.pay === "Cash") await cashCollected(token, trip.req.id);
+                  setTrip({ ...trip, phase: "rate" });
+                }}
                 onRated={finish} />
             ) : detail ? (
               <>
                 {detail.k === "alerts" && <AlertsScreen items={alerts} onBack={back} />}
                 {detail.k === "wallet" && <WalletPage balance={wallet.balance} dues={wallet.dues} txns={txns} onWithdraw={withdraw} onPayDues={payDues} onBack={back} />}
-                {detail.k === "performance" && <PerformancePage rider={rider} stats={{ ...stats, acceptance, cancellation }} onBack={back} />}
+                {detail.k === "performance" && <PerformancePage rider={rider} stats={{ ...stats, acceptance, cancellation }} feedback={feedback} onBack={back} />}
                 {detail.k === "hotspots" && <HotspotsPage online={online} onNavigate={navigate} onGoOnline={() => toggleOnline(true)} onBack={back} />}
                 {detail.k === "documents" && <DocumentsPage onBack={back} onUploaded={(d) => flash(`${d} uploaded — we'll verify it within 24 hours`)} />}
                 {detail.k === "vehicle" && <VehiclePage rider={rider} onBack={back} />}
+                {detail.k === "editProfile" && (
+                  <EditProfilePage initial={{ name: rider.name, email: rider.email ?? "", phone: rider.phone, city: rider.city }}
+                    cities={riderCities.includes(rider.city) ? riderCities : [rider.city, ...riderCities]}
+                    note="To change your vehicle, contact rider support — vehicle changes are re-verified."
+                    onBack={back}
+                    onSave={async (v) => {
+                      const token = await accessToken();
+                      const { data, error } = token ? await updateRiderProfile(token, v) : { data: undefined, error: "Please log in again" };
+                      if (!data) return error ?? "Couldn't save your profile";
+                      setRider(data); back(); flash("Profile updated");
+                      return null;
+                    }} />
+                )}
                 {detail.k === "bank" && <BankPage onBack={back} onSaved={() => flash("UPI ID updated")} />}
                 {detail.k === "preferences" && (
-                  <PreferencesPage prefs={prefs} onBack={back} onChange={(p) => {
+                  <PreferencesPage prefs={prefs} vehicle={rider.vehicle} onBack={back} onChange={(p) => {
                     setPrefs((x) => ({ ...x, ...p }));
                     if ("goHome" in p) flash(p.goHome ? "Go Home on — only rides towards home" : "Go Home off");
                   }} />
@@ -306,13 +425,12 @@ export default function RiderApp() {
                       onToggle={toggleOnline}
                       onOpenEarnings={() => goTab("earnings")} onAlerts={() => { setUnread(0); push({ k: "alerts" }); }}
                       onQuick={openQuick} onClearGoHome={() => { setPrefs((p) => ({ ...p, goHome: null })); flash("Go Home off"); }} />
-                    {online && !request && <div style={{ textAlign: "center", marginTop: -8, paddingBottom: 16 }}><DemoButton onClick={sendRequest}>send a ride request now</DemoButton></div>}
                   </>
                 )}
                 {tab === "earnings" && <EarningsScreen today={today} />}
                 {tab === "trips" && <TripsScreen trips={trips} onOpen={(r) => push({ k: "trip", id: r.id })} />}
                 {tab === "incentives" && <IncentivesScreen progress={{ today: today.trips, week, peak }} />}
-                {tab === "account" && <RiderAccount rider={rider} stats={{ acceptance, cancellation }} onMenu={openAccount} onLogout={logout} />}
+                {tab === "account" && <RiderAccount rider={rider} stats={{ acceptance, cancellation }} onEdit={() => push({ k: "editProfile" })} onMenu={openAccount} onLogout={logout} />}
               </>
             )}
           </div>

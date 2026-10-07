@@ -5,11 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "tsc -p tests/tsconfig.json && node --conditions=react-server --env-file=.env.local --experimental-websocket --test --test-concurrency=1 tests/pricing.test.mjs tests/security.test.mjs tests/rides.test.mjs tests/pricing-integrity.test.mjs tests/perf.test.mjs",
+    "test:http": "tsc -p tests/tsconfig.json && node --conditions=react-server --env-file=.env.local --experimental-websocket --test tests/http.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",
-    "next": "16.2.6",
+    "next": "^16.4.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "server-only": "^0.0.1"

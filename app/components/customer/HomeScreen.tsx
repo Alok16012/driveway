@@ -1,21 +1,27 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, BellIcon, BriefcaseIcon, ChevronRight, ClockIcon, HomeIcon, SearchIcon, ShieldIcon, TargetIcon } from "../icons";
+import { ArrowRight, BellIcon, BriefcaseIcon, ChevronRight, ClockIcon, HomeIcon, SearchIcon, ShieldIcon, SnowIcon, TargetIcon } from "../icons";
 import { BrandMark, Wordmark } from "../Brand";
 import MapView from "../MapView";
-import VehicleArt, { AnyArt, ParcelArt, RentalArt } from "../VehicleArt";
+import VehicleArt from "../VehicleArt";
+import ParcelArt from "../ParcelArt";
 import { iconBtn } from "../ui";
-import { CURRENT_LOCATION, PLACES, vehicleById, type Place } from "../../lib/data";
-import type { ActiveRide, RideOption } from "./types";
+import { CURRENT_LOCATION, PLACES, type Place, type VehicleKind } from "../../lib/data";
+import type { ActiveRide } from "./types";
+import { AcPill } from "./BookingScreens";
+import { useCatalog } from "../../lib/CatalogProvider";
 
 interface HomeProps {
   firstName: string;
   active: ActiveRide | null;
   unread: number;
-  onSearch: (prefer?: RideOption) => void;
+  onSearch: (prefer?: VehicleKind) => void;
+  /** AC preference for cars that come both ways — carried into the ride list. */
   ac: boolean;
-  onAc: (ac: boolean) => void;
+  onAcChange: (ac: boolean) => void;
+  onParcel: () => void;
   onQuick: (to: Place) => void;
   onTrack: () => void;
   onOffers: () => void;
@@ -36,9 +42,8 @@ const STATUS_LINE: Record<string, string> = {
   Completed: "Trip completed",
 };
 
-const SERVICES: RideOption[] = ["bike", "auto", "erick", "mini", "sedan", "suv", "any", "rental", "parcel"];
-
 export default function HomeScreen(p: HomeProps) {
+  const { vehicles } = useCatalog();
   const quick = PLACES.filter((x) => x.kind);
   return (
     <div style={{ paddingBottom: 24 }}>
@@ -101,24 +106,6 @@ export default function HomeScreen(p: HomeProps) {
         </div>
       </div>
 
-      {/* ── AC / Non-AC preference ── */}
-      <div style={{ padding: "14px 16px 0" }}>
-        <div style={{ background: "var(--surface)", borderRadius: 18, padding: "12px 12px 12px 14px", boxShadow: "var(--shadow-card)", display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>Vehicle type</span>
-            <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-soft)" }}>{p.ac ? "AC cars for every ride" : "Non-AC · cheaper car fares"}</span>
-          </span>
-          <div role="radiogroup" aria-label="AC or Non-AC vehicle" style={{ display: "flex", background: "var(--bg-secondary)", borderRadius: 999, padding: 3 }}>
-            {[true, false].map((v) => (
-              <button key={String(v)} role="radio" aria-checked={p.ac === v} onClick={() => p.onAc(v)} style={{
-                border: "none", cursor: "pointer", borderRadius: 999, padding: "8px 14px", fontSize: 13, fontWeight: 700,
-                background: p.ac === v ? (v ? "var(--blue)" : "var(--ink)") : "transparent", color: p.ac === v ? "white" : "var(--ink-soft)",
-              }}>{v ? "❄ AC" : "Non-AC"}</button>
-            ))}
-          </div>
-        </div>
-      </div>
-
       {/* ── Active ride ── */}
       {p.active && (
         <div style={{ padding: "16px 16px 0" }}>
@@ -131,7 +118,7 @@ export default function HomeScreen(p: HomeProps) {
               <VehicleArt kind={p.active.vehicle} size={44} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "var(--gold)", letterSpacing: "0.06em" }}>CURRENT RIDE</p>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "var(--gold)", letterSpacing: "0.06em" }}>{p.active.service === "parcel" ? "CURRENT DELIVERY" : "CURRENT RIDE"}</p>
               <p style={{ margin: "2px 0 0", fontSize: 14.5, fontWeight: 700 }}>{STATUS_LINE[p.active.status]}</p>
               <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.75)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>To {p.active.to.name}</p>
             </div>
@@ -141,25 +128,58 @@ export default function HomeScreen(p: HomeProps) {
       )}
 
       {/* ── Ride categories ── */}
-      <div style={{ padding: "22px 16px 0" }}>
-        <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)", fontWeight: 500 }}>Pick your ride</p>
-        <p style={{ margin: 0, fontSize: 19, fontWeight: 700, color: "var(--ink)", letterSpacing: "-0.02em" }}>Our Services</p>
+      <div style={{ padding: "22px 16px 0", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
+        <div>
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)", fontWeight: 500 }}>Pick your ride</p>
+          <p style={{ margin: 0, fontSize: 19, fontWeight: 700, color: "var(--ink)", letterSpacing: "-0.02em" }}>Our Services</p>
+        </div>
+        {vehicles.some((v) => v.acOption) && (
+          <div role="radiogroup" aria-label="AC preference for cars" style={{ display: "flex", background: "var(--bg-secondary)", borderRadius: 999, padding: 3 }}>
+            {[true, false].map((on) => (
+              <button key={String(on)} role="radio" aria-checked={p.ac === on} onClick={() => p.onAcChange(on)} style={{
+                border: "none", cursor: "pointer", borderRadius: 999, padding: "5px 11px", fontSize: 12, fontWeight: 600,
+                background: p.ac === on ? "var(--surface)" : "transparent", color: p.ac === on ? "var(--blue)" : "var(--ink-soft)",
+                boxShadow: p.ac === on ? "var(--shadow-sm)" : "none", display: "flex", alignItems: "center", gap: 4,
+              }}>{on && <SnowIcon s={12} c={p.ac ? "var(--blue)" : "var(--ink-soft)"} />}{on ? "AC" : "Non-AC"}</button>
+            ))}
+          </div>
+        )}
       </div>
-      <div style={{ padding: "12px 12px 0", display: "grid", gridTemplateColumns: "repeat(4,1fr)", rowGap: 14, columnGap: 6 }}>
-        {SERVICES.map((o) => (
-          <button key={o} onClick={() => p.onSearch(o)} className="press" style={{
+      <div style={{ padding: "12px 12px 0", display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 6 }}>
+        {vehicles.map((v) => (
+          <button key={v.id} onClick={() => p.onSearch(v.id)} className="press" aria-label={v.acOption ? `${v.name} · ${p.ac ? "AC" : "Non-AC"}` : v.name} style={{
             background: "none", border: "none", padding: 0, cursor: "pointer",
-            display: "flex", flexDirection: "column", alignItems: "center", gap: 7, position: "relative",
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 7,
           }}>
             <div style={{
-              width: "100%", maxWidth: 70, aspectRatio: "1 / 1", background: "var(--surface)", borderRadius: "28%",
+              position: "relative", width: "100%", maxWidth: 66, aspectRatio: "1 / 1", background: "var(--surface)", borderRadius: "28%",
               display: "flex", alignItems: "center", justifyContent: "center",
               boxShadow: "0 6px 10px -2px rgba(15,23,41,0.16), 0 2px 4px rgba(15,23,41,0.06)",
-            }}>{o === "any" ? <AnyArt size={50} /> : o === "rental" ? <RentalArt size={48} /> : o === "parcel" ? <ParcelArt size={50} /> : <VehicleArt kind={o} size={50} />}</div>
-            {o === "parcel" && <span style={{ position: "absolute", top: -6, right: 2, background: "var(--red)", color: "white", fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 6 }}>NEW</span>}
-            <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--ink)" }}>{o === "any" ? "Book Any" : o === "rental" ? "Rental" : o === "parcel" ? "Parcel" : vehicleById(o).name}</span>
+            }}>
+              <VehicleArt kind={v.id} size={48} />
+              {v.acOption && <span style={{ position: "absolute", bottom: -7, left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap" }}><AcPill ac={p.ac} /></span>}
+            </div>
+            <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--ink)" }}>{v.name}</span>
           </button>
         ))}
+      </div>
+
+      {/* ── Parcel delivery ── */}
+      <div style={{ padding: "16px 16px 0" }}>
+        <button onClick={p.onParcel} className="press" style={{
+          width: "100%", border: "1px solid var(--line)", cursor: "pointer", textAlign: "left", borderRadius: 20, padding: "12px 14px 12px 8px",
+          background: "var(--surface)", display: "flex", alignItems: "center", gap: 10, boxShadow: "var(--shadow-card)",
+        }}>
+          <ParcelArt size={84} />
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 15.5, fontWeight: 700, color: "var(--ink)" }}>Send a Parcel</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--blue)", background: "var(--blue-tint)", borderRadius: 6, padding: "2px 6px" }}>NEW</span>
+            </span>
+            <span style={{ display: "block", fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45, marginTop: 1 }}>Documents, food, groceries &amp; more · up to 100 kg · same-hour delivery</span>
+          </span>
+          <ChevronRight s={18} c="var(--ink-mute)" />
+        </button>
       </div>
 
       <div style={{ paddingTop: 24 }}><PromoCarousel onOffers={p.onOffers} onRide={() => p.onSearch()} /></div>
@@ -204,7 +224,7 @@ function PromoCarousel({ onOffers, onRide }: { onOffers: () => void; onRide: () 
         background: "linear-gradient(150deg,var(--blue-dark) 0%,var(--blue-dark) 55%,var(--blue) 100%)",
         boxShadow: "0 10px 28px rgba(11,92,255,0.28)",
       }}>
-        <div style={{ position: "absolute", right: -50, top: -60, width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, rgba(245,166,35,0.30), transparent 70%)" }} />
+        <div style={{ position: "absolute", right: -50, top: -60, width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, rgba(120,190,255,0.30), transparent 70%)" }} />
         <div style={{ position: "absolute", left: -40, bottom: -70, width: 170, height: 170, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.14), transparent 70%)" }} />
         {children}
       </div>
@@ -220,7 +240,7 @@ function PromoCarousel({ onOffers, onRide }: { onOffers: () => void; onRide: () 
         {slide(
           <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ flex: 1 }}>
-              <span style={{ display: "inline-block", background: "#CFFB6B", color: "var(--blue-dark)", fontSize: 10.5, fontWeight: 700, padding: "4px 10px", borderRadius: 8 }}>Code: FIRST50</span>
+              <span style={{ display: "inline-block", background: "white", color: "var(--blue-dark)", fontSize: 10.5, fontWeight: 700, padding: "4px 10px", borderRadius: 8 }}>Code: FIRST50</span>
               <p style={{ margin: "10px 0 0", fontSize: 22, fontWeight: 800, color: "white", lineHeight: 1.2 }}>
                 50% off your<br /><span style={{ color: "var(--gold)" }}>first ride</span>
               </p>
@@ -228,10 +248,12 @@ function PromoCarousel({ onOffers, onRide }: { onOffers: () => void; onRide: () 
               <button onClick={onOffers} className="press" style={{
                 background: "linear-gradient(135deg,var(--gold),var(--gold-dark))", color: "var(--blue-dark)", border: "none",
                 borderRadius: 12, padding: "10px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer",
-                boxShadow: "0 6px 16px rgba(245,166,35,0.40)", display: "inline-flex", alignItems: "center", gap: 6,
+                boxShadow: "0 6px 16px rgba(120,190,255,0.40)", display: "inline-flex", alignItems: "center", gap: 6,
               }}>View Offers <ArrowRight s={15} c="var(--blue-dark)" w={2.2} /></button>
             </div>
-            <div style={{ flexShrink: 0, filter: "drop-shadow(0 10px 18px rgba(4,36,107,0.45))" }}><VehicleArt kind="sedan" size={124} /></div>
+            <div style={{ flexShrink: 0, filter: "drop-shadow(0 10px 18px rgba(4,36,107,0.45))" }}>
+              <Image src="/vehicles/bike-lite.webp" alt="" aria-hidden="true" width={124} height={101} style={{ width: 124, height: 101, objectFit: "contain" }} />
+            </div>
           </div>, 0,
         )}
         {slide(

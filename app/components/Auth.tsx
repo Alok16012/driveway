@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ArrowRight, BackIcon, BellIcon, PinIcon, CheckIcon } from "./icons";
-import { OtpInput, PrimaryButton, card, field, iconBtn, label } from "./ui";
+import { PrimaryButton, card, field, iconBtn, label } from "./ui";
 
 /** Brand splash — deep navy so the DriveWay gradient logo reads the way it was drawn. */
 export function SplashScreen({ tagline, cta = "Get Started", onStart, footer }: {
@@ -11,7 +11,7 @@ export function SplashScreen({ tagline, cta = "Get Started", onStart, footer }: 
   return (
     <div style={{
       position: "absolute", inset: 0, zIndex: 200,
-      background: "linear-gradient(165deg,#04246b 0%,#020b24 100%)",
+      background: "var(--hero)",
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
       <div style={{ position: "absolute", right: -80, top: -90, width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(31,214,201,0.30), transparent 70%)" }} />
@@ -36,6 +36,16 @@ export function SplashScreen({ tagline, cta = "Get Started", onStart, footer }: 
   );
 }
 
+/** Secondary link under the splash button, e.g. "New to DriveWay? Create an account". */
+export function SplashLink({ prompt, cta, onClick }: { prompt: string; cta: string; onClick: () => void }) {
+  return (
+    <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 13.5, color: "rgba(255,255,255,0.75)" }}>
+      {prompt}{" "}
+      <button onClick={onClick} style={{ background: "none", border: "none", padding: 0, color: "white", fontWeight: 700, fontSize: 13.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>{cta}</button>
+    </p>
+  );
+}
+
 const Shell = ({ children, onBack }: { children: React.ReactNode; onBack?: () => void }) => (
   <div className="fade-up" style={{ position: "absolute", inset: 0, zIndex: 190, background: "var(--app-bg)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
     <div style={{ padding: "18px 16px 0", minHeight: 42 }}>
@@ -54,94 +64,139 @@ const H = ({ title, accent, body }: { title: string; accent?: string; body: stri
   </div>
 );
 
-/** Mobile number → OTP. Demo accepts any 4 digits. */
-export function PhoneLogin({ title, accent, onSent, social = true }: { title: string; accent: string; onSent: (phone: string) => void; social?: boolean }) {
-  const [phone, setPhone] = useState("");
-  const ok = phone.length === 10;
+type SwitchTo = { prompt: string; cta: string; onClick: () => void };
+
+const Switch = ({ to }: { to?: SwitchTo }) => to ? (
+  <p style={{ margin: 0, textAlign: "center", fontSize: 13.5, color: "var(--ink-soft)" }}>
+    {to.prompt}{" "}
+    <button type="button" onClick={to.onClick} style={{ background: "none", border: "none", padding: 0, color: "var(--blue)", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>{to.cta}</button>
+  </p>
+) : null;
+
+const Terms = () => (
+  <p style={{ marginTop: "auto", fontSize: 11.5, color: "var(--ink-mute)", textAlign: "center", lineHeight: 1.5 }}>
+    By continuing you agree to DriveWay&apos;s Terms of Service and Privacy Policy.
+  </p>
+);
+
+const Err = ({ msg }: { msg: string }) => msg ? <p role="alert" style={{ margin: 0, fontSize: 12.5, color: "var(--red)" }}>{msg}</p> : null;
+
+/** Password field with a show/hide toggle. */
+function PasswordInput({ id, value, onChange, autoComplete }: { id: string; value: string; onChange: (v: string) => void; autoComplete: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ ...field, display: "flex", alignItems: "center", gap: 8, padding: "4px 6px 4px 14px" }}>
+      <input id={id} type={show ? "text" : "password"} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={autoComplete}
+        placeholder="••••••••" style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", fontSize: 15, padding: "10px 0", color: "var(--ink)" }} />
+      <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? "Hide password" : "Show password"}
+        style={{ background: "none", border: "none", color: "var(--blue)", fontWeight: 600, fontSize: 12.5, cursor: "pointer", padding: "6px 8px" }}>{show ? "Hide" : "Show"}</button>
+    </div>
+  );
+}
+
+/** 10-digit Indian mobile number with a fixed +91 prefix. */
+export function MobileInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div style={{ ...field, display: "flex", alignItems: "center", gap: 10, padding: "4px 14px" }}>
+      <span style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", borderRight: "1.5px solid var(--line)", paddingRight: 10 }}>🇮🇳 +91</span>
+      <input id="phone" value={value} inputMode="numeric" autoComplete="tel-national" placeholder="98765 43210"
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 10))}
+        style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", fontSize: 16, padding: "10px 0", color: "var(--ink)", letterSpacing: "0.04em" }} />
+    </div>
+  );
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const MIN_PASSWORD = 8;
+
+/** Runs an async submit that resolves to an error message (or null), tracking busy/error state. */
+function useSubmit() {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const run = async (fn: () => Promise<string | null>) => {
+    setBusy(true); setErr("");
+    const e = await fn();
+    if (e) setErr(e);
+    setBusy(false);
+  };
+  return { busy, err, setErr, run };
+}
+
+/** Email + password log-in. `onSubmit` returns an error message or null. */
+export function EmailLogin({ title, accent, body = "Log in with the email and password you signed up with.", switchTo, onSubmit }: {
+  title: string; accent: string; body?: string; switchTo?: SwitchTo;
+  onSubmit: (email: string, password: string) => Promise<string | null>;
+}) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const { busy, err, setErr, run } = useSubmit();
+  const ok = EMAIL.test(email.trim()) && password.length > 0;
   return (
     <Shell>
-      <H title={title} accent={accent} body="Enter your mobile number. We'll send you a one-time password." />
-      <form onSubmit={(e) => { e.preventDefault(); if (ok) onSent(phone); }} style={{ padding: "28px 24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
-        <div>
-          <label style={label} htmlFor="phone">Mobile Number</label>
-          <div style={{ ...field, display: "flex", alignItems: "center", gap: 10, padding: "4px 14px" }}>
-            <span style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", borderRight: "1.5px solid var(--line)", paddingRight: 10 }}>🇮🇳 +91</span>
-            <input id="phone" value={phone} inputMode="numeric" autoComplete="tel-national" placeholder="98765 43210"
-              onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-              style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 16, padding: "10px 0", color: "var(--ink)", letterSpacing: "0.04em" }} />
-          </div>
-        </div>
-        <PrimaryButton type="submit" disabled={!ok}>Get OTP</PrimaryButton>
-        {social && (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--ink-mute)", fontSize: 12 }}>
-              <span style={{ flex: 1, height: 1, background: "var(--line-strong)" }} /> or continue with <span style={{ flex: 1, height: 1, background: "var(--line-strong)" }} />
-            </div>
-            <div style={{ display: "flex", gap: 12 }}>
-              {["Google", "Apple"].map((p) => (
-                <button key={p} type="button" onClick={() => onSent("9876543210")} className="press" style={{ ...card, flex: 1, border: "none", padding: 13, fontSize: 14, fontWeight: 600, color: "var(--ink)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                  {p === "Google"
-                    ? <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.5 12.2c0-.8-.1-1.4-.2-2H12v3.9h5.9a5 5 0 0 1-2.2 3.3v2.7h3.6c2-1.9 3.2-4.7 3.2-7.9z" /><path fill="#34A853" d="M12 23c3 0 5.5-1 7.3-2.7l-3.6-2.7c-1 .7-2.2 1-3.7 1-2.9 0-5.3-1.9-6.2-4.5H2.1v2.8A11 11 0 0 0 12 23z" /><path fill="#FBBC05" d="M5.8 14.1a6.6 6.6 0 0 1 0-4.2V7.1H2.1a11 11 0 0 0 0 9.8z" /><path fill="#EA4335" d="M12 5.4c1.6 0 3.1.6 4.2 1.7l3.2-3.2A11 11 0 0 0 2.1 7.1l3.7 2.8C6.7 7.3 9.1 5.4 12 5.4z" /></svg>
-                    : <svg width="18" height="18" viewBox="0 0 24 24" fill="#0f1729" aria-hidden="true"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.3-.9-1.7 0-3.3 1-4.2 2.5-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8s2 .8 3.3.8c1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9-.1 0-2.7-1-2.7-4zM13.9 5c.7-.9 1.2-2 1-3.2-1 .1-2.2.7-3 1.6-.6.7-1.2 1.9-1 3.1 1.1 0 2.3-.6 3-1.5z" /></svg>}
-                  {p}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-        <p style={{ marginTop: "auto", fontSize: 11.5, color: "var(--ink-mute)", textAlign: "center", lineHeight: 1.5 }}>
-          By continuing you agree to DriveWay&apos;s Terms of Service and Privacy Policy.
-        </p>
+      <H title={title} accent={accent} body={body} />
+      <form onSubmit={(e) => { e.preventDefault(); if (ok && !busy) run(() => onSubmit(email, password)); }} onChange={() => setErr("")}
+        style={{ padding: "28px 24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
+        <div><label style={label} htmlFor="le">Email</label><input id="le" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" style={field} autoComplete="email" /></div>
+        <div><label style={label} htmlFor="lp">Password</label><PasswordInput id="lp" value={password} onChange={setPassword} autoComplete="current-password" /></div>
+        <Err msg={err} />
+        <PrimaryButton type="submit" disabled={!ok || busy}>{busy ? "Logging in…" : "Log in"}</PrimaryButton>
+        <Switch to={switchTo} />
+        <Terms />
       </form>
     </Shell>
   );
 }
 
-export function OtpStep({ phone, onBack, onVerified }: { phone: string; onBack: () => void; onVerified: () => void }) {
-  const [otp, setOtp] = useState("");
-  const [left, setLeft] = useState(30);
-  const [checking, setChecking] = useState(false);
-  useEffect(() => {
-    if (left <= 0) return;
-    const t = setTimeout(() => setLeft((l) => l - 1), 1000);
-    return () => clearTimeout(t);
-  }, [left]);
-  useEffect(() => {
-    if (otp.length !== 4) return;
-    setChecking(true);
-    const t = setTimeout(onVerified, 700);
-    return () => clearTimeout(t);
-  }, [otp, onVerified]);
+export interface SignUpDetails { name: string; email: string; phone: string; password: string }
+
+/** Create an account: name, email, mobile and password. `onSubmit` returns an error message or null. */
+export function SignUpForm({ title, accent, body, cta = "Create account", switchTo, onSubmit }: {
+  title: string; accent: string; body: string; cta?: string; switchTo?: SwitchTo;
+  onSubmit: (d: SignUpDetails) => Promise<string | null>;
+}) {
+  const [d, setD] = useState<SignUpDetails>({ name: "", email: "", phone: "", password: "" });
+  const set = (p: Partial<SignUpDetails>) => setD((x) => ({ ...x, ...p }));
+  const { busy, err, setErr, run } = useSubmit();
+  const problem = !d.name.trim() ? "name" : !EMAIL.test(d.email.trim()) ? "email" : d.phone.length !== 10 ? "phone" : d.password.length < MIN_PASSWORD ? "password" : null;
   return (
-    <Shell onBack={onBack}>
-      <H title="Verify your number" body={`Enter the 4-digit code sent to +91 ${phone.slice(0, 5)} ${phone.slice(5)}`} />
-      <div style={{ padding: "32px 24px 0" }}>
-        <OtpInput value={otp} onChange={setOtp} />
-        <p style={{ textAlign: "center", margin: "22px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
-          {checking ? "Verifying…" : left > 0 ? <>Resend code in <b style={{ color: "var(--ink)" }}>0:{String(left).padStart(2, "0")}</b></> : (
-            <button onClick={() => setLeft(30)} style={{ background: "none", border: "none", color: "var(--blue)", fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}>Resend OTP</button>
-          )}
-        </p>
-        <p style={{ textAlign: "center", margin: "8px 0 0", fontSize: 11.5, color: "var(--ink-mute)" }}>Demo: any 4 digits work</p>
-      </div>
+    <Shell>
+      <H title={title} accent={accent} body={body} />
+      <form onSubmit={(e) => { e.preventDefault(); if (!problem && !busy) run(() => onSubmit(d)); }} onChange={() => setErr("")}
+        style={{ padding: "24px 24px", display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
+        <div><label style={label} htmlFor="sn">Full Name</label><input id="sn" value={d.name} onChange={(e) => set({ name: e.target.value })} placeholder="Amit Sharma" style={field} autoComplete="name" /></div>
+        <div><label style={label} htmlFor="se">Email</label><input id="se" type="email" value={d.email} onChange={(e) => set({ email: e.target.value })} placeholder="you@example.com" style={field} autoComplete="email" /></div>
+        <div><label style={label} htmlFor="phone">Mobile Number</label><MobileInput value={d.phone} onChange={(phone) => set({ phone })} /></div>
+        <div>
+          <label style={label} htmlFor="sp">Password</label>
+          <PasswordInput id="sp" value={d.password} onChange={(password) => set({ password })} autoComplete="new-password" />
+          <p style={{ margin: "6px 2px 0", fontSize: 11.5, color: d.password && d.password.length < MIN_PASSWORD ? "var(--red)" : "var(--ink-mute)" }}>At least {MIN_PASSWORD} characters</p>
+        </div>
+        <Err msg={err} />
+        <PrimaryButton type="submit" disabled={!!problem || busy}>{busy ? "Creating account…" : cta}</PrimaryButton>
+        <Switch to={switchTo} />
+        <Terms />
+      </form>
     </Shell>
   );
 }
 
-/** Name, email and optional referral — shown once, after the first OTP. */
-export function ProfileSetup({ onDone }: { onDone: (p: { name: string; email: string }) => void }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [ref, setRef] = useState("");
+/** For someone already signed in who has no customer profile yet (e.g. they signed up as a rider first). */
+export function ProfileSetup({ initial, onDone }: {
+  initial: { name: string; phone: string }; onDone: (p: { name: string; phone: string }) => Promise<string | null>;
+}) {
+  const [name, setName] = useState(initial.name);
+  const [phone, setPhone] = useState(initial.phone.replace(/\D/g, "").slice(-10));
+  const { busy, err, setErr, run } = useSubmit();
+  const ok = !!name.trim() && phone.length === 10;
   return (
     <Shell>
-      <H title="Almost there!" accent="Tell us about you" body="This helps drivers greet you and receipts reach your inbox." />
-      <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) onDone({ name: name.trim(), email: email.trim() }); }}
+      <H title="Almost there!" accent="Tell us about you" body="This helps drivers greet you and reach you during a ride." />
+      <form onSubmit={(e) => { e.preventDefault(); if (ok && !busy) run(() => onDone({ name: name.trim(), phone })); }} onChange={() => setErr("")}
         style={{ padding: "24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
         <div><label style={label} htmlFor="n">Full Name</label><input id="n" value={name} onChange={(e) => setName(e.target.value)} placeholder="Amit Sharma" style={field} autoComplete="name" /></div>
-        <div><label style={label} htmlFor="e">Email <span style={{ fontWeight: 400, color: "var(--ink-mute)" }}>(optional)</span></label><input id="e" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" style={field} autoComplete="email" /></div>
-        <div><label style={label} htmlFor="r">Referral Code <span style={{ fontWeight: 400, color: "var(--ink-mute)" }}>(optional)</span></label><input id="r" value={ref} onChange={(e) => setRef(e.target.value.toUpperCase())} placeholder="e.g. RIDE100" style={field} /></div>
-        <div style={{ marginTop: "auto" }}><PrimaryButton type="submit" disabled={!name.trim()}>Continue</PrimaryButton></div>
+        <div><label style={label} htmlFor="phone">Mobile Number</label><MobileInput value={phone} onChange={setPhone} /></div>
+        <Err msg={err} />
+        <div style={{ marginTop: "auto" }}><PrimaryButton type="submit" disabled={!ok || busy}>{busy ? "Saving…" : "Continue"}</PrimaryButton></div>
       </form>
     </Shell>
   );

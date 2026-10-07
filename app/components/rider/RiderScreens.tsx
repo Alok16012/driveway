@@ -9,17 +9,29 @@ import { BrandMark, Wordmark } from "../Brand";
 import MapView from "../MapView";
 import VehicleArt from "../VehicleArt";
 import { Avatar, OtpInput, PageHeader, PrimaryButton, Stars, StatusBadge, Tabs, Toggle, card, iconBtn } from "../ui";
-import { HOTSPOTS, INCENTIVES, inr, vehicleById, WEEK, type Driver, type Ride } from "../../lib/data";
+import { inr, WEEK, type Driver, type ParcelInfo, type PayMethod, type Ride, type Service } from "../../lib/data";
+import { useCatalog } from "../../lib/CatalogProvider";
 
 /** Platform commission on every fare. */
-export const COMMISSION = 0.2;
 
 export interface RideRequest {
   id: string; customer: string; initials: string; rating: number;
-  from: string; to: string; pickupKm: number; pickupMin: number; km: number; min: number; fare: number; pay: "Cash" | "UPI";
+  from: string; to: string; pickupKm: number; pickupMin: number; km: number; min: number; fare: number; pay: PayMethod;
   waitFee?: number;   // added when the customer keeps the rider waiting past the free window
-  parcel?: string;    // set for parcel deliveries, e.g. "Documents · up to 1 kg"
-  ac?: boolean;       // customer booked an AC ride — keep the AC on
+  service?: Service;  // defaults to "ride"
+  ac?: boolean;       // AC-optional cars only
+  parcel?: ParcelInfo;
+}
+
+/** Badges shown on a request / trip: PARCEL, AC or NON-AC. */
+export function RequestTags({ req }: { req: RideRequest }) {
+  const tag = (t: string, bg: string, fg: string) => <span key={t} style={{ background: bg, color: fg, fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>{t}</span>;
+  return (
+    <>
+      {req.service === "parcel" && req.parcel && tag(`📦 PARCEL · ${req.parcel.type.toUpperCase()} · ${req.parcel.weight.toUpperCase()}`, "var(--gold-tint)", "var(--gold-dark)")}
+      {req.ac !== undefined && req.service !== "parcel" && tag(req.ac ? "❄ AC RIDE" : "NON-AC", req.ac ? "var(--blue-tint)" : "var(--bg-secondary)", req.ac ? "var(--blue)" : "var(--ink-soft)")}
+    </>
+  );
 }
 
 const dotStyle = (c: string, sq = false): React.CSSProperties => ({ width: 9, height: 9, borderRadius: sq ? 2 : "50%", background: c, flexShrink: 0 });
@@ -60,8 +72,9 @@ export function RiderHome({ rider, online, onToggle, today, wallet, goHome, onOp
   today: { earnings: number; trips: number; minutes: number }; wallet: number; goHome: string | null;
   onOpenEarnings: () => void; onAlerts: () => void; onQuick: (k: QuickKey) => void; onClearGoHome: () => void; unread: number;
 }) {
+  const { hotspots, incentives, vehicleById } = useCatalog();
   const h = Math.floor(today.minutes / 60), m = today.minutes % 60;
-  const daily = INCENTIVES[0];
+  const daily = incentives[0];
   return (
     <div style={{ paddingBottom: 24 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 10px" }}>
@@ -106,7 +119,7 @@ export function RiderHome({ rider, online, onToggle, today, wallet, goHome, onOp
             <NavIcon s={14} c="var(--blue)" />
             <span style={{ fontSize: 12, fontWeight: 600 }}>GPS · Sector 12, Noida</span>
           </div>
-          {online && <button onClick={() => onQuick("hotspots")} style={{ position: "absolute", right: 12, bottom: 12, background: "var(--ink)", color: "white", border: "none", cursor: "pointer", borderRadius: 999, padding: "5px 11px", fontSize: 11.5, fontWeight: 600 }}>🔥 {HOTSPOTS[0].surge}x demand · {HOTSPOTS[0].km} km away</button>}
+          {online && <button onClick={() => onQuick("hotspots")} style={{ position: "absolute", right: 12, bottom: 12, background: "var(--ink)", color: "white", border: "none", cursor: "pointer", borderRadius: 999, padding: "5px 11px", fontSize: 11.5, fontWeight: 600 }}>🔥 {hotspots[0].surge}x demand · {hotspots[0].km} km away</button>}
         </MapView>
       </div>
 
@@ -148,7 +161,7 @@ export function RiderHome({ rider, online, onToggle, today, wallet, goHome, onOp
 
       <div style={{ padding: "14px 16px 0" }}>
         <button onClick={() => onQuick("incentives")} className="press" style={{ ...card, width: "100%", cursor: "pointer", textAlign: "left", padding: 14, display: "flex", alignItems: "center", gap: 12, border: "1px solid var(--line)" }}>
-          <span style={{ width: 48, height: 48, borderRadius: 14, flexShrink: 0, background: "linear-gradient(135deg,var(--gold),var(--gold-dark))", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(245,166,35,0.3)" }}><GiftIcon s={24} c="white" w={2} /></span>
+          <span style={{ width: 48, height: 48, borderRadius: 14, flexShrink: 0, background: "linear-gradient(135deg,var(--gold),var(--gold-dark))", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(120,190,255,0.3)" }}><GiftIcon s={24} c="white" w={2} /></span>
           <span style={{ flex: 1 }}>
             <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>
               {today.trips >= daily.target ? `🎉 ${inr(daily.reward)} bonus unlocked!` : `Bonus: ${daily.target - today.trips} more trips → ${inr(daily.reward)}`}
@@ -166,7 +179,7 @@ export function RiderHome({ rider, online, onToggle, today, wallet, goHome, onOp
           <VehicleArt kind={rider.vehicle} size={60} />
           <div style={{ flex: 1 }}>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{rider.model}</p>
-            <p style={{ margin: "1px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>{vehicleById(rider.vehicle).name} · {rider.ac ? "❄ AC" : "Non-AC"} · {rider.plate}</p>
+            <p style={{ margin: "1px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>{vehicleById(rider.vehicle).name} · {rider.plate}</p>
           </div>
           <StatusBadge status={rider.kyc} />
         </div>
@@ -182,6 +195,7 @@ export const REQUEST_SECONDS = 15;
 export function RequestPopup({ req, autoAccept, towardsHome, onAccept, onDecline }: {
   req: RideRequest; autoAccept?: boolean; towardsHome?: boolean; onAccept: () => void; onDecline: (expired: boolean) => void;
 }) {
+  const { commission } = useCatalog();
   const [left, setLeft] = useState(REQUEST_SECONDS);
   useEffect(() => {
     if (left <= 0) { onDecline(true); return; }
@@ -190,17 +204,16 @@ export function RequestPopup({ req, autoAccept, towardsHome, onAccept, onDecline
     return () => clearTimeout(t);
   }, [left, autoAccept, onAccept, onDecline]);
 
-  const net = req.fare * (1 - COMMISSION);
+  const net = req.fare * (1 - commission);
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 150, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
       <div className="fade-up" style={{ position: "absolute", inset: 0, background: "rgba(15,23,41,0.5)" }} />
       <div className="slide-up" style={{ position: "relative", background: "var(--app-bg)", borderRadius: "24px 24px 0 0", padding: "16px 16px calc(18px + env(safe-area-inset-bottom))", maxHeight: "94%", overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <p style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>{req.parcel ? "New Delivery Request" : "New Ride Request"}</p>
-            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-              {!req.parcel && req.ac !== undefined && <span style={{ background: req.ac ? "var(--info-bg)" : "var(--surface-dim)", color: req.ac ? "var(--info-text)" : "var(--text-muted)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>{req.ac ? "❄ AC RIDE" : "NON-AC RIDE"}</span>}
-              {req.parcel && <span style={{ background: "var(--gold-tint)", color: "var(--gold-dark)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>📦 PARCEL · {req.parcel.toUpperCase()}</span>}
+            <p style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>{req.service === "parcel" ? "New Parcel Delivery" : "New Ride Request"}</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+              <RequestTags req={req} />
               {towardsHome && <span style={{ background: "var(--blue-tint)", color: "var(--blue)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>🏠 TOWARDS HOME</span>}
               {autoAccept && <span style={{ background: "var(--success)", color: "var(--success-text)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>AUTO-ACCEPTING…</span>}
             </div>
@@ -226,13 +239,14 @@ export function RequestPopup({ req, autoAccept, towardsHome, onAccept, onDecline
         <div style={{ ...card, padding: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
             <Avatar initials={req.initials} size={36} tone="gold" />
-            <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{req.customer}</p><p style={{ margin: 0, fontSize: 11.5, color: "var(--ink-soft)" }}>★ {req.rating} {req.parcel ? "sender" : "customer"}</p></div>
+            <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{req.customer}</p><p style={{ margin: 0, fontSize: 11.5, color: "var(--ink-soft)" }}>★ {req.rating} customer</p></div>
           </div>
           <RouteLines from={req.from} to={req.to} />
+          {req.parcel && <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>Deliver to <b style={{ color: "var(--ink)" }}>{req.parcel.receiver}</b>{req.parcel.note ? ` · “${req.parcel.note}”` : ""}</p>}
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
           <PrimaryButton tone="ghost" onClick={() => onDecline(false)} style={{ flex: 1, color: "var(--red)" }}>Decline</PrimaryButton>
-          <PrimaryButton onClick={onAccept} style={{ flex: 2, background: "linear-gradient(135deg,#34c38f,var(--green))", boxShadow: "0 6px 16px rgba(47,158,118,0.35)" }}>{req.parcel ? "Accept Delivery" : "Accept Ride"}</PrimaryButton>
+          <PrimaryButton onClick={onAccept} style={{ flex: 2, background: "linear-gradient(135deg,#34c38f,var(--green))", boxShadow: "0 6px 16px rgba(47,158,118,0.35)" }}>{req.service === "parcel" ? "Accept Delivery" : "Accept Ride"}</PrimaryButton>
         </div>
       </div>
     </div>
@@ -251,9 +265,10 @@ const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padSta
 
 export function TripPage({ req, phase, progress, onArrived, onStart, onEnd, onCollected, onRated, onBack, onCall, onCancel, onSos, onNavigate }: {
   req: RideRequest; phase: TripPhase; progress: number;
-  onArrived: () => void; onStart: (waitFee: number) => void; onEnd: () => void; onCollected: () => void; onRated: (n: number) => void;
+  onArrived: () => void; onStart: (waitFee: number, otp: string) => void; onEnd: () => void; onCollected: () => void; onRated: (n: number) => void;
   onBack: () => void; onCall: () => void; onCancel: () => void; onSos: () => void; onNavigate: () => void;
 }) {
+  const { commission } = useCatalog();
   const [otp, setOtp] = useState("");
   const [otpErr, setOtpErr] = useState(false);
   const [stars, setStars] = useState(0);
@@ -273,7 +288,7 @@ export function TripPage({ req, phase, progress, onArrived, onStart, onEnd, onCo
       <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", padding: "34px 16px 20px" }}>
         <div style={{ textAlign: "center" }}>
           <div className="fade-up" style={{ width: 76, height: 76, margin: "0 auto", borderRadius: "50%", background: "linear-gradient(135deg,#34c38f,var(--green))", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 10px 24px rgba(47,158,118,0.35)" }}><CheckIcon s={38} c="white" w={3} /></div>
-          <p style={{ margin: "14px 0 0", fontSize: 22, fontWeight: 800 }}>{req.parcel ? "Parcel Delivered" : "Trip Completed"}</p>
+          <p style={{ margin: "14px 0 0", fontSize: 22, fontWeight: 800 }}>Trip Completed</p>
           <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--ink-soft)" }}>{req.km} km · {req.min} min · #{req.id}</p>
           <p style={{ margin: "14px 0 0", fontSize: 38, fontWeight: 800 }}>{inr(total)}</p>
           <p style={{ margin: "2px 0 0", fontSize: 13, fontWeight: 600, color: phase === "rate" || req.pay !== "Cash" ? "var(--success-text)" : "var(--warning-text)" }}>
@@ -281,12 +296,12 @@ export function TripPage({ req, phase, progress, onArrived, onStart, onEnd, onCo
           </p>
         </div>
         <div style={{ ...card, padding: "12px 16px", marginTop: 18 }}>
-          {([["Trip fare", inr(req.fare)], wait ? ["Waiting charge", inr(wait)] : null, [`Platform commission (${COMMISSION * 100}%)`, "− " + inr(total * COMMISSION)]].filter(Boolean) as string[][]).map(([l, v]) => (
+          {([["Trip fare", inr(req.fare)], wait ? ["Waiting charge", inr(wait)] : null, [`Platform commission (${Math.round(commission * 100)}%)`, "− " + inr(total * commission)]].filter(Boolean) as string[][]).map(([l, v]) => (
             <div key={l} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "var(--ink-soft)", padding: "4px 0" }}><span>{l}</span><span>{v}</span></div>
           ))}
           <div style={{ borderTop: "1px dashed var(--line-strong)", margin: "6px 0" }} />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700, padding: "4px 0" }}><span>You earn</span><span style={{ color: "var(--success-text)" }}>{inr(total * (1 - COMMISSION))}</span></div>
-          {req.pay === "Cash" && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--ink-mute)", lineHeight: 1.45 }}>You keep the cash. The {inr(total * COMMISSION)} commission is added to your wallet dues.</p>}
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700, padding: "4px 0" }}><span>You earn</span><span style={{ color: "var(--success-text)" }}>{inr(total * (1 - commission))}</span></div>
+          {req.pay === "Cash" && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--ink-mute)", lineHeight: 1.45 }}>You keep the cash. The {inr(total * commission)} commission is added to your wallet dues.</p>}
         </div>
         {phase === "rate" && (
           <div className="fade-up" style={{ ...card, padding: 16, marginTop: 12, textAlign: "center" }}>
@@ -303,7 +318,8 @@ export function TripPage({ req, phase, progress, onArrived, onStart, onEnd, onCo
     );
   }
 
-  const title = req.parcel
+  const isParcel = req.service === "parcel";
+  const title = isParcel
     ? { toPickup: "Going to collect parcel", arrived: "Collect the parcel", onTrip: "Delivering parcel" }[phase]
     : { toPickup: "On the way to pickup", arrived: "Waiting for customer", onTrip: "Trip in progress" }[phase];
   const eta = phase === "onTrip" ? Math.max(1, Math.round(req.min * (1 - progress))) : Math.max(1, Math.round(req.pickupMin * (1 - progress)));
@@ -334,16 +350,23 @@ export function TripPage({ req, phase, progress, onArrived, onStart, onEnd, onCo
         <div style={{ ...card, padding: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
             <Avatar initials={req.initials} size={42} tone="gold" />
-            <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>{req.customer}</p><p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>★ {req.rating} · {req.pay} · {inr(req.fare)}{req.ac !== undefined && !req.parcel ? (req.ac ? " · ❄ AC ON" : " · Non-AC") : ""}</p></div>
+            <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>{req.customer}</p><p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>★ {req.rating} · {req.pay} · {inr(req.fare)}</p></div>
             <button onClick={onCall} aria-label="Call customer" className="press" style={{ width: 42, height: 42, borderRadius: "50%", border: "none", background: "var(--blue-tint)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><PhoneIcon s={19} c="var(--blue)" /></button>
           </div>
           <RouteLines from={req.from} to={req.to} />
-          {req.parcel && <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-soft)", background: "var(--gold-tint)", borderRadius: 10, padding: "8px 10px" }}>📦 {req.parcel} · Hand over to the receiver and confirm delivery</p>}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}><RequestTags req={req} /></div>
+          {isParcel && req.parcel && (
+            <div style={{ marginTop: 10, borderRadius: 12, background: "var(--bg-secondary)", padding: "10px 12px", fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+              <b style={{ color: "var(--ink)" }}>Receiver:</b> {req.parcel.receiver} · {req.parcel.receiverPhone}
+              {req.parcel.note && <><br /><b style={{ color: "var(--ink)" }}>Note:</b> {req.parcel.note}</>}
+              <br />{phase === "onTrip" ? "Ask the receiver for the delivery OTP before handing over." : "Check the parcel is sealed and matches the description."}
+            </div>
+          )}
         </div>
 
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={onNavigate} className="press" style={{ ...pill, background: "var(--blue-tint)", color: "var(--blue)" }}><NavIcon s={15} c="var(--blue)" /> Navigate</button>
-          {phase !== "onTrip" && <button onClick={onCancel} className="press" style={{ ...pill, background: "var(--error)", color: "var(--error-text)" }}>Cancel ride</button>}
+          {phase !== "onTrip" && <button onClick={onCancel} className="press" style={{ ...pill, background: "var(--error)", color: "var(--error-text)" }}>Cancel {isParcel ? "delivery" : "ride"}</button>}
         </div>
 
         {phase === "arrived" && (
@@ -354,11 +377,10 @@ export function TripPage({ req, phase, progress, onArrived, onStart, onEnd, onCo
                 <b>Waiting {mmss(waited)}</b>
                 <span style={{ color: "var(--ink-soft)" }}>{waited < FREE_WAIT_SEC ? ` · free for ${mmss(FREE_WAIT_SEC - waited)}` : ` · ${inr(WAIT_FEE_PER_MIN)}/min charge`}</span>
               </span>
-              {fee > 0 ? <span style={{ fontSize: 13.5, fontWeight: 800, color: "var(--warning-text)" }}>+{inr(fee)}</span>
-                : <button onClick={() => setWaited(FREE_WAIT_SEC + 55)} style={{ background: "none", border: "1px dashed var(--line-strong)", borderRadius: 8, padding: "3px 8px", fontSize: 10.5, color: "var(--ink-mute)", cursor: "pointer" }}>Demo: skip 3 min</button>}
+              {fee > 0 && <span style={{ fontSize: 13.5, fontWeight: 800, color: "var(--warning-text)" }}>+{inr(fee)}</span>}
             </div>
             <div style={{ ...card, padding: 16, textAlign: "center" }}>
-              <p style={{ margin: "0 0 12px", fontSize: 13.5, fontWeight: 600 }}>{req.parcel ? "Ask the sender for the 4-digit pickup OTP" : "Ask the customer for their 4-digit ride OTP"}</p>
+              <p style={{ margin: "0 0 12px", fontSize: 13.5, fontWeight: 600 }}>Ask the customer for their 4-digit ride OTP</p>
               <OtpInput value={otp} onChange={(v) => { setOtp(v); setOtpErr(false); }} />
               {otpErr && <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--error-text)" }}>Enter all 4 digits</p>}
               <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--ink-mute)" }}>Demo: any 4 digits</p>
@@ -368,8 +390,8 @@ export function TripPage({ req, phase, progress, onArrived, onStart, onEnd, onCo
 
         <div style={{ marginTop: "auto" }}>
           {phase === "toPickup" && <PrimaryButton onClick={onArrived}>{progress >= 1 ? "I've Arrived" : "Mark Arrived"}</PrimaryButton>}
-          {phase === "arrived" && <PrimaryButton onClick={() => (otp.length === 4 ? onStart(fee) : setOtpErr(true))}>Start Trip</PrimaryButton>}
-          {phase === "onTrip" && <PrimaryButton tone="red" onClick={onEnd}>{req.parcel ? "Mark Delivered" : "End Trip"}</PrimaryButton>}
+          {phase === "arrived" && <PrimaryButton onClick={() => (otp.length === 4 ? onStart(fee, otp) : setOtpErr(true))}>Start Trip</PrimaryButton>}
+          {phase === "onTrip" && <PrimaryButton tone="red" onClick={onEnd}>End Trip</PrimaryButton>}
         </div>
       </div>
     </div>
@@ -379,10 +401,11 @@ export function TripPage({ req, phase, progress, onArrived, onStart, onEnd, onCo
 /* ───────────────────────── Earnings ───────────────────────── */
 
 export function EarningsScreen({ today, onBack }: { today: { earnings: number; trips: number; minutes: number }; onBack?: () => void }) {
+  const { commission: rate } = useCatalog();
   const [range, setRange] = useState<"day" | "week" | "month">("week");
-  const gross = { day: today.earnings / (1 - COMMISSION), week: 18420, month: 74860 }[range];
+  const gross = { day: today.earnings / (1 - rate), week: 18420, month: 74860 }[range];
   const trips = { day: today.trips, week: 92, month: 371 }[range];
-  const commission = gross * COMMISSION;
+  const commission = gross * rate;
   const bars = range === "day"
     ? ["6a", "9a", "12p", "3p", "6p", "9p"].map((d, i) => ({ d, v: [0.2, 0.7, 0.4, 0.5, 0.9, 0.6][i] }))
     : WEEK.map((w) => ({ d: w.d, v: w.revenue / 320000 }));
@@ -392,7 +415,7 @@ export function EarningsScreen({ today, onBack }: { today: { earnings: number; t
       <div style={{ padding: "0 16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
         <Tabs value={range} onChange={setRange} tabs={[{ id: "day", label: "Today" }, { id: "week", label: "This Week" }, { id: "month", label: "This Month" }]} />
         <div style={{ borderRadius: 22, padding: 18, background: "linear-gradient(150deg,var(--blue-dark),var(--blue))", color: "white", boxShadow: "0 10px 28px rgba(11,92,255,0.28)", position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", right: -50, top: -60, width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, rgba(245,166,35,0.3), transparent 70%)" }} />
+          <div style={{ position: "absolute", right: -50, top: -60, width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, rgba(120,190,255,0.3), transparent 70%)" }} />
           <p style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.75)" }}>Net earnings</p>
           <p style={{ margin: "2px 0 0", fontSize: 32, fontWeight: 800 }}>{inr(gross - commission)}</p>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 90, marginTop: 14 }}>
@@ -413,7 +436,7 @@ export function EarningsScreen({ today, onBack }: { today: { earnings: number; t
         </div>
         <div style={{ ...card, padding: "12px 16px" }}>
           <p style={{ margin: "0 0 6px", fontSize: 13.5, fontWeight: 700 }}>Breakdown</p>
-          {[["Gross fares", inr(gross)], [`Platform commission (${COMMISSION * 100}%)`, "− " + inr(commission)], ["Incentives & bonus", inr(range === "day" ? 0 : range === "week" ? 500 : 2000)]].map(([l, v]) => (
+          {[["Gross fares", inr(gross)], [`Platform commission (${Math.round(commission * 100)}%)`, "− " + inr(commission)], ["Incentives & bonus", inr(range === "day" ? 0 : range === "week" ? 500 : 2000)]].map(([l, v]) => (
             <div key={l} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "var(--ink-soft)", padding: "4px 0" }}><span>{l}</span><span>{v}</span></div>
           ))}
           <div style={{ borderTop: "1px dashed var(--line-strong)", margin: "6px 0" }} />
@@ -435,6 +458,7 @@ export function EarningsScreen({ today, onBack }: { today: { earnings: number; t
 /* ───────────────────────── Trips history ───────────────────────── */
 
 export function TripsScreen({ trips, onOpen }: { trips: Ride[]; onOpen: (r: Ride) => void }) {
+  const { commission } = useCatalog();
   const [filter, setFilter] = useState<"all" | "done" | "cancelled">("all");
   const shown = trips.filter((r) => filter === "all" || (filter === "done" ? r.status === "Completed" : r.status === "Cancelled"));
   return (
@@ -452,7 +476,7 @@ export function TripsScreen({ trips, onOpen }: { trips: Ride[]; onOpen: (r: Ride
             <RouteLines from={r.from} to={r.to} />
             <div style={{ borderTop: "1px solid var(--line)", marginTop: 10, paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>{r.customer} · {r.km} km · {r.pay}</span>
-              <span style={{ fontSize: 15, fontWeight: 800, color: r.status === "Cancelled" ? "var(--ink-mute)" : "var(--ink)" }}>{r.status === "Cancelled" ? "—" : inr(r.fare * (1 - COMMISSION))}</span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: r.status === "Cancelled" ? "var(--ink-mute)" : "var(--ink)" }}>{r.status === "Cancelled" ? "—" : inr(r.fare * (1 - commission))}</span>
             </div>
           </button>
         ))}
@@ -464,13 +488,6 @@ export function TripsScreen({ trips, onOpen }: { trips: Ride[]; onOpen: (r: Ride
 /* ───────────────────────── Notifications ───────────────────────── */
 
 export type RiderAlert = [string, string, string, "ride" | "pay" | "policy" | "bonus"];
-
-export const RIDER_ALERTS: RiderAlert[] = [
-  ["New Ride Request", "Sector 12 → DLF Mall · ₹160", "2 min ago", "ride"],
-  ["Trip Completed", "₹128 credited to your wallet", "12 min ago", "pay"],
-  ["Policy Update", "New safety guidelines for night rides", "1 hour ago", "policy"],
-  ["Bonus Offer", "Complete 5 rides today & get ₹500", "3 hours ago", "bonus"],
-];
 
 export function AlertsScreen({ items, onBack }: { items: RiderAlert[]; onBack?: () => void }) {
   const icon = { ride: [AlertIcon, "var(--gold-dark)", "var(--gold-tint)"], pay: [CheckIcon, "var(--success-text)", "var(--success)"], policy: [ShieldIcon, "var(--blue)", "var(--blue-tint)"], bonus: [GiftIcon, "var(--purple)", "var(--purple-tint)"] } as const;
@@ -506,9 +523,10 @@ const MENU: { k: AccountKey; label: string; Icon: typeof HelpIcon }[] = [
   { k: "help", label: "Help & Support", Icon: HelpIcon },
 ];
 
-export function RiderAccount({ rider, stats, onMenu, onLogout }: {
-  rider: Driver; stats: { acceptance: number; cancellation: number }; onMenu: (k: AccountKey) => void; onLogout: () => void;
+export function RiderAccount({ rider, stats, onEdit, onMenu, onLogout }: {
+  rider: Driver; stats: { acceptance: number; cancellation: number }; onEdit: () => void; onMenu: (k: AccountKey) => void; onLogout: () => void;
 }) {
+  const { vehicleById } = useCatalog();
   return (
     <div style={{ paddingBottom: 12 }}>
       <PageHeader title="My Account" />
@@ -521,6 +539,7 @@ export function RiderAccount({ rider, stats, onMenu, onLogout }: {
               <p style={{ margin: "1px 0 0", fontSize: 12.5, color: "var(--text-muted)" }}>{rider.phone}</p>
               <p style={{ margin: "1px 0 0", fontSize: 12.5, color: "var(--text-muted)" }}>Rider ID {rider.id} · {rider.city}</p>
             </div>
+            <button onClick={onEdit} aria-label="Edit profile" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--blue)", fontSize: 12.5, fontWeight: 600, letterSpacing: "0.03em", alignSelf: "flex-start" }}>EDIT</button>
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
             <span style={{ background: "var(--green)", color: "white", fontSize: 11, fontWeight: 600, padding: "5px 11px", borderRadius: 6 }}>✓ VERIFIED RIDER</span>
@@ -536,7 +555,7 @@ export function RiderAccount({ rider, stats, onMenu, onLogout }: {
         </div>
         <div style={{ ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 }}>
           <VehicleArt kind={rider.vehicle} size={60} />
-          <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{rider.model}</p><p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>{vehicleById(rider.vehicle).name} · {rider.ac ? "❄ AC" : "Non-AC"} · {rider.plate}</p></div>
+          <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{rider.model}</p><p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>{vehicleById(rider.vehicle).name} · {rider.plate}</p></div>
         </div>
         <div style={{ ...card, padding: "0 14px" }}>
           {MENU.map(({ k, label: l, Icon }, i) => (

@@ -82,9 +82,9 @@ export function StatusBadge({ status }: { status: RideStatus | string }) {
 export function PrimaryButton({ children, onClick, disabled, tone = "blue", style, type }: {
   children: React.ReactNode; onClick?: () => void; disabled?: boolean; tone?: "blue" | "gold" | "red" | "ghost"; style?: React.CSSProperties; type?: "submit" | "button";
 }) {
-  const bg = { blue: "linear-gradient(135deg,var(--blue),var(--blue-dark))", gold: "linear-gradient(135deg,var(--gold),var(--gold-dark))", red: "linear-gradient(135deg,#f25555,var(--red))", ghost: "var(--surface)" }[tone];
+  const bg = { blue: "linear-gradient(135deg,var(--blue),var(--blue-dark))", gold: "white", red: "linear-gradient(135deg,#f25555,var(--red))", ghost: "var(--surface)" }[tone];
   const fg = { blue: "white", gold: "var(--blue-dark)", red: "white", ghost: "var(--ink)" }[tone];
-  const sh = { blue: "0 6px 16px rgba(11,92,255,0.30)", gold: "0 6px 16px rgba(245,166,35,0.40)", red: "0 6px 16px rgba(224,49,49,0.28)", ghost: "var(--shadow-card)" }[tone];
+  const sh = { blue: "0 6px 16px rgba(11,92,255,0.30)", gold: "0 6px 16px rgba(6,53,154,0.25)", red: "0 6px 16px rgba(224,49,49,0.28)", ghost: "var(--shadow-card)" }[tone];
   return (
     <button type={type ?? "button"} onClick={onClick} disabled={disabled} className="press" style={{
       width: "100%", border: "none", borderRadius: 16, padding: "15px 18px",
@@ -170,7 +170,7 @@ export function OtpInput({ value, onChange, length = 4 }: { value: string; onCha
         style={{ position: "absolute", inset: 0, opacity: 0, width: "100%" }} />
       {Array.from({ length }).map((_, i) => (
         <span key={i} style={{
-          width: 54, height: 58, borderRadius: 14, background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center",
+          flex: "0 1 54px", minWidth: 0, height: 58, borderRadius: 14, background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 22, fontWeight: 700, color: "var(--ink)",
           border: `1.5px solid ${i === value.length ? "var(--blue)" : "var(--line)"}`, boxShadow: "var(--shadow-card)",
         }}>{value[i] ?? ""}</span>

@@ -1,14 +1,12 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+/* Browser-side Supabase client — uses the public anon key, so every query is subject to RLS.
+ * The customer app (/) and the rider app (/rider) share one origin, so each keeps its sign-in under its own
+ * storage key; otherwise logging in to one app in another tab silently swaps the other app's user. */
+import { createClient } from "@supabase/supabase-js";
 
-/* Browser-safe Supabase client (anon key). Row Level Security decides what it can read and write. */
+const app = typeof window !== "undefined" && window.location.pathname.startsWith("/rider") ? "rider" : "customer";
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-let client: SupabaseClient | null = null;
-
-export function supabase(): SupabaseClient {
-  if (!url || !anonKey) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local");
-  client ??= createClient(url, anonKey);
-  return client;
-}
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { auth: { storageKey: `driveway-${app}-auth` } },
+);

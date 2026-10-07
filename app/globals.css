@@ -117,6 +117,38 @@
   --text-primary: #0f1729;
   --shadow-card: 0 2px 10px rgba(15, 23, 41, 0.05);
   --shadow-float: 0 0 40px rgba(15, 23, 41, 0.08);
+  /* Brand surfaces — overridden per app below. Deep navy so the DriveWay gradient logo reads the way it was drawn. */
+  --hero: linear-gradient(165deg,#04246b 0%,#020b24 100%);
+  --hero-side: linear-gradient(180deg,#04246b 0%,#020b24 100%);
+  --accent-light: #7ee21f;
+}
+
+/* ── Per-app themes: each route wraps itself in one of these (see each route's layout.tsx) ── */
+
+/* Customer — the DriveWay blue + gold (the :root defaults). */
+.theme-customer { display: contents; }
+
+/* Rider — deep navy with an aqua-sky highlight. */
+.theme-rider {
+  display: contents;
+  --app-bg: #f2f5fb; --bg-primary: #f2f5fb; --bg-secondary: #eceff7; --line: #e2e7f2;
+  --blue: #1e3a8a; --blue-dark: #0f1f52; --blue-tint: #e8edf8; --blue-ghost: #dbe3f4; --blue-soft: #9fb2dd; --blue-pale: #dfe6f5;
+  --brand-50: #eef1fa; --brand-100: #dbe3f4;
+  --gold: #38bdf8; --gold-dark: #0284c7; --gold-tint: #e6f6fe; --gold-100: #cdeefd;
+  --hero: linear-gradient(165deg,#1e3a8a 0%,#0a1438 100%);
+  --accent-light: #7dd3fc;
+}
+
+/* Admin — steel / ocean blue, calmer for long desk sessions. */
+.theme-admin {
+  display: contents;
+  --app-bg: #f3f6f9; --bg-primary: #f3f6f9; --bg-secondary: #edf2f6; --line: #e1e8ef;
+  --blue: #0369a1; --blue-dark: #0c4a6e; --blue-tint: #e6f2f9; --blue-ghost: #d4eaf6; --blue-soft: #8cc4e3; --blue-pale: #d9ecf7;
+  --brand-50: #eef6fb; --brand-100: #d4eaf6;
+  --gold: #60a5fa; --gold-dark: #2563eb; --gold-tint: #eaf2ff; --gold-100: #d6e6ff;
+  --hero: linear-gradient(165deg,#0369a1 0%,#082f49 100%);
+  --hero-side: linear-gradient(180deg,#0c4a6e 0%,#082f49 100%);
+  --accent-light: #7dd3fc;
 }
 
 * {
@@ -219,7 +251,7 @@ h1, h2, h3, h4 { letter-spacing: -0.02em; }
 
 /* ── Admin panel layout: sidebar on desktop, scrollable top bar on phones ── */
 .adm-shell { display: flex; min-height: 100vh; background: var(--app-bg); }
-.adm-side { width: 240px; flex-shrink: 0; background: linear-gradient(180deg,#04246b 0%,#020b24 100%); color: white; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; padding: 20px 14px; overflow-y: auto; }
+.adm-side { width: 240px; flex-shrink: 0; background: var(--hero-side); color: white; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; padding: 20px 14px; overflow-y: auto; }
 .adm-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 22px; }
 .adm-main { flex: 1; min-width: 0; padding: 22px 28px 40px; }
 .adm-grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; }
