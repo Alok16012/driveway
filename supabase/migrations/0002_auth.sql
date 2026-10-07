@@ -14,7 +14,7 @@ grant usage on sequence customer_seq, driver_seq to authenticated;
 create or replace function public.digits(t text) returns text
 language sql immutable as $$ select regexp_replace(coalesce(t, ''), '\D', '', 'g') $$;
 
--- The signed-in user's verified phone, as digits.
+-- The verified phone of the signed-in user, as digits.
 create or replace function public.my_phone() returns text
 language sql stable security definer set search_path = public, auth as $$
   select public.digits(phone) from auth.users where id = auth.uid()
@@ -55,7 +55,7 @@ grant update (online)                                           on drivers to au
 grant insert, update, delete on places to authenticated;
 
 -- ───────────── Policies ─────────────
--- Customers: their own row; riders also see the customers they've driven.
+-- Customers: their own row; riders also see the customers they have driven.
 drop policy if exists "own row" on customers;
 create policy "own row" on customers for select to authenticated using (user_id = auth.uid());
 drop policy if exists "riders see their passengers" on customers;
@@ -83,7 +83,7 @@ create policy "go online" on drivers for update to authenticated
   using (user_id = auth.uid())
   with check (user_id = auth.uid() and (online = false or (kyc = 'Approved' and suspended = false)));
 
--- Saved places: the customer's own.
+-- Saved places: only the ones the customer owns.
 drop policy if exists "own places" on places;
 create policy "own places" on places for all to authenticated
   using (customer_id = public.my_customer_id()) with check (customer_id = public.my_customer_id());
@@ -94,7 +94,7 @@ drop policy if exists "own rides" on rides;
 create policy "own rides" on rides for select to authenticated
   using (customer_id = public.my_customer_id() or driver_id = public.my_driver_id());
 
--- Rider wallet and feedback: the rider's own.
+-- Rider wallet and feedback: only the ones the rider owns.
 drop policy if exists "own wallet" on wallet_txns;
 create policy "own wallet" on wallet_txns for select to authenticated using (driver_id = public.my_driver_id());
 drop policy if exists "own feedback" on feedback;

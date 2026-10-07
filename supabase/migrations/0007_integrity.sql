@@ -65,7 +65,7 @@ update coupons set first_ride_only = true, per_user_limit = 1 where code = 'FIRS
 update coupons set weekend_only = true where code = 'WEEKEND';
 update coupons set vehicles = '{sedan,suv}' where code = 'AIRPORT99' and vehicles is null;
 
--- B13: riders and customers no longer read each other's full profile rows directly; the server sends
+-- B13: riders and customers no longer read the full profile rows of each other directly; the server sends
 -- only the fields a trip needs (name, phone, rating, vehicle).
 drop policy if exists "riders see their passengers" on customers;
 drop policy if exists "customers see their drivers" on drivers;

@@ -32,3 +32,12 @@ Open http://localhost:3000 and pick an app. The mobile apps are capped at 430px 
 - `app/components/` — shared UI (`ui.tsx`, `icons.tsx`, `MapView.tsx`, `VehicleArt.tsx`, `BottomNav.tsx`, `Auth.tsx`, `Brand.tsx`)
 - `app/lib/data.ts` — vehicle categories & fare rules, places, rides, drivers, customers, coupons, rider hotspots/incentives/wallet
 - `public/driveway-*.png` (cut from `assets/driveway-logo-source.png`), `app/icon.png`, `app/components/Brand.tsx` — logo and brand mark
+
+## Database setup (Supabase → SQL Editor)
+
+Run each file on its own, as a whole, in this order:
+
+1. `supabase/setup.sql` — fresh database only: drops the DriveWay tables, creates the schema (0001) and loads the sample data.
+2. `supabase/migrations/0002_auth.sql` through `0007_integrity.sql`, in number order.
+
+Don't run `seed.sql` after `0007`: the sample data has two active rides for one rider, which 0007's one-active-ride rule rejects. `setup.sql` already includes it.
