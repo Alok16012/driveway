@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DriveWay</string>
+    <string name="title_activity_main">DriveWay</string>
+    <string name="package_name">com.driveway.customer</string>
+    <string name="custom_url_scheme">com.driveway.customer</string>
+</resources>

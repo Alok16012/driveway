@@ -1,0 +1,5 @@
+{
+  "name": "driveway-rider-android",
+  "private": true,
+  "description": "Capacitor shell for the rider app. Dependencies resolve from the root package."
+}

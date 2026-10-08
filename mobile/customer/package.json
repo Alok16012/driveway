@@ -1,0 +1,5 @@
+{
+  "name": "driveway-customer-android",
+  "private": true,
+  "description": "Capacitor shell for the customer app. Dependencies resolve from the root package."
+}

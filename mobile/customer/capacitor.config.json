@@ -1,0 +1,7 @@
+{
+  "appId": "com.driveway.customer",
+  "appName": "DriveWay",
+  "webDir": "www",
+  "server": { "androidScheme": "https", "appStartPath": "/customer" },
+  "android": { "allowMixedContent": false }
+}

@@ -1,0 +1,7 @@
+{
+  "appId": "com.driveway.rider",
+  "appName": "DriveWay Rider",
+  "webDir": "www",
+  "server": { "androidScheme": "https", "appStartPath": "/rider" },
+  "android": { "allowMixedContent": false }
+}

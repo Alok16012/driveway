@@ -42,3 +42,10 @@ next-env.d.ts
 
 # local tooling
 /.claude/
+!.env.example
+
+# mobile app builds (npm run build:apk / build:ios)
+/out/
+/mobile/*/www/
+/mobile/dist/
+/mobile/ios-build/
