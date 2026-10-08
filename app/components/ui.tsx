@@ -64,13 +64,14 @@ const TONES: Record<string, Tone> = {
   Completed: GREEN, Approved: GREEN, Online: GREEN, Active: GREEN, Resolved: GREEN, Paid: GREEN,
   Started: BLUE, Arriving: BLUE, Assigned: BLUE, Arrived: BLUE, "In Progress": BLUE, Ongoing: BLUE,
   Searching: PURPLE, Scheduled: PURPLE, Open: PURPLE,
-  Pending: AMBER, Unpaid: AMBER, Expired: AMBER,
+  Pending: AMBER, Unpaid: AMBER, Expired: AMBER, "Payment due": AMBER,
   Cancelled: RED, Rejected: RED, Blocked: RED, Suspended: RED,
-  Offline: GREY, Inactive: GREY,
+  Offline: GREY, Inactive: GREY, NoDrivers: GREY, "No drivers": GREY,
 };
 
 export function StatusBadge({ status }: { status: RideStatus | string }) {
   const t = TONES[status] ?? GREY;
+  if (status === "NoDrivers") status = "No drivers";
   return (
     <span style={{
       background: t.bg, color: t.fg, border: `1px solid ${t.bd}`,
@@ -162,15 +163,15 @@ export function Toggle({ on, onChange, label: aria }: { on: boolean; onChange: (
 }
 
 /** Six-box OTP input. Demo accepts any 4–6 digits. */
-export function OtpInput({ value, onChange, length = 4 }: { value: string; onChange: (v: string) => void; length?: number }) {
+export function OtpInput({ value, onChange, length = 4, autoFocus = true }: { value: string; onChange: (v: string) => void; length?: number; autoFocus?: boolean }) {
   return (
-    <label style={{ position: "relative", display: "flex", gap: 10, justifyContent: "center", cursor: "text" }}>
-      <input value={value} autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength={length} aria-label="OTP"
+    <label style={{ position: "relative", display: "flex", gap: length > 4 ? 8 : 10, justifyContent: "center", cursor: "text" }}>
+      <input value={value} autoFocus={autoFocus} inputMode="numeric" autoComplete="one-time-code" maxLength={length} aria-label="OTP"
         onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, length))}
         style={{ position: "absolute", inset: 0, opacity: 0, width: "100%" }} />
       {Array.from({ length }).map((_, i) => (
-        <span key={i} style={{
-          width: 54, height: 58, borderRadius: 14, background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center",
+        <span key={i} aria-hidden="true" style={{
+          flex: "1 1 0", maxWidth: 54, height: 58, borderRadius: 14, background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 22, fontWeight: 700, color: "var(--ink)",
           border: `1.5px solid ${i === value.length ? "var(--blue)" : "var(--line)"}`, boxShadow: "var(--shadow-card)",
         }}>{value[i] ?? ""}</span>
@@ -179,12 +180,21 @@ export function OtpInput({ value, onChange, length = 4 }: { value: string; onCha
   );
 }
 
-/** Tiny "Demo:" helper link used to fast-forward simulated backend steps. */
-export function DemoButton({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+/** Inline error line under a form or action. */
+export function ErrorText({ msg }: { msg: string | null | undefined }) {
+  if (!msg) return null;
+  return <p role="alert" style={{ margin: "8px 2px 0", fontSize: 12.5, color: "var(--error-text)", lineHeight: 1.45 }}>{msg}</p>;
+}
+
+/** Full-area spinner/message while data loads, or an error with a retry button. */
+export function LoadState({ error, onRetry, label = "Loading…" }: { error?: string | null; onRetry?: () => void; label?: string }) {
   return (
-    <button onClick={onClick} style={{ background: "none", border: "1px dashed var(--line-strong)", borderRadius: 10, padding: "6px 12px", fontSize: 11.5, color: "var(--ink-mute)", cursor: "pointer" }}>
-      Demo: {children}
-    </button>
+    <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--ink-soft)", fontSize: 14 }}>
+      {error ? <>
+        <p style={{ margin: 0, color: "var(--error-text)", fontWeight: 600 }}>{error}</p>
+        {onRetry && <button onClick={onRetry} style={{ marginTop: 12, border: "none", background: "var(--blue)", color: "white", borderRadius: 12, padding: "10px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Try again</button>}
+      </> : label}
+    </div>
   );
 }
 

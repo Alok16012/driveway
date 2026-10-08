@@ -6,12 +6,14 @@ import { BrandMark, Wordmark } from "../Brand";
 import MapView from "../MapView";
 import VehicleArt, { AnyArt, ParcelArt, RentalArt } from "../VehicleArt";
 import { iconBtn } from "../ui";
-import { CURRENT_LOCATION, PLACES, vehicleById, type Place } from "../../lib/data";
-import type { ActiveRide, RideOption } from "./types";
+import { vehicleById } from "../../lib/data";
+import type { Place, RideView } from "../../lib/api";
+import type { RideOption } from "./types";
 
 interface HomeProps {
   firstName: string;
-  active: ActiveRide | null;
+  places: Place[];
+  active: RideView | null;
   unread: number;
   onSearch: (prefer?: RideOption) => void;
   ac: boolean;
@@ -29,17 +31,18 @@ const greeting = () => {
 
 const STATUS_LINE: Record<string, string> = {
   Searching: "Finding a driver near you…",
-  Assigned: "Driver assigned",
   Arriving: "Driver is on the way",
   Arrived: "Driver has arrived",
   Started: "Trip in progress",
-  Completed: "Trip completed",
+  Completed: "Trip completed — tap to pay & rate",
+  NoDrivers: "No drivers were available",
 };
 
 const SERVICES: RideOption[] = ["bike", "auto", "erick", "mini", "sedan", "suv", "any", "rental", "parcel"];
 
 export default function HomeScreen(p: HomeProps) {
-  const quick = PLACES.filter((x) => x.kind);
+  const quick = p.places.filter((x) => x.kind && x.kind !== "current");
+  const here = p.places.find((x) => x.kind === "current");
   return (
     <div style={{ paddingBottom: 24 }}>
       {/* ── Top bar ── */}
@@ -64,7 +67,7 @@ export default function HomeScreen(p: HomeProps) {
         <MapView height={190} radius={22}>
           <div style={{ position: "absolute", top: 12, left: 12, display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.95)", borderRadius: 999, padding: "6px 12px 6px 8px", boxShadow: "var(--shadow-md)" }}>
             <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 0 3px rgba(47,158,118,0.2)" }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>{CURRENT_LOCATION.address}</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>{here?.address ?? "Locating…"}</span>
           </div>
           <span style={{ position: "absolute", right: 12, bottom: 12, width: 36, height: 36, borderRadius: "50%", background: "white", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow-md)" }}>
             <TargetIcon s={19} c="var(--blue)" />

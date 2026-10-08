@@ -5,314 +5,275 @@ import Link from "next/link";
 import BottomNav, { HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph, WalletGlyph } from "../components/BottomNav";
 import { OtpStep, PhoneLogin, SplashScreen } from "../components/Auth";
 import { KycFlow, PendingApproval } from "../components/rider/Kyc";
+import { AlertsScreen, EarningsScreen, RequestPopup, RiderAccount, RiderHome, TripPage, TripsScreen, type AccountKey, type QuickKey } from "../components/rider/RiderScreens";
 import {
-  AlertsScreen, COMMISSION, EarningsScreen, RIDER_ALERTS, RequestPopup, RiderAccount, RiderHome, TripPage, TripsScreen,
-  type AccountKey, type QuickKey, type RideRequest, type RiderAlert, type TripPhase,
-} from "../components/rider/RiderScreens";
-import {
-  BankPage, CancelTripSheet, DocumentsPage, HotspotsPage, IncentivesScreen, PerformancePage, PreferencesPage, ReferPage,
-  SosSheet, TripDetailPage, VehiclePage, WalletPage, type RiderPrefs,
+  BankPage, CancelTripSheet, DocumentsPage, IncentivesScreen, PerformancePage, PreferencesPage, SosSheet, TripDetailPage, VehiclePage, WalletPage, type RiderPrefs,
 } from "../components/rider/RiderPages";
 import { ChatScreen, type ChatMessage } from "../components/customer/AccountScreens";
-import { DemoButton, Toast } from "../components/ui";
-import { DRIVERS, INCENTIVES, NON_AC_FACTOR, RIDER_WALLET, RIDES, inr, nowTime, type Driver, type Ride, type WalletTxn } from "../lib/data";
+import { LoadState, Toast } from "../components/ui";
+import { inr } from "../lib/data";
+import { NATIVE_APP } from "../lib/native";
+import {
+  acceptRide, completeRide, confirmCash, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, myDriver, myDriverTrips,
+  myTrip, newKey, onAuthChange, payDues, rateCustomer, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyUpi, watchResume, watchRides,
+  type DriverMe, type RideView,
+} from "../lib/api";
+import { supabase } from "../lib/supabase/client";
 
 const SHELL_MAX_W = 430;
-const AUTH_KEY = "driveway:rider";
+const PREFS_KEY = "driveway:rider-prefs";
 
 type Tab = "home" | "earnings" | "trips" | "incentives" | "account";
-type Stage = "splash" | "phone" | "otp" | "kyc" | "pending" | "app";
-type Detail =
-  | { k: "alerts" } | { k: "support" } | { k: "trip"; id: string }
-  | { k: "wallet" } | { k: "performance" } | { k: "hotspots" }
-  | { k: Exclude<AccountKey, "help" | "performance"> };
+type Stage = "loading" | "splash" | "phone" | "otp" | "kyc" | "pending" | "app";
+type Detail = { k: "alerts" } | { k: "support" } | { k: "trip"; id: string } | { k: "wallet" } | { k: "performance" } | { k: Exclude<AccountKey, "help" | "performance"> };
 
-const REQUESTS: Omit<RideRequest, "id">[] = [
-  { customer: "Amit Sharma", initials: "AS", rating: 4.9, from: "Sector 12, Noida", to: "DLF Mall of India", pickupKm: 1.2, pickupMin: 3, km: 4.2, min: 16, fare: 160, pay: "UPI", ac: true },
-  { customer: "Priya Mehta", initials: "PM", rating: 4.7, from: "Botanical Garden Metro", to: "Sector 62, Noida", pickupKm: 0.8, pickupMin: 2, km: 6.8, min: 22, fare: 155, pay: "Cash", ac: false },
-  { customer: "Kavya Iyer", initials: "KI", rating: 5.0, from: "Great India Place", to: "Akshardham Temple", pickupKm: 1.6, pickupMin: 4, km: 9.1, min: 28, fare: 246, pay: "UPI", ac: true },
-  { customer: "Neha Gupta", initials: "NG", rating: 4.8, from: "Sector 18 Market, Noida", to: "Sector 50, Noida", pickupKm: 0.9, pickupMin: 3, km: 5.3, min: 15, fare: 96, pay: "UPI", parcel: "Documents · up to 1 kg" },
-];
-
-const readRider = () => { try { return localStorage.getItem(AUTH_KEY) === "1"; } catch { return false; } };
-const writeRider = (v: boolean) => { try { if (v) localStorage.setItem(AUTH_KEY, "1"); else localStorage.removeItem(AUTH_KEY); } catch { /* storage blocked */ } };
-
-let seq = 1300;
-let txSeq = 400;
-const pct = (n: number, d: number) => (d ? Math.round((n / d) * 100) : 0);
+const readPrefs = (): RiderPrefs => {
+  try { return { autoAccept: false, cash: true, nav: "Google Maps", ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") }; }
+  catch { return { autoAccept: false, cash: true, nav: "Google Maps" }; }
+};
 
 export default function RiderApp() {
-  const [stage, setStage] = useState<Stage>("splash");
+  const [stage, setStage] = useState<Stage>("loading");
   const [phone, setPhone] = useState("");
-  const [rider, setRider] = useState<Driver>(DRIVERS[0]);
+  const [me, setMe] = useState<DriverMe | null>(null);
   const [tab, setTab] = useState<Tab>("home");
   const [stack, setStack] = useState<Detail[]>([]);
-  const [online, setOnline] = useState(false);
-  const [request, setRequest] = useState<RideRequest | null>(null);
-  const [trip, setTrip] = useState<{ req: RideRequest; phase: TripPhase; progress: number } | null>(null);
+  const [offer, setOffer] = useState<RideView | null>(null);
+  const [trip, setTrip] = useState<RideView | null>(null);
+  const [trips, setTrips] = useState<RideView[] | null>(null);
   const [sheet, setSheet] = useState<"cancel" | "sos" | null>(null);
-  const [today, setToday] = useState({ earnings: 1240, trips: 3, minutes: 5 * 60 + 40 });
-  const [week, setWeek] = useState(52);
-  const [peak, setPeak] = useState(1);
-  const [stats, setStats] = useState({ accepted: 48, declined: 2, cancelled: 1 });
-  const [wallet, setWallet] = useState({ balance: 1840, dues: 36 });
-  const [txns, setTxns] = useState<WalletTxn[]>(RIDER_WALLET);
-  const [prefs, setPrefs] = useState<RiderPrefs>({ autoAccept: false, goHome: null, cash: true, sound: true, nav: "Google Maps" });
-  const [trips, setTrips] = useState<Ride[]>(RIDES.filter((r) => r.driver === DRIVERS[0].name));
-  const [alerts, setAlerts] = useState<RiderAlert[]>(RIDER_ALERTS);
-  const [unread, setUnread] = useState(2);
-  const [chat, setChat] = useState<ChatMessage[]>([{ id: 1, from: "agent", body: "Hi! 👋 How can the rider support team help?", at: "09:00 AM" }]);
-  const [typing, setTyping] = useState(false);
+  const [prefs, setPrefs] = useState<RiderPrefs>({ autoAccept: false, cash: true, nav: "Google Maps" });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [toggling, setToggling] = useState(false);
+  const [toggleErr, setToggleErr] = useState<string | null>(null);
+  const [chat, setChat] = useState<ChatMessage[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  const [bootErr, setBootErr] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const reqIdx = useRef(0);
-
-  useEffect(() => {
-    if (!readRider()) return;
-    const t = setTimeout(() => setStage("app"), 1100);
-    return () => clearTimeout(t);
-  }, []);
-
-  const detail = stack[stack.length - 1];
-  const detailKey = detail ? JSON.stringify(detail) : tab;
-  useEffect(() => { scrollRef.current?.scrollTo({ top: 0 }); }, [detailKey]);
-
-  const push = (d: Detail) => setStack((s) => [...s, d]);
-  const back = () => setStack((s) => s.slice(0, -1));
-  const goTab = (t: Tab) => { setStack([]); setTab(t); };
+  const skipped = useRef(new Set<string>());
+  const tripId = useRef<string | null>(null);
 
   const flash = useCallback((msg: string) => {
     setToast(msg);
     clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 2200);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
 
-  const addTxn = (kind: WalletTxn["kind"], note: string, amount: number) =>
-    setTxns((t) => [{ id: `WT${++txSeq}`, kind, note, amount, at: `Today, ${nowTime()}` }, ...t]);
+  useEffect(() => { setPrefs(readPrefs()); }, []);
+  const changePrefs = (p: Partial<RiderPrefs>) => setPrefs((x) => { const n = { ...x, ...p }; try { localStorage.setItem(PREFS_KEY, JSON.stringify(n)); } catch { /* storage blocked */ } return n; });
 
-  // Online & idle → a request arrives a few seconds later (stands in for the dispatch socket).
-  // With "Accept cash rides" off, dispatch only sends online-paid rides.
-  const sendRequest = useCallback(() => {
-    let r = REQUESTS[reqIdx.current++ % REQUESTS.length];
-    if (!prefs.cash && r.pay === "Cash") r = REQUESTS[reqIdx.current++ % REQUESTS.length];
-    if (!rider.ac && r.ac) r = { ...r, ac: false, fare: Math.round(r.fare * NON_AC_FACTOR) };
-    setRequest({ ...r, id: `RD${++seq}` });
-  }, [prefs.cash, rider.ac]);
+  /* ── session ── */
+  const boot = useCallback(async () => {
+    setBootErr(null);
+    try {
+      if (!(await getSession())) { setStage("splash"); return; }
+      const d = await myDriver();
+      setMe(d);
+      setStage(!d ? "kyc" : d.kyc === "Approved" ? "app" : "pending");
+    } catch (e) { setBootErr((e as Error).message); }
+  }, []);
+  useEffect(() => { void boot(); }, [boot]);
+  useEffect(() => onAuthChange((signedIn) => { if (!signedIn) { setStage("splash"); setMe(null); setTrip(null); setOffer(null); setStack([]); } }), []);
+
+  const refreshMe = useCallback(async () => {
+    try {
+      const d = await myDriver();
+      setMe(d);
+      if (d && d.kyc !== "Approved") setStage("pending");
+    } catch { /* next poll retries */ }
+  }, []);
+  const refreshTrip = useCallback(async () => {
+    try {
+      const t = await myTrip();
+      if (!t && tripId.current) { void refreshMe(); }
+      tripId.current = t?.id ?? null;
+      setTrip(t);
+    } catch { /* keep last state */ }
+  }, [refreshMe, flash]);
+  const refreshTrips = useCallback(async () => { try { setTrips(await myDriverTrips()); } catch (e) { flash((e as Error).message); } }, [flash]);
+
   useEffect(() => {
-    if (!online || request || trip || stage !== "app") return;
-    const t = setTimeout(sendRequest, 4500);
-    return () => clearTimeout(t);
-  }, [online, request, trip, stage, sendRequest]);
+    if (stage !== "app") return;
+    void refreshMe(); void refreshTrip();
+    const stop = watchRides(() => { void refreshTrip(); });
+    const t = setInterval(() => { void refreshTrip(); void refreshMe(); }, 5000);
+    const unResume = watchResume(() => { void refreshTrip(); void refreshMe(); });
+    return () => { stop(); clearInterval(t); unResume(); };
+  }, [stage, refreshMe, refreshTrip]);
 
-  // Online-time ticker.
+  // A customer cancellation removes the trip: tell the driver.
+  const lastTrip = useRef<RideView | null>(null);
+  const selfCancelled = useRef(false);
   useEffect(() => {
-    if (!online) return;
-    const t = setInterval(() => setToday((d) => ({ ...d, minutes: d.minutes + 1 })), 60000);
-    return () => clearInterval(t);
-  }, [online]);
+    if (lastTrip.current && !trip && lastTrip.current.status !== "Completed" && !selfCancelled.current) flash("The customer cancelled this ride");
+    if (!trip) selfCancelled.current = false;
+    lastTrip.current = trip;
+  }, [trip, flash]);
 
-  // Vehicle moves along the route while heading to pickup / on trip.
-  const phase = trip?.phase;
+  /* ── dispatch: poll for offers while online and free (this is also the heartbeat) ── */
+  const online = !!me?.online;
   useEffect(() => {
-    if (phase !== "toPickup" && phase !== "onTrip") return;
-    const step = phase === "toPickup" ? 0.05 : 0.03;
-    const t = setInterval(() => setTrip((x) => (x && x.phase === phase ? { ...x, progress: Math.min(1, x.progress + step) } : x)), 450);
-    return () => clearInterval(t);
-  }, [phase]);
+    if (stage !== "app" || !online || trip) { setOffer(null); return; }
+    let live = true;
+    const poll = async () => {
+      try {
+        const list = (await driverOffers()).filter((o) => !skipped.current.has(o.id) && (prefs.cash || o.pay !== "Cash"));
+        if (live) setOffer((cur) => (cur && list.some((o) => o.id === cur.id) ? cur : list[0] ?? null));
+      } catch { /* retry next tick */ }
+    };
+    void poll();
+    const t = setInterval(() => void poll(), 3000);
+    const unResume = watchResume(() => void poll());
+    return () => { live = false; clearInterval(t); unResume(); };
+  }, [stage, online, trip, prefs.cash]);
 
+  const toggleOnline = async (v: boolean) => {
+    setToggling(true); setToggleErr(null);
+    try { await setOnline(v); await refreshMe(); flash(v ? "You're online — looking for rides" : "You're offline"); }
+    catch (e) { setToggleErr((e as Error).message); } finally { setToggling(false); }
+  };
+
+  const accept = useCallback(async () => {
+    if (!offer || busy) return;
+    setBusy(true); setErr(null);
+    try { await acceptRide(offer.id); setOffer(null); setStack([]); await refreshTrip(); }
+    catch (e) { skipped.current.add(offer.id); setOffer(null); flash((e as Error).message); }
+    finally { setBusy(false); }
+  }, [offer, busy, refreshTrip, flash]);
   const decline = useCallback((expired: boolean) => {
-    setRequest(null);
-    setStats((s) => ({ ...s, declined: s.declined + 1 }));
+    if (!offer) return;
+    skipped.current.add(offer.id);
+    void declineRide(offer.id).then(refreshMe);
+    setOffer(null);
     flash(expired ? "Request expired — counted as missed" : "Request declined");
-  }, [flash]);
+  }, [offer, refreshMe, flash]);
 
-  const accept = useCallback(() => {
-    if (!request) return;
-    setTrip({ req: request, phase: "toPickup", progress: 0 });
-    setRequest(null);
-    setStack([]);
-    setStats((s) => ({ ...s, accepted: s.accepted + 1 }));
-    setAlerts((a) => [["Ride Accepted", `${request.from} → ${request.to} · ${inr(request.fare)}`, "just now", "ride"], ...a]);
-  }, [request]);
-
-  const cancelTrip = (reason: string) => {
-    if (!trip) return;
-    const { req } = trip;
-    setTrips((t) => [{
-      id: req.id, customer: req.customer, driver: rider.name, vehicle: rider.vehicle, from: req.from, to: req.to, km: req.km, min: req.min,
-      fare: req.fare, discount: 0, pay: req.pay, paid: false, status: "Cancelled", date: "Today", time: nowTime(), cancelReason: reason,
-    }, ...t]);
-    setStats((s) => ({ ...s, cancelled: s.cancelled + 1 }));
-    setTrip(null);
-    setSheet(null);
-    setTab("home");
-    flash("Ride cancelled");
+  /** Run one trip action; refresh from the server either way so the screen matches the database. */
+  const act = async (fn: () => Promise<unknown>, done?: string) => {
+    if (busy || !trip) return;
+    setBusy(true); setErr(null);
+    try { await fn(); if (done) flash(done); } catch (e) { setErr((e as Error).message); }
+    finally { await refreshTrip(); setBusy(false); }
   };
 
-  const finish = (stars: number) => {
-    if (!trip) return;
-    const { req } = trip;
-    const total = req.fare + (req.waitFee ?? 0);
-    const net = Math.round(total * (1 - COMMISSION));
-    const cut = Math.round(total * COMMISSION);
-    const count = today.trips + 1;
-    const daily = INCENTIVES[0];
-
-    setToday((d) => ({ ...d, earnings: d.earnings + net, trips: count }));
-    setWeek((w) => w + 1);
-    if (new Date().getHours() >= 18 && new Date().getHours() < 21) setPeak((p) => p + 1);
-
-    if (req.pay === "Cash") {
-      setWallet((w) => ({ ...w, dues: w.dues + cut }));
-      addTxn("Cash Commission", `Ride ${req.id} · ${COMMISSION * 100}% of ${inr(total)}`, -cut);
-    } else {
-      setWallet((w) => ({ ...w, balance: w.balance + net }));
-      addTxn("Trip Earning", `Ride ${req.id} · ${req.pay}`, net);
-    }
-    if (count === daily.target) {
-      setWallet((w) => ({ ...w, balance: w.balance + daily.reward }));
-      addTxn("Incentive", `${daily.title} bonus`, daily.reward);
-      setAlerts((a) => [["Bonus Unlocked 🎉", `${inr(daily.reward)} ${daily.title} bonus added to wallet`, "just now", "bonus"], ...a]);
-      setUnread((u) => u + 1);
-    }
-
-    setTrips((t) => [{
-      id: req.id, customer: req.customer, driver: rider.name, vehicle: rider.vehicle, from: req.from, to: req.to, km: req.km, min: req.min,
-      fare: total, discount: 0, pay: req.pay, paid: true, status: "Completed", date: "Today", time: nowTime(), rating: stars || undefined,
-    }, ...t]);
-    setAlerts((a) => [["Trip Completed", req.pay === "Cash" ? `${inr(total)} collected in cash` : `${inr(net)} credited to your wallet`, "just now", "pay"], ...a]);
-    setTrip(null);
-    setTab("home");
-    flash(count === daily.target ? `+${inr(net)} and ${inr(daily.reward)} bonus unlocked! 🎉` : `+${inr(net)} added to today's earnings`);
-  };
-
-  const withdraw = () => {
-    const payable = wallet.balance - wallet.dues;
-    if (wallet.dues > 0) addTxn("Dues Paid", "Adjusted from wallet", -wallet.dues);
-    addTxn("Payout", "Instant payout · HDFC ••4521 (₹5 fee)", -payable);
-    setWallet({ balance: 0, dues: 0 });
-    flash(`${inr(payable - 5)} is on its way to your bank`);
-  };
-
-  const payDues = () => {
-    addTxn("Dues Paid", "Paid via UPI", -wallet.dues);
-    setWallet((w) => ({ ...w, dues: 0 }));
-    flash("Cash dues cleared — thank you!");
-  };
+  const startTrip = (otp: string) => act(async () => {
+    const r = await startRide(trip!.id, otp);
+    if (r.error === "wrong_otp") throw new Error(`Wrong OTP — ${r.attempts_left} ${r.attempts_left === 1 ? "try" : "tries"} left. Ask the customer to read it again.`);
+  });
+  const finishTrip = (stars: number) => act(async () => {
+    if (stars) await rateCustomer(trip!.id, stars); else await driverCloseRide(trip!.id);
+    await refreshMe();
+  }, "Trip closed — looking for your next ride");
 
   const navigate = (to: string) => {
     if (prefs.nav === "Google Maps") window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(to)}`, "_blank", "noopener");
-    else flash(`In-app navigation to ${to}`);
+    else flash(`Head to ${to}`);
   };
 
-  const sendChat = (body: string) => {
-    setChat((c) => [...c, { id: Date.now(), from: "me", body, at: nowTime() }]);
-    setTyping(true);
-    setTimeout(() => {
-      setTyping(false);
-      setChat((c) => [...c, { id: Date.now() + 1, from: "agent", body: /payout|payment|money|wallet/i.test(body) ? "Weekly payouts settle every Monday to your linked bank account. You can also take an instant payout from your Wallet." : "Thanks! A rider support agent will call you back within 10 minutes.", at: nowTime() }]);
-    }, 1300);
+  /* ── wallet ── */
+  const withdraw = async () => {
+    setBusy(true); setErr(null);
+    try { const r = await requestPayout(newKey()); await refreshMe(); flash(r.paid_out ? `${inr(r.paid_out)} is on its way to ${me?.upi}` : "Payout requested"); }
+    catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  const clearDues = async () => {
+    setBusy(true); setErr(null);
+    try { await payDues(newKey()); await refreshMe(); flash("Cash dues cleared — thank you!"); }
+    catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
 
-  const toggleOnline = (v: boolean) => {
-    setOnline(v);
-    if (!v) setRequest(null);
-    flash(v ? "You're online — looking for rides" : "You're offline");
-  };
+  /* ── support chat backed by a ticket ── */
+  const loadChat = useCallback(async () => {
+    const { data } = await supabase().from("tickets").select("notes").eq("role", "Driver").order("created_at", { ascending: false }).limit(1);
+    const notes = (data?.[0]?.notes ?? []) as { from: string; body: string; at: string }[];
+    setChat([{ id: 0, from: "agent", body: "Hi! 👋 How can the rider support team help? Include the trip ID if it's about a ride.", at: "" },
+      ...notes.map((n, i) => ({ id: i + 1, from: (n.from === "user" ? "me" : "agent") as ChatMessage["from"], body: n.body, at: new Date(n.at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }) }))]);
+  }, []);
+  const detail = stack[stack.length - 1];
+  useEffect(() => {
+    if (detail?.k !== "support") return;
+    void loadChat();
+    const t = setInterval(() => void loadChat(), 8000);
+    return () => clearInterval(t);
+  }, [detail?.k, loadChat]);
 
-  const openQuick = (k: QuickKey) => {
-    if (k === "incentives") goTab("incentives");
-    else push({ k });
-  };
+  const detailKey = detail ? detail.k + ("id" in detail ? detail.id : "") : tab;
+  useEffect(() => { scrollRef.current?.scrollTo({ top: 0 }); }, [detailKey]);
+  const push = (d: Detail) => setStack((s) => [...s, d]);
+  const back = () => setStack((s) => s.slice(0, -1));
+  const goTab = (t: Tab) => { setStack([]); setTab(t); if (t === "trips") void refreshTrips(); if (t === "earnings" || t === "incentives") void refreshMe(); };
 
-  const openAccount = (k: AccountKey) => push(k === "help" ? { k: "support" } : { k });
-
-  const logout = () => { writeRider(false); setOnline(false); setTrip(null); setStack([]); setTab("home"); setStage("splash"); };
+  const logout = async () => { if (online) { try { await setOnline(false); } catch { /* ignore */ } } await signOut(); };
 
   const showNav = stage === "app" && !trip && !detail;
-  const acceptance = pct(stats.accepted, stats.accepted + stats.declined);
-  const cancellation = pct(stats.cancelled, stats.accepted);
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "var(--app-bg)", display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: SHELL_MAX_W, height: "100%", position: "relative", background: "var(--app-bg)", overflow: "hidden", boxShadow: "var(--shadow-float)", display: "flex", flexDirection: "column" }}>
 
+        {stage === "loading" && <LoadState error={bootErr} onRetry={() => void boot()} />}
         {stage === "splash" && (
-          <SplashScreen tagline="Drive · Earn · Grow" cta="Start Riding" onStart={() => setStage(readRider() ? "app" : "phone")}
-            footer={<p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.55)" }}>Demo: <Link href="/customer" style={{ color: "var(--gold)" }}>Customer app</Link> · <Link href="/admin" style={{ color: "var(--gold)" }}>Admin panel</Link></p>} />
+          <SplashScreen tagline="Drive · Earn · Grow" cta="Start Riding" onStart={() => setStage("phone")}
+            footer={NATIVE_APP ? undefined : <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.55)" }}><Link href="/customer" style={{ color: "var(--gold)" }}>Book a ride instead</Link></p>} />
         )}
-        {stage === "phone" && <PhoneLogin title="Welcome, Rider" accent="Let's get you earning" social={false} onSent={(p) => { setPhone(p); setStage("otp"); }} />}
-        {stage === "otp" && (
-          <OtpStep phone={phone} onBack={() => setStage("phone")} onVerified={() => setStage("kyc")} />
+        {stage === "phone" && <PhoneLogin title="Welcome, Rider" accent="Let's get you earning" onSent={(p) => { setPhone(p); setStage("otp"); }} />}
+        {stage === "otp" && <OtpStep phone={phone} onBack={() => setStage("phone")} onVerified={() => void boot()} />}
+        {stage === "kyc" && <KycFlow onSubmitted={() => void boot()} />}
+        {stage === "pending" && me && (
+          <PendingApproval name={me.name} kyc={me.kyc === "Rejected" ? "Rejected" : "Pending"} note={me.kyc_note} checking={checking}
+            onRefresh={() => { setChecking(true); void boot().finally(() => setChecking(false)); }}
+            onReapply={() => setStage("kyc")} onLogout={() => void logout()} />
         )}
-        {stage === "kyc" && (
-          <>
-            <KycFlow onSubmit={(k) => {
-              setRider({ ...DRIVERS[0], name: k.name, initials: k.name.split(/\s+/).map((s) => s[0]).join("").slice(0, 2).toUpperCase(), vehicle: k.vehicle, model: k.model, plate: k.plate, ac: k.ac, city: k.city, phone: `+91 ${phone.slice(0, 5)} ${phone.slice(5)}`, trips: 0, rating: 0 });
-              setStage("pending");
-            }} />
-            <div style={{ position: "absolute", top: 20, right: 16, zIndex: 195 }}>
-              <DemoButton onClick={() => { writeRider(true); setStage("app"); }}>skip KYC</DemoButton>
-            </div>
-          </>
-        )}
-        {stage === "pending" && <PendingApproval name={rider.name} onApproved={() => { writeRider(true); setStage("app"); flash("You're approved! Go online to start earning 🎉"); }} />}
 
-        {stage === "app" && (detail?.k === "support" ? (
+        {stage === "app" && me && (detail?.k === "support" ? (
           <div style={{ flex: 1, minHeight: 0 }}>
-            <ChatScreen title="Rider Support" messages={chat} typing={typing} onSend={sendChat} onBack={back} quick={["Payout issue", "Customer didn't show", "App problem", "Document update"]} />
+            <ChatScreen title="Rider Support" subtitle="Agents reply here" messages={chat} typing={false} onBack={back}
+              onSend={(b) => void supportMessage(b, "Driver", trip?.id ?? null).then(loadChat, (e) => flash((e as Error).message))}
+              quick={["Payout issue", "Customer didn't show", "App problem", "Document update"]} />
           </div>
         ) : (
           <div ref={scrollRef} className="no-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", paddingBottom: showNav ? "calc(76px + env(safe-area-inset-bottom))" : undefined }}>
             {trip ? (
-              <TripPage req={trip.req} phase={trip.phase} progress={trip.progress}
+              <TripPage trip={trip} busy={busy} err={err}
                 onBack={() => flash("Finish or cancel this trip first")}
-                onCall={() => { window.location.href = "tel:+919876543210"; }}
-                onNavigate={() => navigate(trip.phase === "onTrip" ? trip.req.to : trip.req.from)}
-                onCancel={() => setSheet("cancel")}
+                onCall={() => { if (trip.customer?.phone) window.location.href = "tel:+" + trip.customer.phone.replace(/\D/g, ""); }}
+                onNavigate={() => navigate(trip.status === "Started" ? `${trip.to.name}, ${trip.to.address}` : `${trip.from.name}, ${trip.from.address}`)}
+                onCancel={() => { setErr(null); setSheet("cancel"); }}
                 onSos={() => setSheet("sos")}
-                onArrived={() => { setTrip({ ...trip, phase: "arrived", progress: 1 }); flash("Customer notified that you've arrived"); }}
-                onStart={(waitFee) => setTrip({ ...trip, req: { ...trip.req, waitFee }, phase: "onTrip", progress: 0 })}
-                onEnd={() => setTrip({ ...trip, phase: "collect", progress: 1 })}
-                onCollected={() => setTrip({ ...trip, phase: "rate" })}
-                onRated={finish} />
+                onArrived={() => void act(() => driverArrived(trip.id), "Customer notified that you've arrived")}
+                onStart={(otp) => void startTrip(otp)}
+                onEnd={() => void act(() => completeRide(trip.id))}
+                onCollected={() => void act(() => confirmCash(trip.id), "Cash collection recorded")}
+                onRated={(n) => void finishTrip(n)} />
             ) : detail ? (
               <>
-                {detail.k === "alerts" && <AlertsScreen items={alerts} onBack={back} />}
-                {detail.k === "wallet" && <WalletPage balance={wallet.balance} dues={wallet.dues} txns={txns} onWithdraw={withdraw} onPayDues={payDues} onBack={back} />}
-                {detail.k === "performance" && <PerformancePage rider={rider} stats={{ ...stats, acceptance, cancellation }} onBack={back} />}
-                {detail.k === "hotspots" && <HotspotsPage online={online} onNavigate={navigate} onGoOnline={() => toggleOnline(true)} onBack={back} />}
-                {detail.k === "documents" && <DocumentsPage onBack={back} onUploaded={(d) => flash(`${d} uploaded — we'll verify it within 24 hours`)} />}
-                {detail.k === "vehicle" && <VehiclePage rider={rider} onBack={back} />}
-                {detail.k === "bank" && <BankPage onBack={back} onSaved={() => flash("UPI ID updated")} />}
-                {detail.k === "preferences" && (
-                  <PreferencesPage prefs={prefs} onBack={back} onChange={(p) => {
-                    setPrefs((x) => ({ ...x, ...p }));
-                    if ("goHome" in p) flash(p.goHome ? "Go Home on — only rides towards home" : "Go Home off");
-                  }} />
-                )}
-                {detail.k === "refer" && <ReferPage code={`RIDE${rider.initials}${rider.id.slice(-3)}`} onBack={back} onShare={() => flash("Invite link copied — share it on WhatsApp")} />}
+                {detail.k === "alerts" && <AlertsScreen txns={me.txns} onBack={back} />}
+                {detail.k === "wallet" && <WalletPage me={me} busy={busy} err={err} onWithdraw={() => void withdraw()} onPayDues={() => void clearDues()} onBack={back} />}
+                {detail.k === "performance" && <PerformancePage me={me} trips={trips ?? []} onBack={back} />}
+                {detail.k === "documents" && <DocumentsPage me={me} onBack={back} />}
+                {detail.k === "vehicle" && <VehiclePage me={me} onBack={back} />}
+                {detail.k === "bank" && <BankPage upi={me.upi} onBack={back} onSave={async (u) => { await updateMyUpi(u); await refreshMe(); flash("UPI ID updated"); }} />}
+                {detail.k === "preferences" && <PreferencesPage prefs={prefs} onBack={back} onChange={changePrefs} />}
                 {detail.k === "trip" && (() => {
-                  const r = trips.find((x) => x.id === detail.id);
-                  return r ? <TripDetailPage ride={r} onBack={back} onHelp={() => push({ k: "support" })} /> : null;
+                  const r = trips?.find((x) => x.id === detail.id);
+                  return r ? <TripDetailPage ride={r} onBack={back} onHelp={() => push({ k: "support" })} /> : <LoadState />;
                 })()}
               </>
             ) : (
               <>
                 {tab === "home" && (
-                  <>
-                    <RiderHome rider={rider} online={online} today={today} unread={unread} wallet={wallet.balance} goHome={prefs.goHome}
-                      onToggle={toggleOnline}
-                      onOpenEarnings={() => goTab("earnings")} onAlerts={() => { setUnread(0); push({ k: "alerts" }); }}
-                      onQuick={openQuick} onClearGoHome={() => { setPrefs((p) => ({ ...p, goHome: null })); flash("Go Home off"); }} />
-                    {online && !request && <div style={{ textAlign: "center", marginTop: -8, paddingBottom: 16 }}><DemoButton onClick={sendRequest}>send a ride request now</DemoButton></div>}
-                  </>
+                  <RiderHome me={me} online={online} toggling={toggling} toggleErr={toggleErr} unread={0}
+                    onToggle={(v) => void toggleOnline(v)}
+                    onOpenEarnings={() => goTab("earnings")} onAlerts={() => push({ k: "alerts" })}
+                    onQuick={(k: QuickKey) => { if (k === "incentives") goTab("incentives"); else { if (k === "performance") void refreshTrips(); setErr(null); push({ k }); } }} />
                 )}
-                {tab === "earnings" && <EarningsScreen today={today} />}
-                {tab === "trips" && <TripsScreen trips={trips} onOpen={(r) => push({ k: "trip", id: r.id })} />}
-                {tab === "incentives" && <IncentivesScreen progress={{ today: today.trips, week, peak }} />}
-                {tab === "account" && <RiderAccount rider={rider} stats={{ acceptance, cancellation }} onMenu={openAccount} onLogout={logout} />}
+                {tab === "earnings" && <EarningsScreen me={me} />}
+                {tab === "trips" && <TripsScreen trips={trips} commissionPct={me.commission_pct} onOpen={(r) => push({ k: "trip", id: r.id })} />}
+                {tab === "incentives" && <IncentivesScreen me={me} />}
+                {tab === "account" && <RiderAccount me={me} onMenu={(k) => { if (k === "performance") void refreshTrips(); push(k === "help" ? { k: "support" } : { k }); }} onLogout={() => void logout()} />}
               </>
             )}
           </div>
@@ -328,13 +289,18 @@ export default function RiderApp() {
           ]} />
         )}
 
-        {request && !trip && <RequestPopup key={request.id} req={request} autoAccept={prefs.autoAccept} towardsHome={!!prefs.goHome} onAccept={accept} onDecline={decline} />}
-        {sheet === "cancel" && <CancelTripSheet onClose={() => setSheet(null)} onConfirm={cancelTrip} />}
+        {stage === "app" && offer && !trip && <RequestPopup key={offer.id} offer={offer} autoAccept={prefs.autoAccept} busy={busy} err={null} onAccept={() => void accept()} onDecline={decline} />}
+        {sheet === "cancel" && trip && (
+          <CancelTripSheet busy={busy} err={err} onClose={() => setSheet(null)}
+            onConfirm={(reason) => void act(() => { selfCancelled.current = true; return driverCancelRide(trip.id, reason); }, "Ride cancelled — it's been offered to other drivers").then(() => setSheet(null))} />
+        )}
         {sheet === "sos" && (
           <SosSheet onClose={() => setSheet(null)} onAction={(a) => {
             setSheet(null);
             if (a === "police") window.location.href = "tel:112";
-            else flash(a === "safety" ? "Safety team alerted — they'll call you now" : "Live location shared with your emergency contacts");
+            else if (a === "support") void supportMessage(`SOS during trip ${trip?.code ?? ""}`, "Driver", trip?.id ?? null).then(() => flash("Support has your SOS ticket — call 112 if you're in danger"), (e) => flash((e as Error).message));
+            else if (trip && "share" in navigator) void navigator.share({ title: `DriveWay trip ${trip.code}`, text: `${trip.from.name} → ${trip.to.name} · ${me?.model} ${me?.plate}` }).catch(() => undefined);
+            else flash("Sharing isn't available on this device");
           }} />
         )}
         <Toast msg={toast} bottom={showNav ? 90 : 96} />

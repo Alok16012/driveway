@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { ArrowRight, BackIcon, BellIcon, PinIcon, CheckIcon } from "./icons";
-import { OtpInput, PrimaryButton, card, field, iconBtn, label } from "./ui";
+import { ErrorText, OtpInput, PrimaryButton, card, field, iconBtn, label } from "./ui";
+import { isIndianMobile, sendOtp, verifyOtp } from "../lib/api";
 
 /** Brand splash — deep navy so the DriveWay gradient logo reads the way it was drawn. */
 export function SplashScreen({ tagline, cta = "Get Started", onStart, footer }: {
@@ -54,41 +55,33 @@ const H = ({ title, accent, body }: { title: string; accent?: string; body: stri
   </div>
 );
 
-/** Mobile number → OTP. Demo accepts any 4 digits. */
-export function PhoneLogin({ title, accent, onSent, social = true }: { title: string; accent: string; onSent: (phone: string) => void; social?: boolean }) {
+/** Mobile number → SMS one-time password (Supabase Auth). */
+export function PhoneLogin({ title, accent, onSent }: { title: string; accent: string; onSent: (phone: string) => void }) {
   const [phone, setPhone] = useState("");
-  const ok = phone.length === 10;
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const ok = isIndianMobile(phone);
+  const submit = async () => {
+    if (!ok || busy) return;
+    setBusy(true); setErr(null);
+    try { await sendOtp(phone); onSent(phone); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
   return (
     <Shell>
       <H title={title} accent={accent} body="Enter your mobile number. We'll send you a one-time password." />
-      <form onSubmit={(e) => { e.preventDefault(); if (ok) onSent(phone); }} style={{ padding: "28px 24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
+      <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ padding: "28px 24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
         <div>
           <label style={label} htmlFor="phone">Mobile Number</label>
           <div style={{ ...field, display: "flex", alignItems: "center", gap: 10, padding: "4px 14px" }}>
             <span style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", borderRight: "1.5px solid var(--line)", paddingRight: 10 }}>🇮🇳 +91</span>
             <input id="phone" value={phone} inputMode="numeric" autoComplete="tel-national" placeholder="98765 43210"
-              onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+              onChange={(e) => { setPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setErr(null); }}
               style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 16, padding: "10px 0", color: "var(--ink)", letterSpacing: "0.04em" }} />
           </div>
+          {phone.length === 10 && !ok && <ErrorText msg="Indian mobile numbers start with 6, 7, 8 or 9." />}
+          <ErrorText msg={err} />
         </div>
-        <PrimaryButton type="submit" disabled={!ok}>Get OTP</PrimaryButton>
-        {social && (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--ink-mute)", fontSize: 12 }}>
-              <span style={{ flex: 1, height: 1, background: "var(--line-strong)" }} /> or continue with <span style={{ flex: 1, height: 1, background: "var(--line-strong)" }} />
-            </div>
-            <div style={{ display: "flex", gap: 12 }}>
-              {["Google", "Apple"].map((p) => (
-                <button key={p} type="button" onClick={() => onSent("9876543210")} className="press" style={{ ...card, flex: 1, border: "none", padding: 13, fontSize: 14, fontWeight: 600, color: "var(--ink)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                  {p === "Google"
-                    ? <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.5 12.2c0-.8-.1-1.4-.2-2H12v3.9h5.9a5 5 0 0 1-2.2 3.3v2.7h3.6c2-1.9 3.2-4.7 3.2-7.9z" /><path fill="#34A853" d="M12 23c3 0 5.5-1 7.3-2.7l-3.6-2.7c-1 .7-2.2 1-3.7 1-2.9 0-5.3-1.9-6.2-4.5H2.1v2.8A11 11 0 0 0 12 23z" /><path fill="#FBBC05" d="M5.8 14.1a6.6 6.6 0 0 1 0-4.2V7.1H2.1a11 11 0 0 0 0 9.8z" /><path fill="#EA4335" d="M12 5.4c1.6 0 3.1.6 4.2 1.7l3.2-3.2A11 11 0 0 0 2.1 7.1l3.7 2.8C6.7 7.3 9.1 5.4 12 5.4z" /></svg>
-                    : <svg width="18" height="18" viewBox="0 0 24 24" fill="#0f1729" aria-hidden="true"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.3-.9-1.7 0-3.3 1-4.2 2.5-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8s2 .8 3.3.8c1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9-.1 0-2.7-1-2.7-4zM13.9 5c.7-.9 1.2-2 1-3.2-1 .1-2.2.7-3 1.6-.6.7-1.2 1.9-1 3.1 1.1 0 2.3-.6 3-1.5z" /></svg>}
-                  {p}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
+        <PrimaryButton type="submit" disabled={!ok || busy}>{busy ? "Sending…" : "Get OTP"}</PrimaryButton>
         <p style={{ marginTop: "auto", fontSize: 11.5, color: "var(--ink-mute)", textAlign: "center", lineHeight: 1.5 }}>
           By continuing you agree to DriveWay&apos;s Terms of Service and Privacy Policy.
         </p>
@@ -97,57 +90,83 @@ export function PhoneLogin({ title, accent, onSent, social = true }: { title: st
   );
 }
 
+const OTP_LEN = 6;
+const RESEND_SEC = 30;
+
 export function OtpStep({ phone, onBack, onVerified }: { phone: string; onBack: () => void; onVerified: () => void }) {
   const [otp, setOtp] = useState("");
-  const [left, setLeft] = useState(30);
+  const [left, setLeft] = useState(RESEND_SEC);
   const [checking, setChecking] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     if (left <= 0) return;
     const t = setTimeout(() => setLeft((l) => l - 1), 1000);
     return () => clearTimeout(t);
   }, [left]);
-  useEffect(() => {
-    if (otp.length !== 4) return;
+  const enter = (v: string) => {
+    setOtp(v); setErr(null);
+    if (v.length !== OTP_LEN || checking) return;
     setChecking(true);
-    const t = setTimeout(onVerified, 700);
-    return () => clearTimeout(t);
-  }, [otp, onVerified]);
+    verifyOtp(phone, v).then(onVerified, (e) => { setErr((e as Error).message); setOtp(""); setChecking(false); });
+  };
+  const resend = async () => {
+    setErr(null);
+    try { await sendOtp(phone); setLeft(RESEND_SEC); } catch (e) { setErr((e as Error).message); }
+  };
   return (
     <Shell onBack={onBack}>
-      <H title="Verify your number" body={`Enter the 4-digit code sent to +91 ${phone.slice(0, 5)} ${phone.slice(5)}`} />
+      <H title="Verify your number" body={`Enter the ${OTP_LEN}-digit code sent to +91 ${phone.slice(0, 5)} ${phone.slice(5)}`} />
       <div style={{ padding: "32px 24px 0" }}>
-        <OtpInput value={otp} onChange={setOtp} />
+        <OtpInput value={otp} onChange={enter} length={OTP_LEN} />
+        <ErrorText msg={err} />
         <p style={{ textAlign: "center", margin: "22px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
           {checking ? "Verifying…" : left > 0 ? <>Resend code in <b style={{ color: "var(--ink)" }}>0:{String(left).padStart(2, "0")}</b></> : (
-            <button onClick={() => setLeft(30)} style={{ background: "none", border: "none", color: "var(--blue)", fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}>Resend OTP</button>
+            <button onClick={() => void resend()} style={{ background: "none", border: "none", color: "var(--blue)", fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}>Resend OTP</button>
           )}
         </p>
-        <p style={{ textAlign: "center", margin: "8px 0 0", fontSize: 11.5, color: "var(--ink-mute)" }}>Demo: any 4 digits work</p>
       </div>
     </Shell>
   );
 }
 
-/** Name, email and optional referral — shown once, after the first OTP. */
-export function ProfileSetup({ onDone }: { onDone: (p: { name: string; email: string }) => void }) {
+/** Name and email — shown once, after the first sign-in. */
+export function ProfileSetup({ onDone }: { onDone: (p: { name: string; email: string }) => Promise<void> }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [ref, setRef] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async () => {
+    if (!name.trim() || busy) return;
+    setBusy(true); setErr(null);
+    try { await onDone({ name: name.trim(), email: email.trim() }); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
   return (
     <Shell>
       <H title="Almost there!" accent="Tell us about you" body="This helps drivers greet you and receipts reach your inbox." />
-      <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) onDone({ name: name.trim(), email: email.trim() }); }}
+      <form onSubmit={(e) => { e.preventDefault(); void submit(); }}
         style={{ padding: "24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
-        <div><label style={label} htmlFor="n">Full Name</label><input id="n" value={name} onChange={(e) => setName(e.target.value)} placeholder="Amit Sharma" style={field} autoComplete="name" /></div>
-        <div><label style={label} htmlFor="e">Email <span style={{ fontWeight: 400, color: "var(--ink-mute)" }}>(optional)</span></label><input id="e" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" style={field} autoComplete="email" /></div>
-        <div><label style={label} htmlFor="r">Referral Code <span style={{ fontWeight: 400, color: "var(--ink-mute)" }}>(optional)</span></label><input id="r" value={ref} onChange={(e) => setRef(e.target.value.toUpperCase())} placeholder="e.g. RIDE100" style={field} /></div>
-        <div style={{ marginTop: "auto" }}><PrimaryButton type="submit" disabled={!name.trim()}>Continue</PrimaryButton></div>
+        <div><label style={label} htmlFor="n">Full Name</label><input id="n" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Amit Sharma" style={field} autoComplete="name" /></div>
+        <div><label style={label} htmlFor="e">Email <span style={{ fontWeight: 400, color: "var(--ink-mute)" }}>(optional)</span></label><input id="e" type="email" value={email} maxLength={254} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" style={field} autoComplete="email" /></div>
+        <ErrorText msg={err} />
+        <div style={{ marginTop: "auto" }}><PrimaryButton type="submit" disabled={!name.trim() || busy}>{busy ? "Saving…" : "Continue"}</PrimaryButton></div>
       </form>
     </Shell>
   );
 }
 
-/** Location + notification permission ask, one screen. */
+/** Ask the browser for the real permission; resolves true only if granted. */
+async function ask(kind: string): Promise<boolean> {
+  try {
+    if (kind === "Location") {
+      if (!("geolocation" in navigator)) return false;
+      return await new Promise((res) => navigator.geolocation.getCurrentPosition(() => res(true), () => res(false), { timeout: 10000 }));
+    }
+    if (!("Notification" in window)) return false;
+    return (await Notification.requestPermission()) === "granted";
+  } catch { return false; }
+}
+
+/** Location + notification permission ask, one screen. The app works without either. */
 export function PermissionStep({ onDone }: { onDone: () => void }) {
   const [loc, setLoc] = useState(false);
   const [bell, setBell] = useState(false);
@@ -163,7 +182,7 @@ export function PermissionStep({ onDone }: { onDone: () => void }) {
           <div key={t} style={{ ...card, padding: 16, display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ width: 46, height: 46, borderRadius: 14, background: "var(--blue-tint)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon s={22} c="var(--blue)" /></div>
             <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14.5, fontWeight: 600 }}>{t}</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>{b}</p></div>
-            <button onClick={() => set(true)} disabled={on} className="press" style={{
+            <button onClick={() => void ask(t).then(set)} disabled={on} className="press" style={{
               border: "none", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: on ? "default" : "pointer",
               background: on ? "var(--success)" : "var(--blue)", color: on ? "var(--success-text)" : "white", display: "flex", alignItems: "center", gap: 4,
             }}>{on ? <><CheckIcon s={13} c="var(--success-text)" /> Allowed</> : "Allow"}</button>

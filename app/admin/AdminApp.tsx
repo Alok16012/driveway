@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BrandMark, Wordmark } from "../components/Brand";
 import MapView from "../components/MapView";
 import VehicleArt from "../components/VehicleArt";
@@ -9,11 +8,55 @@ import {
   BellIcon, CarIcon, ChartIcon, CheckIcon, DocIcon, DownloadIcon, GearIcon, GridIcon, HelpIcon, LockIcon, LogoutIcon,
   MapIcon, MegaphoneIcon, RupeeIcon, SearchIcon, SteeringIcon, TagIcon, UsersIcon, XIcon,
 } from "../components/icons";
-import { Avatar, PrimaryButton, StatusBadge, Toggle, card, field, label } from "../components/ui";
-import {
-  COUPONS, CUSTOMERS, DRIVERS, NON_AC_FACTOR, RIDES, TICKETS, TXNS, VEHICLES, WEEK, fareFor, inr, vehicleById,
-  type Coupon, type Customer, type Driver, type Ride, type Ticket, type Vehicle,
-} from "../lib/data";
+import { Avatar, ErrorText, LoadState, PrimaryButton, StatusBadge, Toggle, card, field, label } from "../components/ui";
+import { inr, vehicleById, type VehicleKind } from "../lib/data";
+import { adminSignIn, friendly, getSession, myProfile, newKey, onAuthChange, rpc, signOut } from "../lib/api";
+import { supabase } from "../lib/supabase/client";
+
+/* ───────────────────────── Data shapes (rows the admin's RLS lets it read) ───────────────────────── */
+
+interface Prof { id: string; name: string; phone: string | null; email: string | null; blocked: boolean; rating: number | null; is_admin: boolean; created_at: string }
+interface Drv {
+  id: string; name: string; vehicle: VehicleKind; model: string; plate: string; ac: boolean; city: string; kyc: "Pending" | "Approved" | "Rejected";
+  kyc_note: string | null; docs: Record<string, string>; upi: string | null; suspended: boolean; online: boolean; last_seen: string | null;
+  rating: number | null; trips: number; created_at: string; profiles: { phone: string | null; blocked: boolean } | null;
+}
+interface RideRow {
+  id: string; code: string; customer_id: string; driver_id: string | null; service: string; vehicle: VehicleKind | null; requested_vehicles: VehicleKind[];
+  ac: boolean; from_place: string; to_place: string; km: number; mins: number; fare: number; discount: number; coupon_code: string | null; wait_fee: number;
+  cancel_fee: number; total: number; pay_method: string; payment_status: string; refunded: number; status: string; cancel_reason: string | null;
+  cancelled_by: string | null; rating: number | null; created_at: string; completed_at: string | null; scheduled_for: string | null;
+}
+interface Vehicle { id: VehicleKind; name: string; base: number; per_km: number; per_min: number; min_fare: number; cancel_fee: number; ac: boolean; enabled: boolean; sort: number }
+interface Settings { commission_pct: number; surge_on: boolean; surge_mult: number; non_ac_factor: number }
+interface Coupon { code: string; title: string; body: string; off: number; pct: boolean; max_off: number | null; min_fare: number; expires_at: string; active: boolean; uses: number; total_limit: number | null; per_user_limit: number }
+interface Ledger { id: number; ride_id: string | null; user_id: string | null; party: string; kind: string; amount: number; method: string | null; note: string | null; created_at: string }
+interface Ticket { id: string; code: string; user_id: string; role: string; subject: string; ride_id: string | null; status: "Open" | "In Progress" | "Resolved"; notes: { from: string; body: string; at: string }[]; created_at: string }
+interface Audit { id: number; actor: string | null; action: string; target: string | null; details: unknown; at: string }
+interface Place { id: string; name: string }
+
+interface Data {
+  profiles: Prof[]; drivers: Drv[]; rides: RideRow[]; vehicles: Vehicle[]; settings: Settings; coupons: Coupon[];
+  ledger: Ledger[]; tickets: Ticket[]; audit: Audit[]; places: Place[];
+}
+
+async function loadAll(): Promise<Data> {
+  const sb = supabase();
+  const q = async <T,>(p: PromiseLike<{ data: T | null; error: { message: string } | null }>) => { const { data, error } = await p; if (error) throw new Error(friendly(error)); return data as T; };
+  const [profiles, drivers, rides, vehicles, settings, coupons, ledger, tickets, audit, places] = await Promise.all([
+    q<Prof[]>(sb.from("profiles").select("id,name,phone,email,blocked,rating,is_admin,created_at").order("created_at", { ascending: false }).limit(1000)),
+    q<Drv[]>(sb.from("drivers").select("*, profiles(phone,blocked)").order("created_at", { ascending: false }).limit(1000)),
+    q<RideRow[]>(sb.from("rides").select("*").order("created_at", { ascending: false }).limit(1000)),
+    q<Vehicle[]>(sb.from("vehicles").select("*").order("sort")),
+    q<Settings>(sb.from("settings").select("*").single()),
+    q<Coupon[]>(sb.from("coupons").select("*").order("created_at", { ascending: false })),
+    q<Ledger[]>(sb.from("ledger").select("*").order("created_at", { ascending: false }).limit(1000)),
+    q<Ticket[]>(sb.from("tickets").select("*").order("updated_at", { ascending: false }).limit(500)),
+    q<Audit[]>(sb.from("audit_log").select("*").order("at", { ascending: false }).limit(100)),
+    q<Place[]>(sb.from("places").select("id,name")),
+  ]);
+  return { profiles, drivers, rides, vehicles, settings, coupons, ledger, tickets, audit, places };
+}
 
 type Section = "dashboard" | "live" | "rides" | "customers" | "drivers" | "pricing" | "coupons" | "payments" | "reports" | "support" | "notify" | "settings";
 
@@ -29,34 +72,55 @@ const NAV: { id: Section; label: string; Icon: (p: { s?: number; c?: string }) =
   { id: "reports", label: "Reports", Icon: ChartIcon },
   { id: "support", label: "Support", Icon: HelpIcon },
   { id: "notify", label: "Notifications", Icon: MegaphoneIcon },
-  { id: "settings", label: "Settings", Icon: GearIcon },
+  { id: "settings", label: "Settings & Audit", Icon: GearIcon },
 ];
 
-const AUTH_KEY = "driveway:admin";
-const readAdmin = () => { try { return sessionStorage.getItem(AUTH_KEY) === "1"; } catch { return false; } };
-const writeAdmin = (v: boolean) => { try { if (v) sessionStorage.setItem(AUTH_KEY, "1"); else sessionStorage.removeItem(AUTH_KEY); } catch { /* storage blocked */ } };
+const LIVE = ["Searching", "Arriving", "Arrived", "Started"];
+const istDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }) : "—");
+const initials = (n: string) => n.split(/\s+/).filter(Boolean).map((s) => s[0]).join("").slice(0, 2).toUpperCase() || "?";
+const paidOf = (r: RideRow) => (r.payment_status === "paid" || r.payment_status.includes("refunded") ? r.total : 0);
 
 export default function AdminApp() {
-  const [authed, setAuthed] = useState(false);
+  const [authed, setAuthed] = useState<boolean | null>(null);
   const [section, setSection] = useState<Section>("dashboard");
-  const [drivers, setDrivers] = useState<Driver[]>(DRIVERS);
-  const [customers, setCustomers] = useState<Customer[]>(CUSTOMERS);
-  const [vehicles, setVehicles] = useState<Vehicle[]>(VEHICLES);
-  const [coupons, setCoupons] = useState<Coupon[]>(COUPONS);
-  const [tickets, setTickets] = useState<Ticket[]>(TICKETS);
-  const [commission, setCommission] = useState(20);
-  const [surge, setSurge] = useState({ on: true, mult: 1.3 });
+  const [data, setData] = useState<Data | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  // Stay signed in for this browser tab.
-  useEffect(() => { if (readAdmin()) setAuthed(true); }, []);
+  const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2600); };
 
-  const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2200); };
+  // Only a signed-in user whose profile has is_admin = true gets in (checked again by every server function).
+  useEffect(() => {
+    void (async () => {
+      if (!(await getSession())) { setAuthed(false); return; }
+      try { setAuthed(!!(await myProfile())?.is_admin); } catch { setAuthed(false); }
+    })();
+    return onAuthChange((s) => { if (!s) setAuthed(false); });
+  }, []);
 
-  if (!authed) return <AdminLogin onLogin={() => { writeAdmin(true); setAuthed(true); }} />;
+  const reload = useCallback(async () => {
+    setLoadErr(null);
+    try { setData(await loadAll()); } catch (e) { setLoadErr((e as Error).message); }
+  }, []);
+  useEffect(() => {
+    if (!authed) return;
+    void reload();
+    const t = setInterval(() => void reload(), 15000);
+    return () => clearInterval(t);
+  }, [authed, reload]);
 
-  const pending = drivers.filter((d) => d.kyc === "Pending").length;
-  const open = tickets.filter((t) => t.status !== "Resolved").length;
+  /** Run an audited admin function, then refresh everything from the database. */
+  const act = async (fn: string, args: Record<string, unknown>, ok: string) => {
+    try { await rpc(fn, args); flash(ok); await reload(); return true; } catch (e) { flash((e as Error).message); return false; }
+  };
+
+  if (authed === null) return <LoadState />;
+  if (!authed) return <AdminLogin onLogin={() => setAuthed(true)} />;
+  if (!data) return <LoadState error={loadErr} onRetry={() => void reload()} />;
+
+  const pending = data.drivers.filter((d) => d.kyc === "Pending").length;
+  const open = data.tickets.filter((t) => t.status !== "Resolved").length;
 
   return (
     <div className="adm-shell">
@@ -82,33 +146,27 @@ export default function AdminApp() {
             );
           })}
         </nav>
-        <div className="adm-side-foot" style={{ marginTop: "auto", paddingTop: 20, display: "flex", flexDirection: "column", gap: 8 }}>
-          <p style={{ margin: "0 6px", fontSize: 11.5, color: "rgba(255,255,255,0.5)" }}>
-            <Link href="/customer" style={{ color: "rgba(255,255,255,0.7)" }}>Customer app</Link> · <Link href="/rider" style={{ color: "rgba(255,255,255,0.7)" }}>Rider app</Link>
-          </p>
-          <button onClick={() => { writeAdmin(false); setAuthed(false); }} style={{ display: "flex", alignItems: "center", gap: 10, border: "none", background: "rgba(255,255,255,0.08)", color: "white", borderRadius: 12, padding: "10px 12px", cursor: "pointer", fontSize: 13.5, fontWeight: 500 }}>
+        <div className="adm-side-foot" style={{ marginTop: "auto", paddingTop: 20 }}>
+          <button onClick={() => void signOut()} style={{ display: "flex", alignItems: "center", gap: 10, border: "none", background: "rgba(255,255,255,0.08)", color: "white", borderRadius: 12, padding: "10px 12px", cursor: "pointer", fontSize: 13.5, fontWeight: 500, width: "100%" }}>
             <LogoutIcon s={18} c="white" /> Log out
           </button>
         </div>
       </aside>
 
       <main className="adm-main">
-        <TopBar title={NAV.find((n) => n.id === section)!.label} alerts={pending + open} />
-        {section === "dashboard" && <Dashboard drivers={drivers} pending={pending} open={open} go={setSection} />}
-        {section === "live" && <LiveRides />}
-        {section === "rides" && <RidesSection />}
-        {section === "customers" && <CustomersSection rows={customers} onToggle={(id) => {
-          setCustomers((c) => c.map((x) => (x.id === id ? { ...x, blocked: !x.blocked } : x)));
-          const c = customers.find((x) => x.id === id)!; flash(`${c.name} ${c.blocked ? "unblocked" : "blocked"}`);
-        }} />}
-        {section === "drivers" && <DriversSection rows={drivers} onUpdate={(id, p, msg) => { setDrivers((d) => d.map((x) => (x.id === id ? { ...x, ...p } : x))); flash(msg); }} />}
-        {section === "pricing" && <PricingSection vehicles={vehicles} setVehicles={setVehicles} commission={commission} setCommission={setCommission} surge={surge} setSurge={setSurge} onSave={() => flash("Pricing saved — applies to new bookings")} />}
-        {section === "coupons" && <CouponsSection rows={coupons} setRows={setCoupons} flash={flash} />}
-        {section === "payments" && <PaymentsSection />}
-        {section === "reports" && <ReportsSection flash={flash} />}
-        {section === "support" && <SupportSection rows={tickets} setRows={setTickets} flash={flash} />}
-        {section === "notify" && <NotifySection flash={flash} />}
-        {section === "settings" && <SettingsSection flash={flash} />}
+        <TopBar title={NAV.find((n) => n.id === section)!.label} alerts={pending + open} loadErr={loadErr} onRefresh={() => void reload()} />
+        {section === "dashboard" && <Dashboard d={data} go={setSection} />}
+        {section === "live" && <LiveRides d={data} act={act} />}
+        {section === "rides" && <RidesSection d={data} act={act} />}
+        {section === "customers" && <CustomersSection d={data} act={act} />}
+        {section === "drivers" && <DriversSection d={data} act={act} />}
+        {section === "pricing" && <PricingSection d={data} done={async (m) => { flash(m); await reload(); }} />}
+        {section === "coupons" && <CouponsSection d={data} act={act} />}
+        {section === "payments" && <PaymentsSection d={data} />}
+        {section === "reports" && <ReportsSection d={data} flash={flash} />}
+        {section === "support" && <SupportSection d={data} act={act} />}
+        {section === "notify" && <NotifySection />}
+        {section === "settings" && <SettingsSection d={data} />}
       </main>
 
       {toast && (
@@ -118,23 +176,23 @@ export default function AdminApp() {
   );
 }
 
+type Act = (fn: string, args: Record<string, unknown>, ok: string) => Promise<boolean>;
+
 /* ───────────────────────── Shared bits ───────────────────────── */
 
-function TopBar({ title, alerts }: { title: string; alerts: number }) {
+function TopBar({ title, alerts, loadErr, onRefresh }: { title: string; alerts: number; loadErr: string | null; onRefresh: () => void }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
       <div style={{ flex: 1 }}>
-        <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>Monday, 28 September 2026</p>
+        <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Kolkata" })}</p>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>{title}</h1>
+        {loadErr && <ErrorText msg={`Couldn't refresh: ${loadErr}`} />}
       </div>
+      <button onClick={onRefresh} style={{ ...smallBtn("ghost") }}>Refresh</button>
       <span style={{ position: "relative", width: 42, height: 42, borderRadius: 12, background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow-card)" }}>
         <BellIcon s={20} c="var(--ink-soft)" />
         {alerts > 0 && <span style={{ position: "absolute", top: 8, right: 9, width: 8, height: 8, borderRadius: "50%", background: "var(--red)" }} />}
       </span>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <Avatar initials="AD" size={40} tone="gold" />
-        <div className="adm-hide-sm"><p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>Admin</p><p style={{ margin: 0, fontSize: 11.5, color: "var(--ink-soft)" }}>Super admin</p></div>
-      </div>
     </div>
   );
 }
@@ -153,7 +211,7 @@ function Panel({ title, right, children, pad = 16 }: { title?: string; right?: R
   );
 }
 
-function Stat({ label: l, value, delta, tone = "plain", onClick }: { label: string; value: string; delta?: string; tone?: "plain" | "blue" | "gold" | "red"; onClick?: () => void }) {
+function Stat({ label: l, value, sub, tone = "plain", onClick }: { label: string; value: string; sub?: string; tone?: "plain" | "blue" | "gold" | "red"; onClick?: () => void }) {
   const blue = tone === "blue";
   return (
     <button onClick={onClick} className="press" style={{
@@ -163,7 +221,7 @@ function Stat({ label: l, value, delta, tone = "plain", onClick }: { label: stri
     }}>
       <p style={{ margin: 0, fontSize: 12.5, color: blue ? "rgba(255,255,255,0.75)" : "var(--ink-soft)", fontWeight: 500 }}>{l}</p>
       <p style={{ margin: "6px 0 0", fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", color: tone === "gold" ? "var(--gold-dark)" : tone === "red" ? "var(--red)" : undefined }}>{value}</p>
-      {delta && <p style={{ margin: "2px 0 0", fontSize: 11.5, fontWeight: 600, color: blue ? "var(--gold)" : "var(--success-text)" }}>{delta}</p>}
+      {sub && <p style={{ margin: "2px 0 0", fontSize: 11.5, fontWeight: 600, color: blue ? "var(--gold)" : "var(--ink-soft)" }}>{sub}</p>}
     </button>
   );
 }
@@ -172,7 +230,7 @@ function SearchBox({ value, onChange, placeholder }: { value: string; onChange: 
   return (
     <label style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--bg-secondary)", borderRadius: 12, padding: "8px 12px", minWidth: 220 }}>
       <SearchIcon s={17} c="var(--ink-mute)" />
-      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder} style={{ border: "none", outline: "none", background: "transparent", fontSize: 13.5, flex: 1, color: "var(--ink)" }} />
+      <input value={value} onChange={(e) => onChange(e.target.value.slice(0, 80))} placeholder={placeholder} aria-label={placeholder} style={{ border: "none", outline: "none", background: "transparent", fontSize: 13.5, flex: 1, color: "var(--ink)" }} />
     </label>
   );
 }
@@ -182,13 +240,12 @@ function Chips<T extends string>({ value, options, onChange }: { value: T; optio
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
       {options.map((o) => {
         const on = o === value;
-        return <button key={o} onClick={() => onChange(o)} aria-pressed={on} style={{ border: on ? "1.5px solid var(--blue)" : "1.5px solid var(--line)", background: on ? "var(--blue-tint)" : "var(--surface)", color: on ? "var(--blue)" : "var(--ink-soft)", borderRadius: 999, padding: "5px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>{o}</button>;
+        return <button key={o} onClick={() => onChange(o)} aria-pressed={on} style={{ border: on ? "1.5px solid var(--blue)" : "1.5px solid var(--line)", background: on ? "var(--blue-tint)" : "var(--surface)", color: on ? "var(--blue)" : "var(--text-secondary)", borderRadius: 10, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>{o}</button>;
       })}
     </div>
   );
 }
 
-/** Right-side detail drawer. */
 function Drawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", justifyContent: "flex-end" }}>
@@ -217,13 +274,13 @@ const smallBtn = (tone: "blue" | "green" | "red" | "ghost"): React.CSSProperties
 });
 
 function BarChart({ data, format, color = "var(--blue)" }: { data: { d: string; v: number }[]; format: (n: number) => string; color?: string }) {
-  const max = Math.max(...data.map((x) => x.v));
+  const max = Math.max(1, ...data.map((x) => x.v));
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 190, paddingTop: 20 }}>
       {data.map((b, i) => (
         <div key={b.d} style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", gap: 6 }} title={`${b.d}: ${format(b.v)}`}>
           <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--ink-soft)" }}>{format(b.v)}</span>
-          <div style={{ width: "100%", maxWidth: 40, height: `${(b.v / max) * 78}%`, borderRadius: "8px 8px 4px 4px", background: i === data.length - 1 ? "var(--gold)" : color }} />
+          <div style={{ width: "100%", maxWidth: 40, height: `${Math.max(2, (b.v / max) * 78)}%`, borderRadius: "8px 8px 4px 4px", background: i === data.length - 1 ? "var(--gold)" : color }} />
           <span style={{ fontSize: 11.5, color: "var(--ink-mute)" }}>{b.d}</span>
         </div>
       ))}
@@ -231,63 +288,83 @@ function BarChart({ data, format, color = "var(--blue)" }: { data: { d: string; 
   );
 }
 
-const compact = (n: number) => (n >= 100000 ? `₹${(n / 100000).toFixed(1)}L` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+const compact = (n: number) => (n >= 100000 ? `₹${(n / 100000).toFixed(1)}L` : n >= 1000 ? `₹${(n / 1000).toFixed(1)}k` : inr(n));
 
-/* ───────────────────────── Login ───────────────────────── */
+/** Last 7 IST days, oldest first. */
+const last7 = () => Array.from({ length: 7 }, (_, i) => {
+  const d = new Date(Date.now() - (6 - i) * 864e5);
+  return { key: d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }), label: d.toLocaleDateString("en-IN", { weekday: "short", timeZone: "Asia/Kolkata" }) };
+});
+
+/* ───────────────────────── Login (Supabase email + password, admin role required) ───────────────────────── */
 
 function AdminLogin({ onLogin }: { onLogin: () => void }) {
-  const [email, setEmail] = useState("admin@driveway.in");
+  const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async () => {
+    setBusy(true); setErr(null);
+    try { await adminSignIn(email.trim(), pw); onLogin(); } catch (e) { setErr((e as Error).message); setPw(""); } finally { setBusy(false); }
+  };
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "linear-gradient(165deg,#04246b 0%,#020b24 100%)" }}>
-      <form onSubmit={(e) => { e.preventDefault(); if (pw) onLogin(); }} className="fade-up" style={{ ...card, width: "min(400px,100%)", padding: 28, background: "var(--app-bg)" }}>
+      <form onSubmit={(e) => { e.preventDefault(); void submit(); }} className="fade-up" style={{ ...card, width: "min(400px,100%)", padding: 28, background: "var(--app-bg)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}><BrandMark size={40} /><Wordmark sub="ADMIN PANEL" size={22} /></div>
         <h1 style={{ margin: "22px 0 4px", fontSize: 22, fontWeight: 800, textAlign: "center" }}>Admin Portal</h1>
-        <p style={{ margin: "0 0 20px", fontSize: 13.5, color: "var(--ink-soft)", textAlign: "center" }}>Sign in to manage rides, drivers and payments</p>
+        <p style={{ margin: "0 0 20px", fontSize: 13.5, color: "var(--ink-soft)", textAlign: "center" }}>Sign in with your DriveWay admin account</p>
         <label style={label} htmlFor="ae">Email</label>
-        <input id="ae" type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ ...field, marginBottom: 14 }} autoComplete="username" />
+        <input id="ae" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} style={{ ...field, marginBottom: 14 }} autoComplete="username" />
         <label style={label} htmlFor="ap">Password</label>
-        <input id="ap" type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Any password (demo)" style={{ ...field, marginBottom: 20 }} autoComplete="current-password" />
-        <PrimaryButton type="submit" disabled={!pw}><LockIcon s={17} c={pw ? "white" : "var(--ink-mute)"} /> Login</PrimaryButton>
-        <p style={{ margin: "14px 0 0", fontSize: 11.5, color: "var(--ink-mute)", textAlign: "center" }}>Demo build · role-based access & audit logs come with the real API</p>
+        <input id="ap" type="password" required value={pw} onChange={(e) => setPw(e.target.value)} style={{ ...field, marginBottom: 12 }} autoComplete="current-password" />
+        <ErrorText msg={err} />
+        <div style={{ marginTop: 12 }}><PrimaryButton type="submit" disabled={!email || !pw || busy}><LockIcon s={17} c={email && pw ? "white" : "var(--ink-mute)"} /> {busy ? "Signing in…" : "Login"}</PrimaryButton></div>
       </form>
     </div>
   );
 }
 
-/* ───────────────────────── Dashboard ───────────────────────── */
+/* ───────────────────────── Dashboard (all figures computed from records) ───────────────────────── */
 
-function Dashboard({ drivers, pending, open, go }: { drivers: Driver[]; pending: number; open: number; go: (s: Section) => void }) {
-  const onlineNow = drivers.filter((d) => d.online && !d.suspended).length;
+function Dashboard({ d, go }: { d: Data; go: (s: Section) => void }) {
+  const today = istDay(new Date().toISOString());
+  const todays = d.rides.filter((r) => istDay(r.created_at) === today);
+  const revenueToday = d.ledger.filter((l) => l.kind === "payment" && istDay(l.created_at) === today).reduce((s, l) => s + l.amount, 0);
+  const driverIds = new Set(d.drivers.map((x) => x.id));
+  const days = last7();
+  const revenue = days.map(({ key, label: l }) => ({ d: l, v: d.ledger.filter((x) => x.kind === "payment" && istDay(x.created_at) === key).reduce((s, x) => s + x.amount, 0) }));
+  const done = d.rides.filter((r) => r.status === "Completed");
+  const byVehicle = (["bike", "auto", "erick", "mini", "sedan", "taxi", "suv"] as VehicleKind[]).map((k) => [k, done.filter((r) => r.vehicle === k).length] as const).filter(([, n]) => n > 0);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div className="adm-grid-4">
-        <Stat label="Today's Revenue" value={inr(248000)} delta="↑ 15% vs last Sunday" tone="blue" onClick={() => go("reports")} />
-        <Stat label="Today's Rides" value="1,248" delta="↑ 12%" onClick={() => go("rides")} />
-        <Stat label="Online Drivers" value={`${245 + onlineNow}`} delta="↑ 8%" onClick={() => go("live")} />
-        <Stat label="Total Customers" value="18,420" delta="↑ 214 this week" onClick={() => go("customers")} />
-        <Stat label="Completed / Cancelled" value="1,164 / 84" />
-        <Stat label="Registered Drivers" value="1,032" />
-        <Stat label="Pending Approvals" value={String(pending)} tone="gold" onClick={() => go("drivers")} />
-        <Stat label="Open Tickets" value={String(open)} tone="red" onClick={() => go("support")} />
+        <Stat label="Collected today" value={inr(revenueToday)} sub="Payments recorded today (IST)" tone="blue" onClick={() => go("payments")} />
+        <Stat label="Rides today" value={String(todays.length)} sub={`${todays.filter((r) => r.status === "Completed").length} completed · ${todays.filter((r) => r.status === "Cancelled").length} cancelled`} onClick={() => go("rides")} />
+        <Stat label="Live right now" value={String(d.rides.filter((r) => LIVE.includes(r.status)).length)} sub={`${d.drivers.filter((x) => x.online && !x.suspended).length} drivers online`} onClick={() => go("live")} />
+        <Stat label="Customers" value={String(d.profiles.filter((p) => !driverIds.has(p.id) && !p.is_admin).length)} onClick={() => go("customers")} />
+        <Stat label="Approved drivers" value={String(d.drivers.filter((x) => x.kyc === "Approved").length)} onClick={() => go("drivers")} />
+        <Stat label="Pending approvals" value={String(d.drivers.filter((x) => x.kyc === "Pending").length)} tone="gold" onClick={() => go("drivers")} />
+        <Stat label="Open tickets" value={String(d.tickets.filter((t) => t.status !== "Resolved").length)} tone="red" onClick={() => go("support")} />
+        <Stat label="Payments due" value={inr(d.rides.filter((r) => r.payment_status === "pending").reduce((s, r) => s + r.total, 0))} sub={`${d.rides.filter((r) => r.payment_status === "pending").length} rides`} />
       </div>
       <div className="adm-grid-2">
-        <Panel title="Revenue · last 7 days" right={<span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>Total {inr(WEEK.reduce((s, w) => s + w.revenue, 0))}</span>}>
-          <BarChart data={WEEK.map((w) => ({ d: w.d, v: w.revenue }))} format={compact} />
+        <Panel title="Collected · last 7 days" right={<span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>Total {inr(revenue.reduce((s, x) => s + x.v, 0))}</span>}>
+          <BarChart data={revenue} format={compact} />
         </Panel>
-        <Panel title="Rides by vehicle">
-          {[["sedan", 34], ["auto", 26], ["mini", 18], ["bike", 15], ["suv", 7]].map(([k, p]) => (
+        <Panel title="Completed rides by vehicle">
+          {byVehicle.length === 0 && <p style={{ margin: 0, color: "var(--ink-soft)", fontSize: 13 }}>No completed rides yet.</p>}
+          {byVehicle.map(([k, n]) => (
             <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0" }}>
-              <VehicleArt kind={k as Vehicle["id"]} size={40} />
-              <span style={{ width: 52, fontSize: 13, fontWeight: 600 }}>{vehicleById(k as Vehicle["id"]).name}</span>
-              <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--line)" }}><div style={{ width: `${(p as number) * 2.5}%`, height: "100%", borderRadius: 4, background: "var(--blue)" }} /></div>
-              <span style={{ width: 36, textAlign: "right", fontSize: 12.5, fontWeight: 700 }}>{p}%</span>
+              <VehicleArt kind={k} size={40} />
+              <span style={{ width: 80, fontSize: 13, fontWeight: 600 }}>{vehicleById(k).name}</span>
+              <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--line)" }}><div style={{ width: `${(n / done.length) * 100}%`, height: "100%", borderRadius: 4, background: "var(--blue)" }} /></div>
+              <span style={{ width: 36, textAlign: "right", fontSize: 12.5, fontWeight: 700 }}>{n}</span>
             </div>
           ))}
         </Panel>
       </div>
-      <Panel title="Recent Rides" right={<button onClick={() => go("rides")} style={{ background: "none", border: "none", color: "var(--blue)", fontWeight: 600, cursor: "pointer" }}>View all →</button>}>
-        <RidesTable rows={RIDES.slice(0, 5)} onOpen={() => go("rides")} />
+      <Panel title="Recent rides" right={<button onClick={() => go("rides")} style={{ background: "none", border: "none", color: "var(--blue)", fontWeight: 600, cursor: "pointer" }}>View all →</button>}>
+        <RidesTable d={d} rows={d.rides.slice(0, 6)} onOpen={() => go("rides")} />
       </Panel>
     </div>
   );
@@ -295,160 +372,200 @@ function Dashboard({ drivers, pending, open, go }: { drivers: Driver[]; pending:
 
 /* ───────────────────────── Rides ───────────────────────── */
 
-function RidesTable({ rows, onOpen }: { rows: Ride[]; onOpen: (r: Ride) => void }) {
+const nameOf = (d: Data, id: string | null) => (id ? d.profiles.find((p) => p.id === id)?.name || d.drivers.find((x) => x.id === id)?.name || "—" : "—");
+const placeName = (d: Data, id: string) => d.places.find((p) => p.id === id)?.name ?? id;
+
+function RidesTable({ d, rows, onOpen }: { d: Data; rows: RideRow[]; onOpen: (r: RideRow) => void }) {
   return (
     <div className="adm-table-wrap">
       <table className="adm-table">
-        <thead><tr><th>ID</th><th>Customer</th><th>Driver</th><th>Vehicle</th><th>Route</th><th>Status</th><th>Payment</th><th style={{ textAlign: "right" }}>Fare</th></tr></thead>
+        <thead><tr><th>ID</th><th>Created</th><th>Customer</th><th>Driver</th><th>Vehicle</th><th>Route</th><th>Status</th><th>Payment</th><th style={{ textAlign: "right" }}>Owed</th></tr></thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} onClick={() => onOpen(r)}>
-              <td style={{ fontWeight: 700 }}>#{r.id}</td><td>{r.customer}</td><td>{r.driver}</td><td>{vehicleById(r.vehicle).name}</td>
-              <td style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", color: "var(--ink-soft)" }}>{r.from} → {r.to}</td>
-              <td><StatusBadge status={r.status === "Started" || r.status === "Arriving" ? "Ongoing" : r.status} /></td>
-              <td>{r.pay} · <span style={{ color: r.paid ? "var(--success-text)" : "var(--warning-text)", fontWeight: 600 }}>{r.paid ? "Paid" : "Pending"}</span></td>
-              <td style={{ textAlign: "right", fontWeight: 700 }}>{inr(r.fare - r.discount)}</td>
+              <td style={{ fontWeight: 700 }}>#{r.code}</td><td>{when(r.created_at)}</td><td>{nameOf(d, r.customer_id)}</td><td>{nameOf(d, r.driver_id)}</td>
+              <td>{r.vehicle ? vehicleById(r.vehicle).name : r.service === "any" ? "Book Any" : "—"}</td>
+              <td style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", color: "var(--ink-soft)" }}>{placeName(d, r.from_place)} → {placeName(d, r.to_place)}</td>
+              <td><StatusBadge status={r.status} /></td>
+              <td>{r.pay_method} · <span style={{ fontWeight: 600 }}>{r.payment_status}</span></td>
+              <td style={{ textAlign: "right", fontWeight: 700 }}>{inr(r.total)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {rows.length === 0 && <p style={{ textAlign: "center", color: "var(--ink-soft)", padding: 24 }}>No rides match these filters.</p>}
+      {rows.length === 0 && <p style={{ textAlign: "center", color: "var(--ink-soft)", padding: 24 }}>No rides match.</p>}
     </div>
   );
 }
 
-function RideDrawer({ r, onClose }: { r: Ride; onClose: () => void }) {
-  const v = vehicleById(r.vehicle);
-  const dist = Math.round(v.perKm * r.km);
+function RideDrawer({ d, r, act, onClose }: { d: Data; r: RideRow; act: Act; onClose: () => void }) {
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [key] = useState(newKey);   // one refund key per drawer → a double-click refunds once
+  const events = d.ledger.filter((l) => l.ride_id === r.id);
+  const refundable = r.total - r.refunded;
+  const amt = Number(amount);
   return (
-    <Drawer title={`Ride #${r.id}`} onClose={onClose}>
-      <MapView mode="route" height={170} radius={16} nearby={false} />
+    <Drawer title={`Ride #${r.code}`} onClose={onClose}>
       <div style={{ ...card, padding: 14 }}>
         {kv("Status", <StatusBadge status={r.status} />)}
-        {kv("Date", `${r.date}, ${r.time}`)}
-        {kv("Customer", r.customer)}
-        {kv("Driver", r.driver)}
-        {kv("Vehicle", `${v.name} · ${r.km} km · ${r.min} min`)}
-        {kv("Pickup", r.from)}
-        {kv("Drop", r.to)}
-        {r.cancelReason && kv("Cancellation", r.cancelReason)}
+        {kv("Created", when(r.created_at))}
+        {r.scheduled_for && kv("Scheduled for", when(r.scheduled_for))}
+        {kv("Customer", nameOf(d, r.customer_id))}
+        {kv("Driver", nameOf(d, r.driver_id))}
+        {kv("Vehicle", `${r.vehicle ? vehicleById(r.vehicle).name : "Book Any"} · ${r.ac ? "AC" : "Non-AC"} · ${r.km} km · ${r.mins} min`)}
+        {kv("Route", `${placeName(d, r.from_place)} → ${placeName(d, r.to_place)}`)}
+        {r.cancel_reason && kv("Cancelled", `${r.cancel_reason} (${r.cancelled_by})`)}
         {r.rating && kv("Rating", "★".repeat(r.rating))}
       </div>
       <div style={{ ...card, padding: 14 }}>
-        <p style={{ margin: "0 0 6px", fontWeight: 700 }}>Fare breakdown</p>
-        {kv("Base fare", inr(v.base))}
-        {kv("Distance", inr(dist))}
-        {kv("Time", inr(Math.max(0, r.fare - v.base - dist)))}
-        {kv("Discount", "− " + inr(r.discount))}
-        {kv("Total", inr(r.fare - r.discount))}
-        {kv("Platform commission", inr((r.fare - r.discount) * 0.2))}
-        {kv("Payment", `${r.pay} · ${r.paid ? "Paid" : "Pending"}`)}
+        <p style={{ margin: "0 0 6px", fontWeight: 700 }}>Money</p>
+        {kv("Quoted fare", inr(r.fare))}
+        {r.wait_fee > 0 && kv("Waiting charge", inr(r.wait_fee))}
+        {r.discount > 0 && kv(`Coupon ${r.coupon_code}`, "− " + inr(r.discount))}
+        {r.cancel_fee > 0 && kv("Cancellation fee", inr(r.cancel_fee))}
+        {kv("Customer owes", inr(r.total))}
+        {kv("Payment", `${r.pay_method} · ${r.payment_status}`)}
+        {r.refunded > 0 && kv("Refunded", inr(r.refunded))}
       </div>
+      {events.length > 0 && (
+        <Panel title="Ledger entries">
+          {events.map((e) => kv(`${e.kind} · ${e.party}`, `${e.amount < 0 ? "− " : ""}${inr(Math.abs(e.amount))}`))}
+        </Panel>
+      )}
+      {LIVE.concat("Scheduled").includes(r.status) && (
+        <PrimaryButton tone="red" onClick={() => void act("admin_cancel_ride", { p_ride: r.id, p_reason: "Cancelled by DriveWay support" }, `Ride ${r.code} cancelled`).then((ok) => ok && onClose())}>Cancel this ride</PrimaryButton>
+      )}
+      {(r.payment_status === "paid" || r.payment_status === "partially_refunded") && refundable > 0 && (
+        <Panel title="Refund to customer's wallet">
+          <label style={label} htmlFor="ra">Amount (max {inr(refundable)})</label>
+          <input id="ra" type="number" min={1} max={refundable} value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...field, marginBottom: 10 }} />
+          <label style={label} htmlFor="rr">Reason</label>
+          <input id="rr" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} style={{ ...field, marginBottom: 12 }} />
+          <PrimaryButton disabled={!(amt >= 1 && amt <= refundable && Number.isInteger(amt)) || !reason.trim()}
+            onClick={() => void act("admin_refund", { p_ride: r.id, p_amount: amt, p_reason: reason.trim(), p_idem: key }, `Refunded ${inr(amt)}`).then((ok) => ok && onClose())}>Refund {amt ? inr(amt) : ""}</PrimaryButton>
+        </Panel>
+      )}
     </Drawer>
   );
 }
 
-function RidesSection() {
+function RidesSection({ d, act }: { d: Data; act: Act }) {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("All");
-  const [veh, setVeh] = useState("All");
-  const [open, setOpen] = useState<Ride | null>(null);
-  const rows = RIDES.filter((r) =>
-    (status === "All" || (status === "Ongoing" ? ["Started", "Arriving", "Assigned", "Arrived"].includes(r.status) : r.status === status)) &&
-    (veh === "All" || vehicleById(r.vehicle).name === veh) &&
-    `${r.id} ${r.customer} ${r.driver} ${r.from} ${r.to}`.toLowerCase().includes(q.toLowerCase()));
+  const [open, setOpen] = useState<string | null>(null);
+  const rows = d.rides.filter((r) =>
+    (status === "All" || (status === "Live" ? LIVE.includes(r.status) : status === "Payment due" ? r.payment_status === "pending" : r.status === status)) &&
+    `${r.code} ${nameOf(d, r.customer_id)} ${nameOf(d, r.driver_id)} ${placeName(d, r.from_place)} ${placeName(d, r.to_place)}`.toLowerCase().includes(q.toLowerCase()));
+  const sel = d.rides.find((r) => r.id === open);
   return (
     <Panel>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 14 }}>
-        <SearchBox value={q} onChange={setQ} placeholder="Search ride, customer, driver…" />
-        <Chips value={status} options={["All", "Ongoing", "Completed", "Cancelled"]} onChange={setStatus} />
-        <Chips value={veh} options={["All", ...VEHICLES.map((v) => v.name)]} onChange={setVeh} />
+        <SearchBox value={q} onChange={setQ} placeholder="Search ride, customer, driver, place…" />
+        <Chips value={status} options={["All", "Live", "Scheduled", "Completed", "Cancelled", "NoDrivers", "Payment due"]} onChange={setStatus} />
       </div>
-      <RidesTable rows={rows} onOpen={setOpen} />
-      {open && <RideDrawer r={open} onClose={() => setOpen(null)} />}
+      <RidesTable d={d} rows={rows} onOpen={(r) => setOpen(r.id)} />
+      {sel && <RideDrawer d={d} r={sel} act={act} onClose={() => setOpen(null)} />}
     </Panel>
   );
 }
 
-function LiveRides() {
-  const live = RIDES.filter((r) => ["Started", "Arriving", "Assigned", "Arrived"].includes(r.status));
-  const [open, setOpen] = useState<Ride | null>(null);
+function LiveRides({ d, act }: { d: Data; act: Act }) {
+  const live = d.rides.filter((r) => LIVE.includes(r.status));
+  const [open, setOpen] = useState<string | null>(null);
+  const sel = d.rides.find((r) => r.id === open);
   return (
     <div className="adm-grid-2">
-      <Panel title="Live map" right={<span style={{ fontSize: 12.5, color: "var(--success-text)", fontWeight: 600 }}>● {live.length} rides in progress</span>}>
+      <Panel title="Map" right={<span style={{ fontSize: 12.5, color: "var(--success-text)", fontWeight: 600 }}>● {live.length} live</span>}>
         <MapView mode="trip" progress={0.45} height={420} radius={14} nearby />
+        <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--ink-mute)" }}>Illustrative map — live GPS positions arrive with the maps integration.</p>
       </Panel>
-      <Panel title="Ongoing rides">
+      <Panel title="Live rides">
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {live.length === 0 && <p style={{ margin: 0, color: "var(--ink-soft)", fontSize: 13 }}>No rides in progress.</p>}
           {live.map((r) => (
-            <button key={r.id} onClick={() => setOpen(r)} className="press" style={{ display: "flex", alignItems: "center", gap: 12, border: "1px solid var(--line)", background: "var(--surface)", borderRadius: 14, padding: 12, cursor: "pointer", textAlign: "left" }}>
-              <VehicleArt kind={r.vehicle} size={48} />
+            <button key={r.id} onClick={() => setOpen(r.id)} className="press" style={{ display: "flex", alignItems: "center", gap: 12, border: "1px solid var(--line)", background: "var(--surface)", borderRadius: 14, padding: 10, cursor: "pointer", textAlign: "left" }}>
+              <VehicleArt kind={r.vehicle ?? r.requested_vehicles[0]} size={48} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700 }}>#{r.id} · {r.driver}</p>
-                <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.from} → {r.to}</p>
+                <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700 }}>#{r.code} · {nameOf(d, r.driver_id)}</p>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{placeName(d, r.from_place)} → {placeName(d, r.to_place)}</p>
               </div>
               <StatusBadge status={r.status} />
             </button>
           ))}
         </div>
       </Panel>
-      {open && <RideDrawer r={open} onClose={() => setOpen(null)} />}
+      {sel && <RideDrawer d={d} r={sel} act={act} onClose={() => setOpen(null)} />}
     </div>
   );
 }
 
 /* ───────────────────────── Customers ───────────────────────── */
 
-function CustomersSection({ rows, onToggle }: { rows: Customer[]; onToggle: (id: string) => void }) {
+function CustomersSection({ d, act }: { d: Data; act: Act }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<string | null>(null);
-  const list = rows.filter((c) => `${c.name} ${c.phone} ${c.email} ${c.id}`.toLowerCase().includes(q.toLowerCase()));
+  const driverIds = new Set(d.drivers.map((x) => x.id));
+  const rows = d.profiles.filter((p) => !driverIds.has(p.id) && !p.is_admin);
+  const stats = (id: string) => { const rs = d.rides.filter((r) => r.customer_id === id); return { rides: rs.filter((r) => r.status === "Completed").length, spent: rs.reduce((s, r) => s + paidOf(r) - r.refunded, 0), list: rs }; };
+  const list = rows.filter((c) => `${c.name} ${c.phone} ${c.email}`.toLowerCase().includes(q.toLowerCase()));
   const sel = rows.find((c) => c.id === open);
+  const toggle = (c: Prof) => void act("admin_set_blocked", { p_user: c.id, p_blocked: !c.blocked }, `${c.name || "Customer"} ${c.blocked ? "unblocked" : "blocked"}`);
   return (
     <Panel title={`${rows.length} customers`} right={<SearchBox value={q} onChange={setQ} placeholder="Search name, phone, email…" />}>
       <div className="adm-table-wrap">
         <table className="adm-table">
-          <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Rides</th><th>Spent</th><th>Joined</th><th>Status</th><th /></tr></thead>
+          <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Rides</th><th>Paid</th><th>Joined</th><th>Status</th><th /></tr></thead>
           <tbody>
-            {list.map((c) => (
+            {list.map((c) => { const s = stats(c.id); return (
               <tr key={c.id} onClick={() => setOpen(c.id)}>
-                <td><span style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar initials={c.initials} size={30} />{c.name}</span></td>
-                <td>{c.phone}</td><td style={{ color: "var(--ink-soft)" }}>{c.email}</td><td>{c.rides}</td><td>{inr(c.spent)}</td><td>{c.joined}</td>
+                <td><span style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar initials={initials(c.name || "?")} size={30} />{c.name || "(no name yet)"}</span></td>
+                <td>{c.phone ? `+${c.phone}` : "—"}</td><td style={{ color: "var(--ink-soft)" }}>{c.email ?? "—"}</td><td>{s.rides}</td><td>{inr(s.spent)}</td><td>{when(c.created_at)}</td>
                 <td><StatusBadge status={c.blocked ? "Blocked" : "Active"} /></td>
-                <td><button onClick={(e) => { e.stopPropagation(); onToggle(c.id); }} style={smallBtn(c.blocked ? "ghost" : "red")}>{c.blocked ? "Unblock" : "Block"}</button></td>
-              </tr>
-            ))}
+                <td><button onClick={(e) => { e.stopPropagation(); toggle(c); }} style={smallBtn(c.blocked ? "ghost" : "red")}>{c.blocked ? "Unblock" : "Block"}</button></td>
+              </tr>); })}
           </tbody>
         </table>
+        {list.length === 0 && <p style={{ textAlign: "center", color: "var(--ink-soft)", padding: 24 }}>No customers yet.</p>}
       </div>
-      {sel && (
-        <Drawer title={sel.name} onClose={() => setOpen(null)}>
+      {sel && (() => { const s = stats(sel.id); return (
+        <Drawer title={sel.name || "Customer"} onClose={() => setOpen(null)}>
           <div style={{ ...card, padding: 14 }}>
-            {kv("Customer ID", sel.id)}{kv("Phone", sel.phone)}{kv("Email", sel.email)}{kv("Joined", sel.joined)}
-            {kv("Total rides", sel.rides)}{kv("Total spent", inr(sel.spent))}{kv("Rating", `★ ${sel.rating}`)}{kv("Complaints", sel.complaints)}
+            {kv("Phone", sel.phone ? `+${sel.phone}` : "—")}{kv("Email", sel.email ?? "—")}{kv("Joined", when(sel.created_at))}
+            {kv("Completed rides", s.rides)}{kv("Total paid (net of refunds)", inr(s.spent))}{kv("Rating from drivers", sel.rating ? `★ ${sel.rating}` : "—")}
             {kv("Account", <StatusBadge status={sel.blocked ? "Blocked" : "Active"} />)}
           </div>
-          <Panel title="Ride history">
-            {RIDES.filter((r) => r.customer === sel.name).map((r) => <div key={r.id}>{kv(`#${r.id} · ${r.date}`, <>{inr(r.fare)} <StatusBadge status={r.status} /></>)}</div>)}
+          <Panel title="Rides">
+            {s.list.length === 0 && <p style={{ margin: 0, fontSize: 13, color: "var(--ink-soft)" }}>No rides.</p>}
+            {s.list.map((r) => <div key={r.id}>{kv(`#${r.code} · ${when(r.created_at)}`, <>{inr(r.total)} <StatusBadge status={r.status} /></>)}</div>)}
           </Panel>
-          <PrimaryButton tone={sel.blocked ? "blue" : "red"} onClick={() => onToggle(sel.id)}>{sel.blocked ? "Unblock account" : "Block account"}</PrimaryButton>
-        </Drawer>
-      )}
+          <PrimaryButton tone={sel.blocked ? "blue" : "red"} onClick={() => toggle(sel)}>{sel.blocked ? "Unblock account" : "Block account"}</PrimaryButton>
+        </Drawer>); })()}
     </Panel>
   );
 }
 
 /* ───────────────────────── Drivers ───────────────────────── */
 
-function DriversSection({ rows, onUpdate }: { rows: Driver[]; onUpdate: (id: string, p: Partial<Driver>, msg: string) => void }) {
+const DOC_LABELS: Record<string, string> = { photo: "Profile photo", licence: "Driving licence", rc: "Vehicle RC", insurance: "Insurance", aadhaar: "Aadhaar / ID" };
+
+function DriversSection({ d, act }: { d: Data; act: Act }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("All");
   const [open, setOpen] = useState<string | null>(null);
-  const list = rows.filter((d) =>
-    (filter === "All" || (filter === "Pending KYC" ? d.kyc === "Pending" : filter === "Online" ? d.online && !d.suspended : filter === "Suspended" ? d.suspended : true)) &&
-    `${d.name} ${d.phone} ${d.plate} ${d.id}`.toLowerCase().includes(q.toLowerCase()));
-  const sel = rows.find((d) => d.id === open);
-  const state = (d: Driver) => (d.suspended ? "Suspended" : d.kyc !== "Approved" ? d.kyc : d.online ? "Online" : "Offline");
+  const [note, setNote] = useState("");
+  const state = (x: Drv) => (x.suspended ? "Suspended" : x.kyc !== "Approved" ? x.kyc : x.online ? "Online" : "Offline");
+  const list = d.drivers.filter((x) =>
+    (filter === "All" || (filter === "Pending KYC" ? x.kyc === "Pending" : filter === "Online" ? x.online && !x.suspended : filter === "Suspended" ? x.suspended : true)) &&
+    `${x.name} ${x.profiles?.phone ?? ""} ${x.plate}`.toLowerCase().includes(q.toLowerCase()));
+  const sel = d.drivers.find((x) => x.id === open);
+  const viewDoc = async (path: string) => {
+    const { data, error } = await supabase().storage.from("driver-docs").createSignedUrl(path, 60);
+    if (error || !data) { alert(friendly(error ?? "Couldn't open the file")); return; }
+    window.open(data.signedUrl, "_blank", "noopener");
+  };
+  const setKyc = (x: Drv, kyc: string, n: string | null) => void act("admin_set_kyc", { p_driver: x.id, p_kyc: kyc, p_note: n }, `${x.name} ${kyc === "Approved" ? "approved" : kyc === "Rejected" ? "rejected" : "moved back to review"}`);
+  const suspend = (x: Drv) => void act("admin_set_suspended", { p_driver: x.id, p_suspended: !x.suspended }, `${x.name} ${x.suspended ? "reactivated" : "suspended"}`);
   return (
     <Panel>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 14 }}>
@@ -459,31 +576,27 @@ function DriversSection({ rows, onUpdate }: { rows: Driver[]; onUpdate: (id: str
         <table className="adm-table">
           <thead><tr><th>Driver</th><th>Vehicle</th><th>Number</th><th>City</th><th>Trips</th><th>Rating</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
-            {list.map((d) => (
-              <tr key={d.id} onClick={() => setOpen(d.id)}>
-                <td><span style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar initials={d.initials} size={30} />{d.name}</span></td>
-                <td>{vehicleById(d.vehicle).name}</td><td style={{ fontWeight: 600 }}>{d.plate}</td><td>{d.city}</td><td>{d.trips.toLocaleString("en-IN")}</td>
-                <td>{d.rating ? `★ ${d.rating}` : "—"}</td><td><StatusBadge status={state(d)} /></td>
+            {list.map((x) => (
+              <tr key={x.id} onClick={() => { setOpen(x.id); setNote(x.kyc_note ?? ""); }}>
+                <td><span style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar initials={initials(x.name)} size={30} />{x.name}</span></td>
+                <td>{vehicleById(x.vehicle).name}{x.ac ? " · AC" : ""}</td><td style={{ fontWeight: 600 }}>{x.plate}</td><td>{x.city}</td><td>{x.trips}</td>
+                <td>{x.rating ? `★ ${x.rating}` : "—"}</td><td><StatusBadge status={state(x)} /></td>
                 <td onClick={(e) => e.stopPropagation()}>
-                  {d.kyc === "Pending" ? (
-                    <span style={{ display: "flex", gap: 6 }}>
-                      <button style={smallBtn("green")} onClick={() => onUpdate(d.id, { kyc: "Approved" }, `${d.name} approved`)}>Approve</button>
-                      <button style={smallBtn("red")} onClick={() => onUpdate(d.id, { kyc: "Rejected" }, `${d.name} rejected`)}>Reject</button>
-                    </span>
-                  ) : d.kyc === "Approved" ? (
-                    <button style={smallBtn(d.suspended ? "ghost" : "red")} onClick={() => onUpdate(d.id, { suspended: !d.suspended, online: false }, `${d.name} ${d.suspended ? "reactivated" : "suspended"}`)}>{d.suspended ? "Reactivate" : "Suspend"}</button>
-                  ) : <button style={smallBtn("ghost")} onClick={() => onUpdate(d.id, { kyc: "Pending" }, `${d.name} moved back to review`)}>Re-review</button>}
+                  {x.kyc === "Pending" ? <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Review documents →</span>
+                    : x.kyc === "Approved" ? <button style={smallBtn(x.suspended ? "ghost" : "red")} onClick={() => suspend(x)}>{x.suspended ? "Reactivate" : "Suspend"}</button>
+                    : <button style={smallBtn("ghost")} onClick={() => setKyc(x, "Pending", null)}>Re-review</button>}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        {list.length === 0 && <p style={{ textAlign: "center", color: "var(--ink-soft)", padding: 24 }}>No drivers match.</p>}
       </div>
       {sel && (
         <Drawer title={sel.name} onClose={() => setOpen(null)}>
           <div style={{ ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 }}>
-            <Avatar initials={sel.initials} size={52} />
-            <div style={{ flex: 1 }}><p style={{ margin: 0, fontWeight: 700 }}>{sel.name}</p><p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>{sel.id} · {sel.phone}</p></div>
+            <Avatar initials={initials(sel.name)} size={52} />
+            <div style={{ flex: 1 }}><p style={{ margin: 0, fontWeight: 700 }}>{sel.name}</p><p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>{sel.profiles?.phone ? `+${sel.profiles.phone}` : ""} · {sel.city}</p></div>
             <StatusBadge status={state(sel)} />
           </div>
           <div style={{ ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 }}>
@@ -491,56 +604,77 @@ function DriversSection({ rows, onUpdate }: { rows: Driver[]; onUpdate: (id: str
             <div><p style={{ margin: 0, fontWeight: 700 }}>{sel.model}</p><p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>{vehicleById(sel.vehicle).name} · {sel.ac ? "AC" : "Non-AC"} · {sel.plate}</p></div>
           </div>
           <Panel title="KYC documents">
-            {["Profile photo", "Driving licence", "Vehicle RC", "Insurance", "Aadhaar"].map((doc) => (
-              <div key={doc} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
-                <DocIcon s={18} c="var(--ink-soft)" /><span style={{ flex: 1, fontSize: 13.5 }}>{doc}</span>
-                <StatusBadge status={sel.kyc === "Approved" ? "Approved" : sel.kyc === "Rejected" ? "Rejected" : "Pending"} />
+            {Object.keys(DOC_LABELS).map((k) => (
+              <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+                <DocIcon s={18} c="var(--ink-soft)" /><span style={{ flex: 1, fontSize: 13.5 }}>{DOC_LABELS[k]}</span>
+                {sel.docs?.[k] ? <button style={smallBtn("ghost")} onClick={() => void viewDoc(sel.docs[k])}>View</button> : <span style={{ fontSize: 12, color: "var(--error-text)" }}>Missing</span>}
               </div>
             ))}
           </Panel>
           <div style={{ ...card, padding: 14 }}>
-            {kv("City", sel.city)}{kv("Joined", sel.joined)}{kv("Trips", sel.trips.toLocaleString("en-IN"))}{kv("Lifetime earnings", inr(sel.earnings))}{kv("Pending settlement", inr(sel.trips ? 6420 : 0))}
+            {kv("Applied", when(sel.created_at))}{kv("Trips", sel.trips)}{kv("UPI", sel.upi ?? "—")}{kv("Last seen", when(sel.last_seen))}
+            {kv("Wallet balance", inr(d.ledger.filter((l) => l.user_id === sel.id && l.party === "driver").reduce((s, l) => s + l.amount, 0)))}
           </div>
           {sel.kyc === "Pending" && (
-            <div style={{ display: "flex", gap: 10 }}>
-              <PrimaryButton tone="red" onClick={() => onUpdate(sel.id, { kyc: "Rejected" }, `${sel.name} rejected`)}>Reject</PrimaryButton>
-              <PrimaryButton onClick={() => onUpdate(sel.id, { kyc: "Approved" }, `${sel.name} approved`)}><CheckIcon s={16} c="white" /> Approve</PrimaryButton>
-            </div>
+            <>
+              <label style={label} htmlFor="kn">Note to the driver (required to reject)</label>
+              <input id="kn" value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Licence photo is blurry" style={field} />
+              <div style={{ display: "flex", gap: 10 }}>
+                <PrimaryButton tone="red" disabled={!note.trim()} onClick={() => setKyc(sel, "Rejected", note.trim())}>Reject</PrimaryButton>
+                <PrimaryButton disabled={!Object.keys(DOC_LABELS).every((k) => sel.docs?.[k])} onClick={() => setKyc(sel, "Approved", null)}><CheckIcon s={16} c="white" /> Approve</PrimaryButton>
+              </div>
+            </>
           )}
+          {sel.kyc === "Approved" && <PrimaryButton tone={sel.suspended ? "blue" : "red"} onClick={() => suspend(sel)}>{sel.suspended ? "Reactivate driver" : "Suspend driver"}</PrimaryButton>}
         </Drawer>
       )}
     </Panel>
   );
 }
 
-/* ───────────────────────── Pricing ───────────────────────── */
+/* ───────────────────────── Pricing (saved to the database; applies to the next quote) ───────────────────────── */
 
-function PricingSection({ vehicles, setVehicles, commission, setCommission, surge, setSurge, onSave }: {
-  vehicles: Vehicle[]; setVehicles: (v: Vehicle[]) => void; commission: number; setCommission: (n: number) => void;
-  surge: { on: boolean; mult: number }; setSurge: (s: { on: boolean; mult: number }) => void; onSave: () => void;
-}) {
-  const upd = (id: string, k: keyof Vehicle, v: number | boolean) => setVehicles(vehicles.map((x) => (x.id === id ? { ...x, [k]: v } : x)));
+function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<void> }) {
+  const [rows, setRows] = useState<Vehicle[]>(d.vehicles);
+  const [s, setS] = useState<Settings>(d.settings);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setRows(d.vehicles); setS(d.settings); }, [d.vehicles, d.settings]);
+  type NumKey = "base" | "per_km" | "per_min" | "min_fare" | "cancel_fee";
+  const cols: [NumKey, string][] = [["base", "Base ₹"], ["per_km", "₹ / km"], ["per_min", "₹ / min"], ["min_fare", "Min fare ₹"], ["cancel_fee", "Cancel fee ₹"]];
+  const upd = (id: string, p: Partial<Vehicle>) => setRows((r) => r.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  const invalid = rows.some((v) => cols.some(([k]) => !(Number.isFinite(Number(v[k])) && Number(v[k]) >= 0)));
+  const save = async () => {
+    setBusy(true);
+    try {
+      for (const v of rows) {
+        const orig = d.vehicles.find((x) => x.id === v.id)!;
+        const changed = Object.fromEntries((["base", "per_km", "per_min", "min_fare", "cancel_fee", "ac", "enabled"] as const).filter((k) => String(v[k]) !== String(orig[k])).map((k) => [k, v[k]]));
+        if (Object.keys(changed).length) await rpc("admin_update_vehicle", { p_id: v.id, p: changed });
+      }
+      if (s.commission_pct !== d.settings.commission_pct || s.surge_on !== d.settings.surge_on || s.surge_mult !== d.settings.surge_mult) {
+        await rpc("admin_update_settings", { p: { commission_pct: s.commission_pct, surge_on: s.surge_on, surge_mult: s.surge_mult } });
+      }
+      await done("Pricing saved — applies to the next quote; booked rides keep their price");
+    } catch (e) { await done((e as Error).message); } finally { setBusy(false); }
+  };
   const num: React.CSSProperties = { ...field, width: 84, padding: "7px 10px", fontSize: 13 };
-  const cols: [keyof Vehicle, string][] = [["base", "Base ₹"], ["perKm", "₹ / km"], ["perMin", "₹ / min"], ["minFare", "Min fare ₹"], ["cancelFee", "Cancel fee ₹"]];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Panel title={`Vehicle categories & fares · Non-AC is ${Math.round((1 - NON_AC_FACTOR) * 100)}% cheaper`} right={<PrimaryButton onClick={onSave} style={{ width: "auto", padding: "10px 18px", fontSize: 13.5 }}>Save changes</PrimaryButton>}>
+      <Panel title={`Vehicle categories & fares · Non-AC is ${Math.round((1 - d.settings.non_ac_factor) * 100)}% cheaper`} right={<PrimaryButton onClick={() => void save()} disabled={busy || invalid} style={{ width: "auto", padding: "10px 18px", fontSize: 13.5 }}>{busy ? "Saving…" : "Save changes"}</PrimaryButton>}>
+        {invalid && <ErrorText msg="Fares can't be negative or empty." />}
         <div className="adm-table-wrap">
           <table className="adm-table">
-            <thead><tr><th>Category</th>{cols.map(([, l]) => <th key={l}>{l}</th>)}<th>AC option</th><th>Sample 5 km / 15 min</th><th>Enabled</th></tr></thead>
+            <thead><tr><th>Category</th>{cols.map(([, l]) => <th key={l}>{l}</th>)}<th>AC option</th><th>Enabled</th></tr></thead>
             <tbody>
-              {vehicles.map((v) => (
+              {rows.map((v) => (
                 <tr key={v.id} style={{ cursor: "default" }}>
                   <td><span style={{ display: "flex", alignItems: "center", gap: 8 }}><VehicleArt kind={v.id} size={40} /><b>{v.name}</b></span></td>
                   {cols.map(([k]) => (
-                    <td key={k}><input type="number" min={0} step={k === "perMin" ? 0.5 : 1} value={v[k] as number} aria-label={`${v.name} ${k}`}
-                      onChange={(e) => upd(v.id, k, Number(e.target.value))} style={num} /></td>
+                    <td key={k}><input type="number" min={0} step={k === "per_min" || k === "per_km" ? 0.5 : 1} value={v[k]} aria-label={`${v.name} ${k}`}
+                      onChange={(e) => upd(v.id, { [k]: e.target.value === "" ? NaN : Number(e.target.value) } as Partial<Vehicle>)} style={{ ...num, borderColor: Number(v[k]) >= 0 ? undefined : "var(--red)" }} /></td>
                   ))}
-                  <td><Toggle on={v.ac} onChange={(on) => upd(v.id, "ac", on)} label={`${v.name} offers AC`} /></td>
-                  <td style={{ fontWeight: 700 }}>
-                    {v.ac ? <>AC {inr(fareFor(v, 5, 15))}<br /><span style={{ fontWeight: 500, color: "var(--ink-soft)" }}>Non-AC {inr(fareFor(v, 5, 15, 1, false))}</span></> : <>{inr(fareFor(v, 5, 15))} <span style={{ fontWeight: 500, color: "var(--ink-soft)" }}>Non-AC</span></>}
-                  </td>
-                  <td><Toggle on={v.enabled} onChange={(on) => upd(v.id, "enabled", on)} label={`${v.name} enabled`} /></td>
+                  <td><Toggle on={v.ac} onChange={(on) => upd(v.id, { ac: on })} label={`${v.name} offers AC`} /></td>
+                  <td><Toggle on={v.enabled} onChange={(on) => upd(v.id, { enabled: on })} label={`${v.name} enabled`} /></td>
                 </tr>
               ))}
             </tbody>
@@ -550,43 +684,51 @@ function PricingSection({ vehicles, setVehicles, commission, setCommission, surg
       <div className="adm-grid-2">
         <Panel title="Platform commission">
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <input type="range" min={5} max={35} value={commission} onChange={(e) => setCommission(Number(e.target.value))} style={{ flex: 1, accentColor: "var(--blue)" }} aria-label="Commission percent" />
-            <span style={{ fontSize: 24, fontWeight: 800, width: 64, textAlign: "right" }}>{commission}%</span>
+            <input type="range" min={0} max={50} value={s.commission_pct} onChange={(e) => setS({ ...s, commission_pct: Number(e.target.value) })} style={{ flex: 1, accentColor: "var(--blue)" }} aria-label="Commission percent" />
+            <span style={{ fontSize: 24, fontWeight: 800, width: 64, textAlign: "right" }}>{s.commission_pct}%</span>
           </div>
-          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>On a ₹200 ride the driver earns {inr(200 * (1 - commission / 100))}, DriveWay keeps {inr(200 * commission / 100)}.</p>
+          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>On a ₹200 fare the driver earns {inr(200 * (1 - s.commission_pct / 100))}. Coupon discounts are paid by DriveWay, not the driver.</p>
         </Panel>
-        <Panel title="Surge / peak pricing" right={<Toggle on={surge.on} onChange={(on) => setSurge({ ...surge, on })} label="Surge pricing" />}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, opacity: surge.on ? 1 : 0.45 }}>
-            <input type="range" min={1} max={2.5} step={0.1} disabled={!surge.on} value={surge.mult} onChange={(e) => setSurge({ ...surge, mult: Number(e.target.value) })} style={{ flex: 1, accentColor: "var(--gold)" }} aria-label="Surge multiplier" />
-            <span style={{ fontSize: 24, fontWeight: 800, width: 64, textAlign: "right" }}>{surge.mult.toFixed(1)}×</span>
+        <Panel title="Surge pricing" right={<Toggle on={s.surge_on} onChange={(on) => setS({ ...s, surge_on: on })} label="Surge pricing" />}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, opacity: s.surge_on ? 1 : 0.45 }}>
+            <input type="range" min={1} max={3} step={0.1} disabled={!s.surge_on} value={s.surge_mult} onChange={(e) => setS({ ...s, surge_mult: Number(e.target.value) })} style={{ flex: 1, accentColor: "var(--blue)" }} aria-label="Surge multiplier" />
+            <span style={{ fontSize: 24, fontWeight: 800, width: 64, textAlign: "right" }}>{Number(s.surge_mult).toFixed(1)}×</span>
           </div>
-          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>Applied 8–11 AM and 6–9 PM on weekdays when demand exceeds supply.</p>
+          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>When on, every new quote is multiplied and shows a &quot;High demand&quot; line to the customer.</p>
         </Panel>
       </div>
-      <Panel title="Service areas">
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          {[["Noida", true], ["Delhi", true], ["Gurugram", true], ["Lucknow", true], ["Ghaziabad", false], ["Faridabad", false]].map(([c, on]) => (
-            <span key={c as string} style={{ display: "flex", alignItems: "center", gap: 8, border: "1.5px solid var(--line)", borderRadius: 12, padding: "8px 12px", fontSize: 13.5, fontWeight: 600 }}>
-              {c as string} <StatusBadge status={on ? "Active" : "Inactive"} />
-            </span>
-          ))}
-        </div>
-      </Panel>
     </div>
   );
 }
 
 /* ───────────────────────── Coupons ───────────────────────── */
 
-function CouponsSection({ rows, setRows, flash }: { rows: Coupon[]; setRows: (c: Coupon[]) => void; flash: (m: string) => void }) {
+function CouponsSection({ d, act }: { d: Data; act: Act }) {
   const [code, setCode] = useState("");
-  const [off, setOff] = useState(20);
+  const [off, setOff] = useState("20");
   const [pct, setPct] = useState(true);
-  const create = () => {
-    if (!code.trim() || rows.some((c) => c.code === code)) return;
-    setRows([{ code, title: pct ? `${off}% off` : `Flat ₹${off} off`, body: "New promotion", off, pct, max: pct ? 100 : undefined, expires: "31 Dec 2026", uses: 0, active: true }, ...rows]);
-    setCode(""); flash(`Coupon ${code} created`);
-  };
+  const [maxOff, setMaxOff] = useState("100");
+  const [minFare, setMinFare] = useState("0");
+  const [days, setDays] = useState("30");
+  const [perUser, setPerUser] = useState("1");
+  const [total, setTotal] = useState("");
+  const n = (s: string) => Number(s);
+  const errors = [
+    !/^[A-Z0-9]{3,20}$/.test(code) && "Code: 3–20 letters or digits",
+    !(Number.isInteger(n(off)) && n(off) >= 1 && (pct ? n(off) <= 100 : n(off) <= 1000)) && (pct ? "Percent must be 1–100" : "Flat amount must be ₹1–₹1000"),
+    pct && !(Number.isInteger(n(maxOff)) && n(maxOff) >= 1) && "Max discount must be at least ₹1",
+    !(Number.isInteger(n(minFare)) && n(minFare) >= 0) && "Minimum fare can't be negative",
+    !(Number.isInteger(n(days)) && n(days) >= 1 && n(days) <= 365) && "Valid for 1–365 days",
+    !(Number.isInteger(n(perUser)) && n(perUser) >= 1) && "Uses per customer must be at least 1",
+    total !== "" && !(Number.isInteger(n(total)) && n(total) >= 1) && "Total uses must be at least 1",
+  ].filter(Boolean) as string[];
+  const create = () => void act("admin_upsert_coupon", { p: {
+    code, title: pct ? `${off}% off` : `Flat ₹${off} off`, body: pct ? `Up to ₹${maxOff} off${n(minFare) ? ` on fares of ₹${minFare}+` : ""}` : n(minFare) ? `On fares of ₹${minFare}+` : "On any ride",
+    off: n(off), pct, max_off: pct ? n(maxOff) : "", min_fare: n(minFare), expires_at: new Date(Date.now() + n(days) * 864e5).toISOString(), per_user_limit: n(perUser), total_limit: total,
+  } }, `Coupon ${code} created`).then((ok) => ok && setCode(""));
+  const input = (id: string, l: string, v: string, set: (v: string) => void, type = "number") => (
+    <div style={{ marginBottom: 12 }}><label style={label} htmlFor={id}>{l}</label><input id={id} type={type} value={v} onChange={(e) => set(e.target.value)} style={field} /></div>
+  );
   return (
     <div className="adm-grid-2">
       <Panel title="Coupons & offers">
@@ -594,11 +736,12 @@ function CouponsSection({ rows, setRows, flash }: { rows: Coupon[]; setRows: (c:
           <table className="adm-table">
             <thead><tr><th>Code</th><th>Offer</th><th>Expires</th><th>Uses</th><th>Active</th></tr></thead>
             <tbody>
-              {rows.map((c) => (
+              {d.coupons.map((c) => (
                 <tr key={c.code} style={{ cursor: "default" }}>
                   <td><span style={{ fontWeight: 700, color: "var(--gold-dark)", border: "1.5px dashed var(--gold)", borderRadius: 8, padding: "2px 8px" }}>{c.code}</span></td>
-                  <td>{c.title}</td><td>{c.expires}</td><td>{(c.uses ?? 0).toLocaleString("en-IN")}</td>
-                  <td><Toggle on={!!c.active} onChange={(on) => setRows(rows.map((x) => (x.code === c.code ? { ...x, active: on } : x)))} label={`${c.code} active`} /></td>
+                  <td>{c.title}<br /><span style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>{c.body}</span></td><td>{when(c.expires_at)}</td>
+                  <td>{c.uses}{c.total_limit ? ` / ${c.total_limit}` : ""}</td>
+                  <td><Toggle on={c.active} onChange={(on) => void act("admin_set_coupon_active", { p_code: c.code, p_active: on }, `${c.code} ${on ? "activated" : "paused"}`)} label={`${c.code} active`} /></td>
                 </tr>
               ))}
             </tbody>
@@ -606,81 +749,101 @@ function CouponsSection({ rows, setRows, flash }: { rows: Coupon[]; setRows: (c:
         </div>
       </Panel>
       <Panel title="Create coupon">
-        <label style={label} htmlFor="cc">Code</label>
-        <input id="cc" value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/\s/g, ""))} placeholder="DIWALI30" style={{ ...field, marginBottom: 14 }} />
+        {input("cc", "Code", code, (v) => setCode(v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20)), "text")}
         <label style={label}>Discount type</label>
-        <div style={{ marginBottom: 14 }}><Chips value={pct ? "Percent" : "Flat ₹"} options={["Percent", "Flat ₹"]} onChange={(v) => setPct(v === "Percent")} /></div>
-        <label style={label} htmlFor="co">Value</label>
-        <input id="co" type="number" min={1} value={off} onChange={(e) => setOff(Number(e.target.value))} style={{ ...field, marginBottom: 18 }} />
-        <PrimaryButton onClick={create} disabled={!code.trim()}>Create Coupon</PrimaryButton>
+        <div style={{ marginBottom: 12 }}><Chips value={pct ? "Percent" : "Flat ₹"} options={["Percent", "Flat ₹"]} onChange={(v) => setPct(v === "Percent")} /></div>
+        {input("co", pct ? "Percent off" : "Rupees off", off, setOff)}
+        {pct && input("cm", "Max discount ₹", maxOff, setMaxOff)}
+        {input("cf", "Minimum fare ₹", minFare, setMinFare)}
+        {input("cd", "Valid for (days)", days, setDays)}
+        {input("cu", "Uses per customer", perUser, setPerUser)}
+        {input("ct", "Total uses (blank = unlimited)", total, setTotal)}
+        {errors.length > 0 && code && <ErrorText msg={errors.join(" · ")} />}
+        <div style={{ marginTop: 10 }}><PrimaryButton onClick={create} disabled={errors.length > 0}>Create Coupon</PrimaryButton></div>
       </Panel>
     </div>
   );
 }
 
-/* ───────────────────────── Payments ───────────────────────── */
+/* ───────────────────────── Payments (the ledger) ───────────────────────── */
 
-function PaymentsSection() {
+function PaymentsSection({ d }: { d: Data }) {
   const [kind, setKind] = useState("All");
-  const rows = TXNS.filter((t) => kind === "All" || t.kind === kind);
+  const KINDS = ["All", "payment", "driver_earning", "commission", "discount", "cash_collected", "payout", "refund", "wallet_credit", "incentive", "cancel_fee"];
+  const rows = d.ledger.filter((t) => kind === "All" || t.kind === kind);
+  const sum = (k: string) => d.ledger.filter((l) => l.kind === k).reduce((s, l) => s + l.amount, 0);
+  const driverBal = d.ledger.filter((l) => l.party === "driver").reduce((s, l) => s + l.amount, 0);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div className="adm-grid-4">
-        <Stat label="Collected today" value={inr(248000)} tone="blue" />
-        <Stat label="Commission earned" value={inr(49600)} delta="20% avg" />
-        <Stat label="Pending driver payouts" value={inr(186400)} tone="gold" />
-        <Stat label="Refunds (7 days)" value={inr(3240)} tone="red" />
+        <Stat label="Payments collected" value={inr(sum("payment"))} sub="All time, from the ledger" tone="blue" />
+        <Stat label="Commission earned" value={inr(sum("commission"))} sub={`Discounts funded: ${inr(-sum("discount"))}`} />
+        <Stat label="Owed to drivers (net)" value={inr(driverBal)} sub="Positive = payable, negative = dues" tone="gold" />
+        <Stat label="Refunds issued" value={inr(sum("wallet_credit"))} tone="red" />
       </div>
-      <Panel title="Transactions" right={<Chips value={kind} options={["All", "Ride Fare", "Commission", "Driver Payout", "Refund"]} onChange={setKind} />}>
+      <Panel title="Ledger" right={<select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Filter by type" style={{ ...field, width: "auto", padding: "7px 10px", fontSize: 13 }}>{KINDS.map((k) => <option key={k}>{k}</option>)}</select>}>
         <div className="adm-table-wrap">
           <table className="adm-table">
-            <thead><tr><th>Txn</th><th>Type</th><th>Party</th><th>Ride</th><th>Method</th><th>Date</th><th style={{ textAlign: "right" }}>Amount</th></tr></thead>
+            <thead><tr><th>#</th><th>Type</th><th>Party</th><th>Who</th><th>Ride</th><th>Method</th><th>When</th><th style={{ textAlign: "right" }}>Amount</th></tr></thead>
             <tbody>
               {rows.map((t) => (
                 <tr key={t.id} style={{ cursor: "default" }}>
-                  <td style={{ fontWeight: 700 }}>{t.id}</td><td>{t.kind}</td><td>{t.who}</td><td>{t.ride ? `#${t.ride}` : "—"}</td><td>{t.method}</td><td>{t.at}</td>
+                  <td style={{ fontWeight: 700 }}>{t.id}</td><td>{t.kind}</td><td>{t.party}</td><td>{t.user_id ? nameOf(d, t.user_id) : "DriveWay"}</td>
+                  <td>{t.ride_id ? `#${d.rides.find((r) => r.id === t.ride_id)?.code ?? "…"}` : "—"}</td><td>{t.method ?? "—"}</td><td>{when(t.created_at)}</td>
                   <td style={{ textAlign: "right", fontWeight: 700, color: t.amount < 0 ? "var(--red)" : "var(--success-text)" }}>{t.amount < 0 ? "− " : "+ "}{inr(Math.abs(t.amount))}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {rows.length === 0 && <p style={{ textAlign: "center", color: "var(--ink-soft)", padding: 24 }}>No entries.</p>}
         </div>
       </Panel>
     </div>
   );
 }
 
-/* ───────────────────────── Reports ───────────────────────── */
+/* ───────────────────────── Reports + CSV export ───────────────────────── */
 
-function ReportsSection({ flash }: { flash: (m: string) => void }) {
-  const [range, setRange] = useState("Last 7 days");
+/** Quote a CSV cell and neutralise spreadsheet formulas (=, +, -, @ at the start). */
+const csvCell = (v: unknown) => {
+  let s = v == null ? "" : String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return `"${s.replace(/"/g, '""')}"`;
+};
+
+function ReportsSection({ d, flash }: { d: Data; flash: (m: string) => void }) {
+  const days = last7();
+  const inRange = d.rides.filter((r) => days.some((x) => x.key === istDay(r.created_at)));
   const exportCsv = () => {
-    const head = "Ride,Date,Customer,Driver,Vehicle,Km,Fare,Discount,Commission,Payment,Status";
-    const lines = RIDES.map((r) => [r.id, r.date, r.customer, r.driver, r.vehicle, r.km, r.fare, r.discount, Math.round((r.fare - r.discount) * 0.2), r.pay, r.status].join(","));
-    const url = URL.createObjectURL(new Blob([[head, ...lines].join("\n")], { type: "text/csv" }));
-    const a = document.createElement("a"); a.href = url; a.download = "driveway-rides-report.csv"; a.click(); URL.revokeObjectURL(url);
-    flash("Report exported");
+    const head = ["Ride", "Created (IST)", "Customer", "Driver", "Vehicle", "From", "To", "Km", "Fare", "Discount", "Wait fee", "Cancel fee", "Owed", "Payment", "Payment status", "Refunded", "Status"];
+    const lines = inRange.map((r) => [r.code, when(r.created_at), nameOf(d, r.customer_id), nameOf(d, r.driver_id), r.vehicle ?? r.service, placeName(d, r.from_place), placeName(d, r.to_place),
+      r.km, r.fare, r.discount, r.wait_fee, r.cancel_fee, r.total, r.pay_method, r.payment_status, r.refunded, r.status].map(csvCell).join(","));
+    const url = URL.createObjectURL(new Blob(["﻿" + [head.map(csvCell).join(","), ...lines].join("\r\n")], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a"); a.href = url; a.download = `driveway-rides-${days[0].key}-to-${days[6].key}.csv`; a.click(); URL.revokeObjectURL(url);
+    flash(`Exported ${inRange.length} rides`);
   };
-  const totals = useMemo(() => ({ rev: WEEK.reduce((s, w) => s + w.revenue, 0), rides: WEEK.reduce((s, w) => s + w.rides, 0) }), []);
+  const completed = inRange.filter((r) => r.status === "Completed");
+  const cancelled = inRange.filter((r) => r.status === "Cancelled");
+  const methods = ["UPI", "Cash", "Card", "Wallet"].map((m) => [m, completed.filter((r) => r.pay_method === m).length] as const);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-        <Chips value={range} options={["Today", "Last 7 days", "This month"]} onChange={setRange} />
+      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink-soft)" }}>Last 7 days (IST)</span>
         <button onClick={exportCsv} style={{ ...smallBtn("blue"), display: "flex", alignItems: "center", gap: 6, padding: "9px 14px" }}><DownloadIcon s={16} c="white" /> Export CSV</button>
       </div>
       <div className="adm-grid-4">
-        <Stat label="Ride revenue" value={compact(totals.rev)} tone="blue" delta="↑ 13%" />
-        <Stat label="Total rides" value={totals.rides.toLocaleString("en-IN")} delta="↑ 9%" />
-        <Stat label="Driver earnings" value={compact(totals.rev * 0.8)} />
-        <Stat label="Cancellation rate" value="6.7%" tone="red" />
+        <Stat label="Rides booked" value={String(inRange.length)} tone="blue" />
+        <Stat label="Completed" value={String(completed.length)} />
+        <Stat label="Fares on completed rides" value={inr(completed.reduce((s, r) => s + r.total, 0))} />
+        <Stat label="Cancellation rate" value={inRange.length ? `${Math.round((cancelled.length / inRange.length) * 100)}%` : "—"} tone="red" />
       </div>
       <div className="adm-grid-2">
-        <Panel title="Rides per day"><BarChart data={WEEK.map((w) => ({ d: w.d, v: w.rides }))} format={(n) => n.toLocaleString("en-IN")} color="var(--teal)" /></Panel>
-        <Panel title="Cash vs online">
-          {[["UPI", 46, "var(--blue)"], ["Cash", 31, "var(--gold)"], ["Card", 15, "var(--purple)"], ["Wallet", 8, "var(--green)"]].map(([l, p, c]) => (
-            <div key={l as string} style={{ padding: "8px 0" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 600, marginBottom: 5 }}><span>{l as string}</span><span>{p as number}%</span></div>
-              <div style={{ height: 8, borderRadius: 4, background: "var(--line)" }}><div style={{ width: `${p}%`, height: "100%", borderRadius: 4, background: c as string }} /></div>
+        <Panel title="Rides per day"><BarChart data={days.map(({ key, label: l }) => ({ d: l, v: d.rides.filter((r) => istDay(r.created_at) === key).length }))} format={(n) => String(n)} color="var(--teal)" /></Panel>
+        <Panel title="Payment methods (completed rides)">
+          {methods.map(([l, n]) => (
+            <div key={l} style={{ padding: "8px 0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 600, marginBottom: 5 }}><span>{l}</span><span>{n}</span></div>
+              <div style={{ height: 8, borderRadius: 4, background: "var(--line)" }}><div style={{ width: `${completed.length ? (n / completed.length) * 100 : 0}%`, height: "100%", borderRadius: 4, background: "var(--blue)" }} /></div>
             </div>
           ))}
         </Panel>
@@ -689,44 +852,43 @@ function ReportsSection({ flash }: { flash: (m: string) => void }) {
   );
 }
 
-/* ───────────────────────── Support ───────────────────────── */
+/* ───────────────────────── Support (two-way: replies appear in the customer/driver chat) ───────────────────────── */
 
-function SupportSection({ rows, setRows, flash }: { rows: Ticket[]; setRows: (t: Ticket[]) => void; flash: (m: string) => void }) {
+function SupportSection({ d, act }: { d: Data; act: Act }) {
   const [open, setOpen] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const sel = rows.find((t) => t.id === open);
-  const upd = (id: string, p: Partial<Ticket>) => setRows(rows.map((t) => (t.id === id ? { ...t, ...p } : t)));
+  const sel = d.tickets.find((t) => t.id === open);
   return (
     <Panel title="Support tickets">
       <div className="adm-table-wrap">
         <table className="adm-table">
           <thead><tr><th>Ticket</th><th>From</th><th>Role</th><th>Subject</th><th>Ride</th><th>Raised</th><th>Status</th></tr></thead>
           <tbody>
-            {rows.map((t) => (
-              <tr key={t.id} onClick={() => setOpen(t.id)}>
-                <td style={{ fontWeight: 700 }}>{t.id}</td><td>{t.from}</td><td>{t.role}</td><td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}>{t.subject}</td>
-                <td>{t.ride ? `#${t.ride}` : "—"}</td><td>{t.at}</td><td><StatusBadge status={t.status} /></td>
+            {d.tickets.map((t) => (
+              <tr key={t.id} onClick={() => { setOpen(t.id); setNote(""); }}>
+                <td style={{ fontWeight: 700 }}>{t.code}</td><td>{nameOf(d, t.user_id)}</td><td>{t.role}</td><td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}>{t.subject}</td>
+                <td>{t.ride_id ? `#${d.rides.find((r) => r.id === t.ride_id)?.code ?? "…"}` : "—"}</td><td>{when(t.created_at)}</td><td><StatusBadge status={t.status} /></td>
               </tr>
             ))}
           </tbody>
         </table>
+        {d.tickets.length === 0 && <p style={{ textAlign: "center", color: "var(--ink-soft)", padding: 24 }}>No tickets.</p>}
       </div>
       {sel && (
-        <Drawer title={`${sel.id} · ${sel.from}`} onClose={() => setOpen(null)}>
-          <div style={{ ...card, padding: 14 }}>
-            <p style={{ margin: 0, fontWeight: 700 }}>{sel.subject}</p>
-            <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>{sel.role} · {sel.at}{sel.ride && ` · Ride #${sel.ride}`}</p>
-          </div>
+        <Drawer title={`${sel.code} · ${nameOf(d, sel.user_id)}`} onClose={() => setOpen(null)}>
           <div>
             <span style={label}>Status</span>
-            <Chips value={sel.status} options={["Open", "In Progress", "Resolved"] as Ticket["status"][]} onChange={(s) => { upd(sel.id, { status: s }); flash(`${sel.id} marked ${s}`); }} />
+            <Chips value={sel.status} options={["Open", "In Progress", "Resolved"] as Ticket["status"][]} onChange={(s) => void act("admin_update_ticket", { p_ticket: sel.id, p_status: s, p_note: "" }, `${sel.code} marked ${s}`)} />
           </div>
-          <Panel title="Notes & replies">
-            {sel.notes.length === 0 && <p style={{ margin: 0, fontSize: 13, color: "var(--ink-mute)" }}>No notes yet.</p>}
-            {sel.notes.map((n, i) => <p key={i} style={{ margin: "0 0 8px", fontSize: 13.5, background: "var(--bg-secondary)", borderRadius: 10, padding: "8px 10px" }}>{n}</p>)}
-            <form onSubmit={(e) => { e.preventDefault(); if (!note.trim()) return; upd(sel.id, { notes: [...sel.notes, note.trim()], status: sel.status === "Open" ? "In Progress" : sel.status }); setNote(""); }} style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a reply or internal note…" aria-label="Note" style={{ ...field, flex: 1, padding: "9px 12px" }} />
-              <button type="submit" style={smallBtn("blue")}>Add</button>
+          <Panel title="Conversation">
+            {sel.notes.map((n, i) => (
+              <p key={i} style={{ margin: "0 0 8px", fontSize: 13.5, background: n.from === "agent" ? "var(--blue-tint)" : "var(--bg-secondary)", borderRadius: 10, padding: "8px 10px" }}>
+                <b style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>{n.from === "agent" ? "Support" : sel.role} · {when(n.at)}</b><br />{n.body}
+              </p>
+            ))}
+            <form onSubmit={(e) => { e.preventDefault(); if (!note.trim()) return; void act("admin_update_ticket", { p_ticket: sel.id, p_status: sel.status === "Open" ? "In Progress" : sel.status, p_note: note.trim() }, "Reply sent").then((ok) => ok && setNote("")); }} style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <input value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} placeholder="Reply to the customer/driver…" aria-label="Reply" style={{ ...field, flex: 1, padding: "9px 12px" }} />
+              <button type="submit" style={smallBtn("blue")}>Send</button>
             </form>
           </Panel>
         </Drawer>
@@ -737,68 +899,39 @@ function SupportSection({ rows, setRows, flash }: { rows: Ticket[]; setRows: (t:
 
 /* ───────────────────────── Notifications ───────────────────────── */
 
-function NotifySection({ flash }: { flash: (m: string) => void }) {
-  const [aud, setAud] = useState("All customers");
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [sent, setSent] = useState([
-    { t: "Weekend offer 🎉", a: "All customers", at: "27 Sep, 10:00 AM" },
-    { t: "Complete 5 rides, get ₹500", a: "All drivers", at: "28 Sep, 07:00 AM" },
-  ]);
+function NotifySection() {
   return (
-    <div className="adm-grid-2">
-      <Panel title="Broadcast announcement">
-        <span style={label}>Audience</span>
-        <div style={{ marginBottom: 14 }}><Chips value={aud} options={["All customers", "All drivers", "Noida only", "Inactive riders"]} onChange={setAud} /></div>
-        <label style={label} htmlFor="nt">Title</label>
-        <input id="nt" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Diwali rides at 30% off" style={{ ...field, marginBottom: 14 }} />
-        <label style={label} htmlFor="nb">Message</label>
-        <textarea id="nb" value={body} onChange={(e) => setBody(e.target.value)} rows={4} placeholder="Use code DIWALI30 on your next 3 rides…" style={{ ...field, resize: "none", marginBottom: 18 }} />
-        <PrimaryButton disabled={!title.trim() || !body.trim()} onClick={() => { setSent([{ t: title, a: aud, at: "Just now" }, ...sent]); setTitle(""); setBody(""); flash(`Push notification queued for ${aud.toLowerCase()}`); }}>
-          <MegaphoneIcon s={17} c="white" /> Send Notification
-        </PrimaryButton>
-      </Panel>
-      <Panel title="Recently sent">
-        {sent.map((s, i) => (
-          <div key={i} style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{s.t}</p>
-            <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>{s.a} · {s.at}</p>
-          </div>
-        ))}
-      </Panel>
-    </div>
+    <Panel title="Broadcast announcements">
+      <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.6 }}>
+        Push notifications aren&apos;t connected yet. Sending needs a push provider (e.g. Firebase Cloud Messaging) and device tokens stored per user.
+        Until then, use coupons and in-app support replies to reach customers and drivers.
+      </p>
+    </Panel>
   );
 }
 
-/* ───────────────────────── Settings ───────────────────────── */
+/* ───────────────────────── Settings & audit log ───────────────────────── */
 
-function SettingsSection({ flash }: { flash: (m: string) => void }) {
-  const [s, setS] = useState({ cash: true, online: true, scheduled: false, sos: true, autoAssign: true, maintenance: false });
-  const rows: [keyof typeof s, string, string][] = [
-    ["cash", "Cash payments", "Let riders pay the driver in cash"],
-    ["online", "Online payments", "UPI, cards and wallet through the payment gateway"],
-    ["autoAssign", "Auto-assign nearest driver", "Dispatch requests to the closest eligible driver first"],
-    ["sos", "SOS & trip sharing", "Show the SOS button during live rides"],
-    ["scheduled", "Scheduled rides (beta)", "Future phase — book up to 7 days ahead"],
-    ["maintenance", "Maintenance mode", "Temporarily stop new bookings"],
-  ];
+function SettingsSection({ d }: { d: Data }) {
+  const admins = d.profiles.filter((p) => p.is_admin);
+  const nameById = useMemo(() => new Map(d.profiles.map((p) => [p.id, p.name || p.email || p.phone || p.id.slice(0, 8)])), [d.profiles]);
   return (
     <div className="adm-grid-2">
-      <Panel title="App settings">
-        {rows.map(([k, t, b]) => (
-          <div key={k} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
-            <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{t}</p><p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>{b}</p></div>
-            <Toggle on={s[k]} onChange={(v) => { setS({ ...s, [k]: v }); flash(`${t} ${v ? "enabled" : "disabled"}`); }} label={t} />
+      <Panel title="Audit log · last 100 admin actions">
+        {d.audit.length === 0 && <p style={{ margin: 0, fontSize: 13, color: "var(--ink-soft)" }}>No admin actions yet.</p>}
+        {d.audit.map((a) => (
+          <div key={a.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--line)", fontSize: 13 }}>
+            <b>{a.action}</b> · {a.target} <span style={{ color: "var(--ink-soft)" }}>by {a.actor ? nameById.get(a.actor) ?? "unknown" : "system"} · {when(a.at)}</span>
           </div>
         ))}
       </Panel>
-      <Panel title="Admin team">
-        {[["Alok Kumar", "Super admin", "AK"], ["Ritu Jain", "Operations", "RJ"], ["Sanjay Rao", "Finance", "SR"], ["Meera Nair", "Support", "MN"]].map(([n, r, i]) => (
-          <div key={n} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
-            <Avatar initials={i} size={36} /><div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{n}</p><p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>{r}</p></div>
+      <Panel title="Admins">
+        {admins.map((p) => (
+          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+            <Avatar initials={initials(p.name || p.email || "A")} size={36} /><div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{p.name || p.email}</p><p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>{p.email}</p></div>
           </div>
         ))}
-        <p style={{ margin: "12px 0 0", fontSize: 12, color: "var(--ink-mute)" }}>Role-based permissions and audit logs for admin actions (PRD §11).</p>
+        <p style={{ margin: "12px 0 0", fontSize: 12, color: "var(--ink-mute)" }}>Admin access is granted from the Supabase SQL editor (see docs/SETUP.md). Every admin action is recorded in the audit log.</p>
       </Panel>
     </div>
   );
