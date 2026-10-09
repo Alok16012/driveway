@@ -5,7 +5,7 @@ import {
   AlarmIcon, AlertIcon, BackIcon, BriefcaseIcon, CardIcon, CashIcon, ChatIcon, CheckIcon, ChevronRight, ClockIcon, ExpandIcon, HomeIcon, PhoneIcon,
   PinIcon, ShareIcon, ShieldIcon, SwapIcon, TagIcon, UpiIcon, UserIcon, WalletIcon,
 } from "../icons";
-import MapView from "../MapView";
+import MapView, { SIM_APPROACH_SEC, SIM_TRIP_SEC } from "../MapView";
 import VehicleArt, { AnyArt, ParcelArt, RentalArt } from "../VehicleArt";
 import { Avatar, ErrorText, Footer, LoadState, PageHeader, PrimaryButton, Stars, StatusBadge, card, field, iconBtn } from "../ui";
 import { PARCEL_TYPES, RIDE_STEPS, inr, vehicleById, type PayMethod, type VehicleKind } from "../../lib/data";
@@ -610,12 +610,12 @@ export function LiveRidePage({ ride, onBack, onCancelled, onChat, onShare, onRet
   const sinceAssign = useSince(ride.assigned_at);
   const sinceStart = useSince(ride.started_at);
   const sinceSearch = useSince(ride.created_at);
-  const approachSec = 5 * 60;
-  const progress = ride.status === "Arrived" ? 1 : ride.status === "Started" ? Math.min(0.97, sinceStart / (ride.mins * 60)) : Math.min(0.95, sinceAssign / approachSec);
-  const motion = ride.status === "Started" && ride.started_at ? { since: ride.started_at, seconds: ride.mins * 60, max: 0.97 }
-    : ride.status === "Arriving" && ride.assigned_at ? { since: ride.assigned_at, seconds: approachSec, max: 0.95 } : undefined;
+  const approachMins = 5;
+  const progress = ride.status === "Arrived" ? 1 : ride.status === "Started" ? Math.min(0.97, sinceStart / SIM_TRIP_SEC) : Math.min(0.95, sinceAssign / SIM_APPROACH_SEC);
+  const motion = ride.status === "Started" && ride.started_at ? { since: ride.started_at, seconds: SIM_TRIP_SEC, max: 0.97 }
+    : ride.status === "Arriving" && ride.assigned_at ? { since: ride.assigned_at, seconds: SIM_APPROACH_SEC, max: 0.95 } : undefined;
   const mode = searching || none ? "route" : ride.status === "Started" || ride.status === "Completed" ? "trip" : "approach";
-  const eta = ride.status === "Started" ? Math.max(1, Math.round((ride.mins * 60 - sinceStart) / 60)) : Math.max(1, Math.round((approachSec - sinceAssign) / 60));
+  const eta = Math.max(1, Math.round((ride.status === "Started" ? ride.mins : approachMins) * (1 - progress)));
 
   const cancel = async (reason: string) => {
     if (busy) return;

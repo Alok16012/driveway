@@ -6,6 +6,10 @@ import { useLayoutEffect, useRef } from "react";
  * One fixed street grid; the modes decide which route, pins and car are drawn on top. */
 
 export type MapMode = "idle" | "route" | "approach" | "trip";
+/* Simulated pace, in seconds to cover each leg on screen. Quick enough to see the car move; the ETA labels
+ * count down with it. Replaced by the rider's real position once GPS tracking is wired in. */
+export const SIM_APPROACH_SEC = 45;
+export const SIM_TRIP_SEC = 90;
 /** Car runs along the route from `since`, covering it in `seconds`, never past `max` (0–1). Simulated until real GPS lands. */
 export type MapMotion = { since: string; seconds: number; max: number };
 

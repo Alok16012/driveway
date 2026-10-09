@@ -6,7 +6,7 @@ import {
   NavIcon, PhoneIcon, RupeeIcon, ShieldIcon, SteeringIcon, WalletIcon,
 } from "../icons";
 import { BrandMark, Wordmark } from "../Brand";
-import MapView from "../MapView";
+import MapView, { SIM_APPROACH_SEC, SIM_TRIP_SEC } from "../MapView";
 import VehicleArt from "../VehicleArt";
 import { Avatar, ErrorText, OtpInput, PageHeader, PrimaryButton, Stars, StatusBadge, Tabs, Toggle, card, iconBtn } from "../ui";
 import { inr, vehicleById } from "../../lib/data";
@@ -277,11 +277,11 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
   const title = parcel
     ? { Arriving: "Going to collect parcel", Arrived: "Collect the parcel", Started: "Delivering parcel" }[phase as "Arriving"]
     : { Arriving: "On the way to pickup", Arrived: "Waiting for customer", Started: "Trip in progress" }[phase as "Arriving"];
-  const approach = 5 * 60;
-  const progress = phase === "Arrived" ? 1 : phase === "Started" ? Math.min(0.97, sinceStart / (trip.mins * 60)) : Math.min(0.95, sinceAssign / approach);
-  const motion = phase === "Started" && trip.started_at ? { since: trip.started_at, seconds: trip.mins * 60, max: 0.97 }
-    : phase === "Arriving" && trip.assigned_at ? { since: trip.assigned_at, seconds: approach, max: 0.95 } : undefined;
-  const eta = phase === "Started" ? Math.max(1, Math.round((trip.mins * 60 - sinceStart) / 60)) : Math.max(1, Math.round((approach - sinceAssign) / 60));
+  const approachMins = 5;
+  const progress = phase === "Arrived" ? 1 : phase === "Started" ? Math.min(0.97, sinceStart / SIM_TRIP_SEC) : Math.min(0.95, sinceAssign / SIM_APPROACH_SEC);
+  const motion = phase === "Started" && trip.started_at ? { since: trip.started_at, seconds: SIM_TRIP_SEC, max: 0.97 }
+    : phase === "Arriving" && trip.assigned_at ? { since: trip.assigned_at, seconds: SIM_APPROACH_SEC, max: 0.95 } : undefined;
+  const eta = Math.max(1, Math.round((phase === "Started" ? trip.mins : approachMins) * (1 - progress)));
   const fee = Math.max(0, Math.ceil((waited - trip.free_wait_sec) / 60)) * trip.wait_fee_per_min;
   const pill: React.CSSProperties = { flex: 1, border: "none", borderRadius: 12, padding: "10px 6px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
 
