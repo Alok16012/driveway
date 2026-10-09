@@ -8,9 +8,12 @@ const nativeApp = process.env.NEXT_PUBLIC_NATIVE_APP === "1";
 const nextConfig: NextConfig = nativeApp
   ? { output: "export", trailingSlash: false, pageExtensions: ["tsx"] }
   : {
-      // The driver app now lives at /rider — keep old links working.
+      // The driver app now lives at /rider and the customer app at / — keep old links working.
       async redirects() {
-        return [{ source: "/driver", destination: "/rider", permanent: true }];
+        return [
+          { source: "/driver", destination: "/rider", permanent: true },
+          { source: "/customer", destination: "/", permanent: true },
+        ];
       },
     };
 

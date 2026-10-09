@@ -216,7 +216,7 @@ export default function RiderApp() {
         {stage === "loading" && <LoadState error={bootErr} onRetry={() => void boot()} />}
         {stage === "splash" && (
           <SplashScreen tagline="Drive · Earn · Grow" cta="Start Riding" onStart={() => setStage("login")}
-            footer={NATIVE_APP ? undefined : <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.55)" }}><Link href="/customer" style={{ color: "var(--gold)" }}>Book a ride instead</Link></p>} />
+            footer={NATIVE_APP ? undefined : <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.55)" }}><Link href="/" style={{ color: "var(--gold)" }}>Book a ride instead</Link></p>} />
         )}
         {stage === "login" && <EmailLogin title="Welcome, Rider" accent="Let's get you earning" onSignedIn={() => void boot()} onSignUp={() => setStage("signup")} />}
         {stage === "signup" && (

@@ -1,11 +1,13 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 /* Illustrated city map — a stand-in until the third-party map SDK (PRD §9) is wired in.
  * One fixed street grid; the modes decide which route, pins and car are drawn on top. */
 
 export type MapMode = "idle" | "route" | "approach" | "trip";
+/** Car runs along the route from `since`, covering it in `seconds`, never past `max` (0–1). Simulated until real GPS lands. */
+export type MapMotion = { since: string; seconds: number; max: number };
 
 const TRIP = "M92 232 C 120 232, 132 196, 164 190 S 212 160, 236 136 S 290 92, 318 74";
 const APPROACH = "M40 128 C 60 150, 58 196, 72 214 S 86 230, 92 232";
@@ -26,26 +28,53 @@ function Car({ x, y, angle, size = 1 }: { x: number; y: number; angle: number; s
   );
 }
 
-export default function MapView({ mode = "idle", progress = 0, height = 220, radius = 20, nearby = mode === "idle", style, children }: {
-  mode?: MapMode; progress?: number; height?: number | string; radius?: number; nearby?: boolean; style?: React.CSSProperties; children?: React.ReactNode;
+const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+
+export default function MapView({ mode = "idle", progress = 0, motion, height = 220, radius = 20, nearby = mode === "idle", style, children }: {
+  mode?: MapMode; progress?: number; motion?: MapMotion; height?: number | string; radius?: number; nearby?: boolean; style?: React.CSSProperties; children?: React.ReactNode;
 }) {
   const tripRef = useRef<SVGPathElement>(null);
   const apprRef = useRef<SVGPathElement>(null);
-  const [car, setCar] = useState<{ x: number; y: number; a: number } | null>(null);
+  const carRef = useRef<SVGGElement>(null);
+  const shown = useRef<{ mode: MapMode; t: number } | null>(null);
+  const moving = mode === "approach" || mode === "trip";
 
+  /* Drawn every animation frame straight onto the SVG (no React re-render): the car eases toward where it
+   * should be now, so it glides and turns with the road instead of jumping once a second. */
+  const since = motion?.since, seconds = motion?.seconds, max = motion?.max;
   useLayoutEffect(() => {
-    const path = mode === "approach" ? apprRef.current : mode === "trip" ? tripRef.current : null;
-    if (!path) { setCar(null); return; }
+    const trip = tripRef.current;
+    const path = mode === "approach" ? apprRef.current : mode === "trip" ? trip : null;
+    const car = carRef.current;
+    if (trip) trip.style.strokeDashoffset = "0";
+    if (!path || !car) { shown.current = null; return; }
     const len = path.getTotalLength();
-    const t = Math.min(1, Math.max(0, progress));
-    const p = path.getPointAtLength(len * t);
-    const q = path.getPointAtLength(Math.min(len, len * t + 1));
-    const r = path.getPointAtLength(Math.max(0, len * t - 1));
-    setCar({ x: p.x, y: p.y, a: (Math.atan2(q.y - r.y, q.x - r.x) * 180) / Math.PI });
-  }, [mode, progress]);
+    const start = since ? new Date(since).getTime() : NaN;
+    const target = () => clamp01(seconds && !Number.isNaN(start) ? Math.min(max ?? 1, (Date.now() - start) / 1000 / seconds) : progress);
+    let t = shown.current?.mode === mode ? shown.current.t : target();
+    const draw = () => {
+      const p = path.getPointAtLength(len * t);
+      const q = path.getPointAtLength(Math.min(len, len * t + 1));
+      const r = path.getPointAtLength(Math.max(0, len * t - 1));
+      car.setAttribute("transform", `translate(${p.x} ${p.y}) rotate(${(Math.atan2(q.y - r.y, q.x - r.x) * 180) / Math.PI})`);
+      if (mode === "trip" && trip) trip.style.strokeDashoffset = String(-t);
+      shown.current = { mode, t };
+    };
+    let last = performance.now();
+    let raf = 0;
+    const frame = (now: number) => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      t += (target() - t) * Math.min(1, dt * 3);
+      draw();
+      raf = requestAnimationFrame(frame);
+    };
+    draw();
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [mode, progress, since, seconds, max]);
 
   const showRoute = mode !== "idle";
-  const tripDone = mode === "trip" ? progress : 0;
 
   return (
     <div style={{ position: "relative", height, borderRadius: radius, overflow: "hidden", background: "#e9eef6", ...style }}>
@@ -78,7 +107,7 @@ export default function MapView({ mode = "idle", progress = 0, height = 220, rad
             {mode === "approach" && <path ref={apprRef} d={APPROACH} stroke="var(--ink)" strokeWidth="3.5" strokeDasharray="2 6" strokeLinecap="round" fill="none" opacity="0.6" />}
             <path d={TRIP} stroke="#0847c7" strokeWidth="8" strokeLinecap="round" fill="none" opacity="0.18" />
             <path ref={tripRef} d={TRIP} stroke="var(--blue)" strokeWidth="5" strokeLinecap="round" fill="none" pathLength={1}
-              strokeDasharray="1 1" strokeDashoffset={-tripDone} />
+              strokeDasharray="1 1" />
             {/* pickup */}
             <circle cx="92" cy="232" r="11" fill="rgba(47,158,118,0.22)" />
             <circle cx="92" cy="232" r="6.5" fill="#2f9e76" stroke="white" strokeWidth="2.5" />
@@ -97,7 +126,7 @@ export default function MapView({ mode = "idle", progress = 0, height = 220, rad
           </g>
         )}
 
-        {car && <Car x={car.x} y={car.y} angle={car.a} size={1.15} />}
+        {moving && <g ref={carRef}><Car x={0} y={0} angle={0} size={1.15} /></g>}
       </svg>
       {children}
     </div>

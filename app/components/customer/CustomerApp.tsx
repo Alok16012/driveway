@@ -2,21 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import BottomNav, { ChatGlyph, HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph } from "../components/BottomNav";
-import { EmailLogin, PermissionStep, ProfileSetup, SignUp, SplashScreen } from "../components/Auth";
-import HomeScreen from "../components/customer/HomeScreen";
-import { ChooseRidePage, LiveRidePage, ParcelPage, SearchPage, TripDonePage } from "../components/customer/BookingScreens";
-import { ChatScreen, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen, type ChatMessage, type ProfileKey } from "../components/customer/AccountScreens";
-import type { RideOption } from "../components/customer/types";
-import { LoadState, Toast, card } from "../components/ui";
-import { CardIcon, UpiIcon, WalletIcon } from "../components/icons";
-import { inr, type PayMethod } from "../lib/data";
-import { NATIVE_APP } from "../lib/native";
+import BottomNav, { ChatGlyph, HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph } from "../BottomNav";
+import { EmailLogin, PermissionStep, ProfileSetup, SignUp, SplashScreen } from "../Auth";
+import HomeScreen from "./HomeScreen";
+import { ChooseRidePage, LiveRidePage, ParcelPage, SearchPage, TripDonePage } from "./BookingScreens";
+import { ChatScreen, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen, type ChatMessage, type ProfileKey } from "./AccountScreens";
+import type { RideOption } from "./types";
+import { LoadState, Toast, card } from "../ui";
+import { CardIcon, UpiIcon, WalletIcon } from "../icons";
+import { inr, type PayMethod } from "../../lib/data";
+import { NATIVE_APP } from "../../lib/native";
 import {
   cancelRide, closeRide, fmtWhen, getSession, myActiveRide, myProfile, myRides, myWallet, onAuthChange, payRide, places as fetchPlaces,
   signOut, supportMessage, updateMyProfile, watchResume, watchRides, type Place, type Profile, type Quote, type RideView, type Txn,
-} from "../lib/api";
-import { supabase } from "../lib/supabase/client";
+} from "../../lib/api";
+import { supabase } from "../../lib/supabase/client";
 
 const SHELL_MAX_W = 430;
 const LIVE: RideView["status"][] = ["Searching", "Arriving", "Arrived", "Started"];

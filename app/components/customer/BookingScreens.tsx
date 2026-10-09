@@ -612,6 +612,8 @@ export function LiveRidePage({ ride, onBack, onCancelled, onChat, onShare, onRet
   const sinceSearch = useSince(ride.created_at);
   const approachSec = 5 * 60;
   const progress = ride.status === "Arrived" ? 1 : ride.status === "Started" ? Math.min(0.97, sinceStart / (ride.mins * 60)) : Math.min(0.95, sinceAssign / approachSec);
+  const motion = ride.status === "Started" && ride.started_at ? { since: ride.started_at, seconds: ride.mins * 60, max: 0.97 }
+    : ride.status === "Arriving" && ride.assigned_at ? { since: ride.assigned_at, seconds: approachSec, max: 0.95 } : undefined;
   const mode = searching || none ? "route" : ride.status === "Started" || ride.status === "Completed" ? "trip" : "approach";
   const eta = ride.status === "Started" ? Math.max(1, Math.round((ride.mins * 60 - sinceStart) / 60)) : Math.max(1, Math.round((approachSec - sinceAssign) / 60));
 
@@ -624,7 +626,7 @@ export function LiveRidePage({ ride, onBack, onCancelled, onChat, onShare, onRet
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ position: "relative" }}>
-        <MapView mode={mode} progress={progress} height={searching ? 330 : 300} radius={0} nearby={searching}>
+        <MapView mode={mode} progress={progress} motion={motion} height={searching ? 330 : 300} radius={0} nearby={searching}>
           {searching && (
             <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: 1, height: 1 }}>
               {[0, 0.6, 1.2].map((d) => <span key={d} className="ripple" style={{ position: "absolute", left: -60, top: -60, width: 120, height: 120, borderRadius: "50%", background: "rgba(11,92,255,0.22)", animationDelay: `${d}s` }} />)}

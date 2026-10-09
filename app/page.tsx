@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import CustomerApp from "./customer/CustomerApp";
+import CustomerApp from "./components/customer/CustomerApp";
 
-/* Entry point: the main route opens the customer app directly (also served at /customer). */
+/* The main route is the customer app (/customer redirects here). */
 export const metadata: Metadata = { title: "DriveWay", description: "Book a Bike, Auto, Mini, Sedan or XL. Ride · Reach · Relax." };
 
 export default function Home() {

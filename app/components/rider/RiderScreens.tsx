@@ -279,6 +279,8 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
     : { Arriving: "On the way to pickup", Arrived: "Waiting for customer", Started: "Trip in progress" }[phase as "Arriving"];
   const approach = 5 * 60;
   const progress = phase === "Arrived" ? 1 : phase === "Started" ? Math.min(0.97, sinceStart / (trip.mins * 60)) : Math.min(0.95, sinceAssign / approach);
+  const motion = phase === "Started" && trip.started_at ? { since: trip.started_at, seconds: trip.mins * 60, max: 0.97 }
+    : phase === "Arriving" && trip.assigned_at ? { since: trip.assigned_at, seconds: approach, max: 0.95 } : undefined;
   const eta = phase === "Started" ? Math.max(1, Math.round((trip.mins * 60 - sinceStart) / 60)) : Math.max(1, Math.round((approach - sinceAssign) / 60));
   const fee = Math.max(0, Math.ceil((waited - trip.free_wait_sec) / 60)) * trip.wait_fee_per_min;
   const pill: React.CSSProperties = { flex: 1, border: "none", borderRadius: 12, padding: "10px 6px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
@@ -286,7 +288,7 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ position: "relative" }}>
-        <MapView mode={phase === "Started" ? "trip" : "approach"} progress={progress} height={320} radius={0} nearby={false} />
+        <MapView mode={phase === "Started" ? "trip" : "approach"} progress={progress} motion={motion} height={320} radius={0} nearby={false} />
         <button onClick={onBack} aria-label="Back" className="press" style={{ ...iconBtn, position: "absolute", top: 16, left: 16, width: 40, height: 40, borderRadius: "50%", background: "white", justifyContent: "center", boxShadow: "var(--shadow-md)" }}><BackIcon c="var(--ink)" /></button>
         <div style={{ position: "absolute", top: 16, left: 66, right: 16, background: "var(--blue-dark)", color: "white", borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, boxShadow: "var(--shadow-md)" }}>
           <NavIcon s={22} c="var(--gold)" />

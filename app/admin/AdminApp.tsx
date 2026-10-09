@@ -582,7 +582,7 @@ function DriversSection({ d, act }: { d: Data; act: Act }) {
                 <td>{vehicleById(x.vehicle).name}{x.ac ? " · AC" : ""}</td><td style={{ fontWeight: 600 }}>{x.plate}</td><td>{x.city}</td><td>{x.trips}</td>
                 <td>{x.rating ? `★ ${x.rating}` : "—"}</td><td><StatusBadge status={state(x)} /></td>
                 <td onClick={(e) => e.stopPropagation()}>
-                  {x.kyc === "Pending" ? <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Review documents →</span>
+                  {x.kyc === "Pending" ? <button style={smallBtn("ghost")} onClick={() => { setOpen(x.id); setNote(x.kyc_note ?? ""); }}>Review documents →</button>
                     : x.kyc === "Approved" ? <button style={smallBtn(x.suspended ? "ghost" : "red")} onClick={() => suspend(x)}>{x.suspended ? "Reactivate" : "Suspend"}</button>
                     : <button style={smallBtn("ghost")} onClick={() => setKyc(x, "Pending", null)}>Re-review</button>}
                 </td>
