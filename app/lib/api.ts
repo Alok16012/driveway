@@ -83,19 +83,26 @@ export async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Pr
 /** A random key so a retried request (double tap, lost response) is applied once. */
 export const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`.slice(0, 40));
 
-/* ───────────── Auth (phone OTP for customers and drivers, email for admins) ───────────── */
+/* ───────────── Auth (email + password for everyone) ───────────── */
 
 export const isIndianMobile = (p: string) => /^[6-9]\d{9}$/.test(p);
-const e164 = (p: string) => `+91${p}`;
 
-export async function sendOtp(phone10: string) {
-  if (!isIndianMobile(phone10)) throw new Error("Enter a valid 10-digit Indian mobile number.");
-  const { error } = await supabase().auth.signInWithOtp({ phone: e164(phone10) });
-  if (error) throw new Error(friendly(error));
+/** Customer and rider sign-in. */
+export async function emailSignIn(email: string, password: string) {
+  const { error } = await supabase().auth.signInWithPassword({ email: email.trim(), password });
+  if (error) throw new Error(/invalid login credentials/i.test(error.message) ? "Wrong email or password."
+    : /email not confirmed/i.test(error.message) ? "Confirm your email first — check your inbox for the link." : friendly(error));
 }
-export async function verifyOtp(phone10: string, token: string) {
-  const { error } = await supabase().auth.verifyOtp({ phone: e164(phone10), token, type: "sms" });
-  if (error) throw new Error(/expired|invalid/i.test(error.message) ? "That code is wrong or has expired." : friendly(error));
+/** Customer and rider sign-up. Name and mobile ride along as user metadata; handle_new_user copies them into the profile.
+ *  Returns false when the project requires email confirmation (no session yet). */
+export async function emailSignUp(p: { name: string; email: string; phone: string; password: string }): Promise<boolean> {
+  if (!isIndianMobile(p.phone)) throw new Error("Enter a valid 10-digit Indian mobile number.");
+  const { data, error } = await supabase().auth.signUp({
+    email: p.email.trim(), password: p.password,
+    options: { data: { name: p.name.trim(), phone: `91${p.phone}` } },
+  });
+  if (error) throw new Error(/already registered|already exists/i.test(error.message) ? "An account with this email already exists — log in instead." : friendly(error));
+  return !!data.session;
 }
 export async function adminSignIn(email: string, password: string) {
   const { error } = await supabase().auth.signInWithPassword({ email, password });

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import BottomNav, { HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph, WalletGlyph } from "../components/BottomNav";
-import { OtpStep, PhoneLogin, SplashScreen } from "../components/Auth";
+import { EmailLogin, SignUp, SplashScreen } from "../components/Auth";
 import { KycFlow, PendingApproval } from "../components/rider/Kyc";
 import { AlertsScreen, EarningsScreen, RequestPopup, RiderAccount, RiderHome, TripPage, TripsScreen, type AccountKey, type QuickKey } from "../components/rider/RiderScreens";
 import {
@@ -24,7 +24,7 @@ const SHELL_MAX_W = 430;
 const PREFS_KEY = "driveway:rider-prefs";
 
 type Tab = "home" | "earnings" | "trips" | "incentives" | "account";
-type Stage = "loading" | "splash" | "phone" | "otp" | "kyc" | "pending" | "app";
+type Stage = "loading" | "splash" | "login" | "signup" | "kyc" | "pending" | "app";
 type Detail = { k: "alerts" } | { k: "support" } | { k: "trip"; id: string } | { k: "wallet" } | { k: "performance" } | { k: Exclude<AccountKey, "help" | "performance"> };
 
 const readPrefs = (): RiderPrefs => {
@@ -34,7 +34,6 @@ const readPrefs = (): RiderPrefs => {
 
 export default function RiderApp() {
   const [stage, setStage] = useState<Stage>("loading");
-  const [phone, setPhone] = useState("");
   const [me, setMe] = useState<DriverMe | null>(null);
   const [tab, setTab] = useState<Tab>("home");
   const [stack, setStack] = useState<Detail[]>([]);
@@ -216,11 +215,16 @@ export default function RiderApp() {
 
         {stage === "loading" && <LoadState error={bootErr} onRetry={() => void boot()} />}
         {stage === "splash" && (
-          <SplashScreen tagline="Drive · Earn · Grow" cta="Start Riding" onStart={() => setStage("phone")}
+          <SplashScreen tagline="Drive · Earn · Grow" cta="Start Riding" onStart={() => setStage("login")}
             footer={NATIVE_APP ? undefined : <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.55)" }}><Link href="/customer" style={{ color: "var(--gold)" }}>Book a ride instead</Link></p>} />
         )}
-        {stage === "phone" && <PhoneLogin title="Welcome, Rider" accent="Let's get you earning" onSent={(p) => { setPhone(p); setStage("otp"); }} />}
-        {stage === "otp" && <OtpStep phone={phone} onBack={() => setStage("phone")} onVerified={() => void boot()} />}
+        {stage === "login" && <EmailLogin title="Welcome, Rider" accent="Let's get you earning" onSignedIn={() => void boot()} onSignUp={() => setStage("signup")} />}
+        {stage === "signup" && (
+          <SignUp onLogin={() => setStage("login")} onSignedUp={(hasSession) => {
+            if (hasSession) { void boot(); return; }
+            setStage("login"); flash("Check your inbox to confirm your email, then log in.");
+          }} />
+        )}
         {stage === "kyc" && <KycFlow onSubmitted={() => void boot()} />}
         {stage === "pending" && me && (
           <PendingApproval name={me.name} kyc={me.kyc === "Rejected" ? "Rejected" : "Pending"} note={me.kyc_note} checking={checking}

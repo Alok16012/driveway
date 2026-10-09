@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ArrowRight, BackIcon, BellIcon, PinIcon, CheckIcon } from "./icons";
-import { ErrorText, OtpInput, PrimaryButton, card, field, iconBtn, label } from "./ui";
-import { isIndianMobile, sendOtp, verifyOtp } from "../lib/api";
+import { ErrorText, PrimaryButton, card, field, iconBtn, label } from "./ui";
+import { emailSignIn, emailSignUp, isIndianMobile } from "../lib/api";
 
 /** Brand splash — deep navy so the DriveWay gradient logo reads the way it was drawn. */
 export function SplashScreen({ tagline, cta = "Get Started", onStart, footer }: {
@@ -55,76 +55,88 @@ const H = ({ title, accent, body }: { title: string; accent?: string; body: stri
   </div>
 );
 
-/** Mobile number → SMS one-time password (Supabase Auth). */
-export function PhoneLogin({ title, accent, onSent }: { title: string; accent: string; onSent: (phone: string) => void }) {
-  const [phone, setPhone] = useState("");
+const isEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e.trim());
+const MIN_PASSWORD = 6;
+
+const SwitchLink = ({ q, cta, onClick }: { q: string; cta: string; onClick: () => void }) => (
+  <p style={{ margin: 0, textAlign: "center", fontSize: 13.5, color: "var(--ink-soft)" }}>
+    {q} <button type="button" onClick={onClick} style={{ background: "none", border: "none", padding: 0, color: "var(--blue)", fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}>{cta}</button>
+  </p>
+);
+
+const Terms = () => (
+  <p style={{ marginTop: "auto", fontSize: 11.5, color: "var(--ink-mute)", textAlign: "center", lineHeight: 1.5 }}>
+    By continuing you agree to DriveWay&apos;s Terms of Service and Privacy Policy.
+  </p>
+);
+
+/** Email + password sign-in (Supabase Auth). */
+export function EmailLogin({ title, accent, onSignedIn, onSignUp }: { title: string; accent: string; onSignedIn: () => void; onSignUp: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const ok = isIndianMobile(phone);
+  const ok = isEmail(email) && password.length > 0;
   const submit = async () => {
     if (!ok || busy) return;
     setBusy(true); setErr(null);
-    try { await sendOtp(phone); onSent(phone); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    try { await emailSignIn(email, password); onSignedIn(); } catch (e) { setErr((e as Error).message); setBusy(false); }
   };
   return (
     <Shell>
-      <H title={title} accent={accent} body="Enter your mobile number. We'll send you a one-time password." />
+      <H title={title} accent={accent} body="Log in with your email and password." />
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ padding: "28px 24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
-        <div>
-          <label style={label} htmlFor="phone">Mobile Number</label>
-          <div style={{ ...field, display: "flex", alignItems: "center", gap: 10, padding: "4px 14px" }}>
-            <span style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", borderRight: "1.5px solid var(--line)", paddingRight: 10 }}>🇮🇳 +91</span>
-            <input id="phone" value={phone} inputMode="numeric" autoComplete="tel-national" placeholder="98765 43210"
-              onChange={(e) => { setPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setErr(null); }}
-              style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 16, padding: "10px 0", color: "var(--ink)", letterSpacing: "0.04em" }} />
-          </div>
-          {phone.length === 10 && !ok && <ErrorText msg="Indian mobile numbers start with 6, 7, 8 or 9." />}
-          <ErrorText msg={err} />
-        </div>
-        <PrimaryButton type="submit" disabled={!ok || busy}>{busy ? "Sending…" : "Get OTP"}</PrimaryButton>
-        <p style={{ marginTop: "auto", fontSize: 11.5, color: "var(--ink-mute)", textAlign: "center", lineHeight: 1.5 }}>
-          By continuing you agree to DriveWay&apos;s Terms of Service and Privacy Policy.
-        </p>
+        <div><label style={label} htmlFor="le">Email</label><input id="le" type="email" value={email} maxLength={254} onChange={(e) => { setEmail(e.target.value); setErr(null); }} placeholder="you@example.com" style={field} autoComplete="email" /></div>
+        <div><label style={label} htmlFor="lp">Password</label><input id="lp" type="password" value={password} onChange={(e) => { setPassword(e.target.value); setErr(null); }} placeholder="Your password" style={field} autoComplete="current-password" /></div>
+        <ErrorText msg={err} />
+        <PrimaryButton type="submit" disabled={!ok || busy}>{busy ? "Logging in…" : "Log in"}</PrimaryButton>
+        <SwitchLink q="New to DriveWay?" cta="Create an account" onClick={onSignUp} />
+        <Terms />
       </form>
     </Shell>
   );
 }
 
-const OTP_LEN = 6;
-const RESEND_SEC = 30;
-
-export function OtpStep({ phone, onBack, onVerified }: { phone: string; onBack: () => void; onVerified: () => void }) {
-  const [otp, setOtp] = useState("");
-  const [left, setLeft] = useState(RESEND_SEC);
-  const [checking, setChecking] = useState(false);
+/** Name, email, mobile and password → new account. */
+export function SignUp({ onSignedUp, onLogin }: { onSignedUp: (hasSession: boolean) => void; onLogin: () => void }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => {
-    if (left <= 0) return;
-    const t = setTimeout(() => setLeft((l) => l - 1), 1000);
-    return () => clearTimeout(t);
-  }, [left]);
-  const enter = (v: string) => {
-    setOtp(v); setErr(null);
-    if (v.length !== OTP_LEN || checking) return;
-    setChecking(true);
-    verifyOtp(phone, v).then(onVerified, (e) => { setErr((e as Error).message); setOtp(""); setChecking(false); });
-  };
-  const resend = async () => {
-    setErr(null);
-    try { await sendOtp(phone); setLeft(RESEND_SEC); } catch (e) { setErr((e as Error).message); }
+  const ok = name.trim().length > 0 && isEmail(email) && isIndianMobile(phone) && password.length >= MIN_PASSWORD;
+  const submit = async () => {
+    if (!ok || busy) return;
+    setBusy(true); setErr(null);
+    try { onSignedUp(await emailSignUp({ name, email, phone, password })); } catch (e) { setErr((e as Error).message); setBusy(false); }
   };
   return (
-    <Shell onBack={onBack}>
-      <H title="Verify your number" body={`Enter the ${OTP_LEN}-digit code sent to +91 ${phone.slice(0, 5)} ${phone.slice(5)}`} />
-      <div style={{ padding: "32px 24px 0" }}>
-        <OtpInput value={otp} onChange={enter} length={OTP_LEN} />
+    <Shell onBack={onLogin}>
+      <H title="Create your" accent="DriveWay account" body="A few details and you're ready to ride." />
+      <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ padding: "24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
+        <div><label style={label} htmlFor="sn">Full Name</label><input id="sn" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Amit Sharma" style={field} autoComplete="name" /></div>
+        <div><label style={label} htmlFor="se">Email</label><input id="se" type="email" value={email} maxLength={254} onChange={(e) => { setEmail(e.target.value); setErr(null); }} placeholder="you@example.com" style={field} autoComplete="email" /></div>
+        <div>
+          <label style={label} htmlFor="sp">Mobile Number</label>
+          <div style={{ ...field, display: "flex", alignItems: "center", gap: 10, padding: "4px 14px" }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", borderRight: "1.5px solid var(--line)", paddingRight: 10 }}>🇮🇳 +91</span>
+            <input id="sp" value={phone} inputMode="numeric" autoComplete="tel-national" placeholder="98765 43210"
+              onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+              style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 16, padding: "10px 0", color: "var(--ink)", letterSpacing: "0.04em" }} />
+          </div>
+          {phone.length === 10 && !isIndianMobile(phone) && <ErrorText msg="Indian mobile numbers start with 6, 7, 8 or 9." />}
+        </div>
+        <div>
+          <label style={label} htmlFor="spw">Password</label>
+          <input id="spw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={`At least ${MIN_PASSWORD} characters`} style={field} autoComplete="new-password" />
+          {password.length > 0 && password.length < MIN_PASSWORD && <ErrorText msg={`Use at least ${MIN_PASSWORD} characters.`} />}
+        </div>
         <ErrorText msg={err} />
-        <p style={{ textAlign: "center", margin: "22px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
-          {checking ? "Verifying…" : left > 0 ? <>Resend code in <b style={{ color: "var(--ink)" }}>0:{String(left).padStart(2, "0")}</b></> : (
-            <button onClick={() => void resend()} style={{ background: "none", border: "none", color: "var(--blue)", fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}>Resend OTP</button>
-          )}
-        </p>
-      </div>
+        <PrimaryButton type="submit" disabled={!ok || busy}>{busy ? "Creating account…" : "Sign up"}</PrimaryButton>
+        <SwitchLink q="Already have an account?" cta="Log in" onClick={onLogin} />
+        <Terms />
+      </form>
     </Shell>
   );
 }

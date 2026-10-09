@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import BottomNav, { ChatGlyph, HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph } from "../components/BottomNav";
-import { OtpStep, PermissionStep, PhoneLogin, ProfileSetup, SplashScreen } from "../components/Auth";
+import { EmailLogin, PermissionStep, ProfileSetup, SignUp, SplashScreen } from "../components/Auth";
 import HomeScreen from "../components/customer/HomeScreen";
 import { ChooseRidePage, LiveRidePage, ParcelPage, SearchPage, TripDonePage } from "../components/customer/BookingScreens";
 import { ChatScreen, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen, type ChatMessage, type ProfileKey } from "../components/customer/AccountScreens";
@@ -22,7 +22,7 @@ const SHELL_MAX_W = 430;
 const LIVE: RideView["status"][] = ["Searching", "Arriving", "Arrived", "Started"];
 
 type Tab = "home" | "rides" | "offers" | "support" | "profile";
-type Stage = "loading" | "splash" | "phone" | "otp" | "setup" | "perm" | "app";
+type Stage = "loading" | "splash" | "login" | "signup" | "setup" | "perm" | "app";
 
 type Detail =
   | { k: "search"; to?: Place; prefer?: RideOption }
@@ -39,7 +39,6 @@ const optionOf = (r: RideView): RideOption => (r.service === "ride" ? r.vehicle 
 
 export default function CustomerApp() {
   const [stage, setStage] = useState<Stage>("loading");
-  const [phone, setPhone] = useState("");
   const [me, setMe] = useState<Profile | null>(null);
   const [places, setPlaces] = useState<Place[]>([]);
   const [tab, setTab] = useState<Tab>("home");
@@ -181,15 +180,20 @@ export default function CustomerApp() {
 
         {stage === "loading" && <LoadState error={bootErr} onRetry={() => void boot()} />}
         {stage === "splash" && (
-          <SplashScreen tagline="Ride · Reach · Relax" onStart={() => setStage("phone")}
+          <SplashScreen tagline="Ride · Reach · Relax" onStart={() => setStage("login")}
             footer={NATIVE_APP ? undefined :
               <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
                 <Link href="/rider" style={{ color: "var(--gold)" }}>Drive with DriveWay</Link>
               </p>
             } />
         )}
-        {stage === "phone" && <PhoneLogin title="Welcome to" accent="DriveWay" onSent={(p) => { setPhone(p); setStage("otp"); }} />}
-        {stage === "otp" && <OtpStep phone={phone} onBack={() => setStage("phone")} onVerified={() => void boot()} />}
+        {stage === "login" && <EmailLogin title="Welcome to" accent="DriveWay" onSignedIn={() => void boot()} onSignUp={() => setStage("signup")} />}
+        {stage === "signup" && (
+          <SignUp onLogin={() => setStage("login")} onSignedUp={(hasSession) => {
+            if (hasSession) { void boot(); return; }
+            setStage("login"); flash("Check your inbox to confirm your email, then log in.");
+          }} />
+        )}
         {stage === "setup" && (
           <ProfileSetup onDone={async ({ name, email }) => { await updateMyProfile(name, email); setMe(await myProfile()); setStage("perm"); }} />
         )}
