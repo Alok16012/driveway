@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import {
   AlertIcon, BackIcon, BellIcon, CheckIcon, ChevronRight, ClockIcon, DocIcon, GearIcon, GiftIcon, HelpIcon,
-  NavIcon, PhoneIcon, RupeeIcon, ShieldIcon, SteeringIcon, WalletIcon,
+  NavIcon, PhoneIcon, RupeeIcon, ShieldIcon, SteeringIcon, UserIcon, WalletIcon,
 } from "../icons";
 import { BrandMark, Wordmark } from "../Brand";
 import MapView, { SIM_APPROACH_SEC, SIM_TRIP_SEC } from "../MapView";
 import VehicleArt from "../VehicleArt";
-import { Avatar, ErrorText, OtpInput, PageHeader, PrimaryButton, Stars, StatusBadge, Tabs, Toggle, card, iconBtn } from "../ui";
+import { Avatar, ErrorText, OtpInput, PageHeader, PrimaryButton, Stars, StatusBadge, Tabs, Toggle, card, iconBtn, onLight } from "../ui";
 import { inr, vehicleById } from "../../lib/data";
 import { fmtWhen, rideLabel, type DriverMe, type RideView, type Txn } from "../../lib/api";
 
@@ -49,9 +49,9 @@ export function RiderHome({ me, online, toggling, toggleErr, onToggle, onOpenEar
   return (
     <div style={{ paddingBottom: 24 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 10px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><BrandMark size={34} /><Wordmark sub="RIDER · DRIVE · EARN" /></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><BrandMark size={34} /><Wordmark light sub="RIDER · DRIVE · EARN" /></div>
         <button aria-label="Notifications" onClick={onAlerts} className="press" style={iconBtn}>
-          <BellIcon s={25} c="var(--text-secondary)" w={1.7} />
+          <BellIcon s={25} c="var(--on-bg)" w={1.7} />
           {unread > 0 && <span style={{ position: "absolute", top: 1, right: 2, width: 8, height: 8, borderRadius: "50%", background: "var(--red)", border: "1.5px solid var(--app-bg)" }} />}
         </button>
       </div>
@@ -94,10 +94,10 @@ export function RiderHome({ me, online, toggling, toggleErr, onToggle, onOpenEar
 
       <div style={{ padding: "18px 16px 0", display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
         <div>
-          <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)", fontWeight: 500 }}>Today</p>
-          <p style={{ margin: 0, fontSize: 19, fontWeight: 700 }}>Your Summary</p>
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--on-bg-soft)", fontWeight: 500 }}>Today</p>
+          <p style={{ margin: 0, fontSize: 19, fontWeight: 700, color: "var(--on-bg)" }}>Your Summary</p>
         </div>
-        <button onClick={onOpenEarnings} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--blue)", fontSize: 13.5, fontWeight: 600 }}>Earnings →</button>
+        <button onClick={onOpenEarnings} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--on-bg-accent)", fontSize: 13.5, fontWeight: 600 }}>Earnings →</button>
       </div>
       <div style={{ padding: "12px 16px 0", display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 10 }}>
         <div style={{ borderRadius: 18, padding: "14px 12px", background: "linear-gradient(150deg,var(--blue-dark),var(--blue))", color: "white", boxShadow: "0 10px 24px rgba(11,92,255,0.25)" }}>
@@ -164,7 +164,7 @@ export function RequestPopup({ offer, autoAccept, busy, err, onAccept, onDecline
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 150, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
       <div className="fade-up" style={{ position: "absolute", inset: 0, background: "rgba(15,23,41,0.5)" }} />
-      <div className="slide-up" style={{ position: "relative", background: "var(--app-bg)", borderRadius: "24px 24px 0 0", padding: "16px 16px calc(18px + env(safe-area-inset-bottom))", maxHeight: "94%", overflowY: "auto" }}>
+      <div className="slide-up" style={{ position: "relative", ...onLight, background: "var(--sheet-bg)", borderRadius: "24px 24px 0 0", padding: "16px 16px calc(18px + env(safe-area-inset-bottom))", maxHeight: "94%", overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <p style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>{parcel ? "New Delivery Request" : "New Ride Request"}</p>
@@ -241,10 +241,10 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
       <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", padding: "34px 16px 20px" }}>
         <div style={{ textAlign: "center" }}>
           <div className="fade-up" style={{ width: 76, height: 76, margin: "0 auto", borderRadius: "50%", background: "linear-gradient(135deg,#34c38f,var(--green))", display: "flex", alignItems: "center", justifyContent: "center" }}><CheckIcon s={38} c="white" w={3} /></div>
-          <p style={{ margin: "14px 0 0", fontSize: 22, fontWeight: 800 }}>{parcel ? "Parcel Delivered" : "Trip Completed"}</p>
-          <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--ink-soft)" }}>{trip.km} km · {trip.mins} min · #{trip.code}</p>
-          <p style={{ margin: "14px 0 0", fontSize: 38, fontWeight: 800 }}>{inr(trip.total)}</p>
-          <p style={{ margin: "2px 0 0", fontSize: 13, fontWeight: 600, color: trip.payment_status === "paid" ? "var(--success-text)" : "var(--warning-text)" }}>
+          <p style={{ margin: "14px 0 0", fontSize: 22, fontWeight: 800, color: "var(--on-bg)" }}>{parcel ? "Parcel Delivered" : "Trip Completed"}</p>
+          <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--on-bg-soft)" }}>{trip.km} km · {trip.mins} min · #{trip.code}</p>
+          <p style={{ margin: "14px 0 0", fontSize: 38, fontWeight: 800, color: "var(--on-bg)" }}>{inr(trip.total)}</p>
+          <p style={{ margin: "2px 0 0", fontSize: 13, fontWeight: 600, color: "var(--on-bg)" }}>
             {trip.pay === "Cash" ? (cashDue ? `Collect ${inr(trip.total)} in cash` : "✓ Cash collected") : trip.payment_status === "paid" ? `✓ Paid online · ${trip.pay}` : `Customer pays ${trip.pay} in the app`}
           </p>
         </div>
@@ -301,9 +301,9 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
         <button onClick={onSos} aria-label="Emergency SOS" className="press" style={{ position: "absolute", right: 16, bottom: 32, width: 50, height: 50, borderRadius: "50%", border: "3px solid white", background: "var(--red)", color: "white", fontSize: 11, fontWeight: 800, cursor: "pointer", boxShadow: "0 4px 14px rgba(224,49,49,0.45)" }}>SOS</button>
       </div>
       <div style={{ flex: 1, marginTop: -20, position: "relative", background: "var(--app-bg)", borderRadius: "22px 22px 0 0", padding: "8px 16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ width: 40, height: 4, borderRadius: 4, background: "var(--line-strong)", margin: "0 auto 2px" }} />
+        <div style={{ width: 40, height: 4, borderRadius: 4, background: "var(--on-bg-line)", margin: "0 auto 2px" }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <p style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{title}</p>
+          <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--on-bg)" }}>{title}</p>
           <StatusBadge status={phase} />
         </div>
         <div style={{ ...card, padding: 14 }}>
@@ -366,8 +366,8 @@ export function EarningsScreen({ me, onBack }: { me: DriverMe; onBack?: () => vo
           {range === "week" && <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "rgba(255,255,255,0.8)" }}>{me.week_trips} trips · {inr(me.earnings.incentives_week)} in bonuses</p>}
           {range === "day" && <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "rgba(255,255,255,0.8)" }}>{me.today.trips} trips today</p>}
         </div>
-        <p style={{ margin: "4px 2px 0", fontSize: 13.5, fontWeight: 700 }}>Payouts</p>
-        {payouts.length === 0 && <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>No payouts yet. Take an instant payout from your Wallet once you have ₹{me.min_payout} or more.</p>}
+        <p style={{ margin: "4px 2px 0", fontSize: 13.5, fontWeight: 700, color: "var(--on-bg)" }}>Payouts</p>
+        {payouts.length === 0 && <p style={{ margin: 0, fontSize: 12.5, color: "var(--on-bg-soft)" }}>No payouts yet. Take an instant payout from your Wallet once you have ₹{me.min_payout} or more.</p>}
         {payouts.map((p) => (
           <div key={p.id} style={{ ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 }}>
             <WalletIcon s={22} c="var(--blue)" />
@@ -391,7 +391,7 @@ export function TripsScreen({ trips, commissionPct, onOpen }: { trips: RideView[
       <PageHeader title="Trip History" sub={`${list.filter((r) => r.status === "Completed").length} completed`} />
       <div style={{ padding: "0 16px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
         <Tabs value={filter} onChange={setFilter} tabs={[{ id: "all", label: "All" }, { id: "done", label: "Completed" }, { id: "cancelled", label: "Cancelled" }]} />
-        {shown.length === 0 && <p style={{ textAlign: "center", color: "var(--ink-mute)", fontSize: 13.5, padding: "30px 0" }}>{trips ? "No trips here yet." : "Loading…"}</p>}
+        {shown.length === 0 && <p style={{ textAlign: "center", color: "var(--on-bg-soft)", fontSize: 13.5, padding: "30px 0" }}>{trips ? "No trips here yet." : "Loading…"}</p>}
         {shown.map((r) => (
           <button key={r.id} onClick={() => onOpen(r)} className="press" style={{ ...card, border: "none", cursor: "pointer", textAlign: "left", padding: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -417,7 +417,7 @@ export function AlertsScreen({ txns, onBack }: { txns: Txn[]; onBack?: () => voi
     <div>
       <PageHeader title="Notifications" onBack={onBack} />
       <div style={{ padding: "0 16px 24px", display: "flex", flexDirection: "column", gap: 10 }}>
-        {txns.length === 0 && <p style={{ textAlign: "center", color: "var(--ink-soft)", fontSize: 13.5 }}>Trip earnings, bonuses and payouts will show up here.</p>}
+        {txns.length === 0 && <p style={{ textAlign: "center", color: "var(--on-bg-soft)", fontSize: 13.5 }}>Trip earnings, bonuses and payouts will show up here.</p>}
         {txns.slice(0, 20).map((t) => {
           const good = t.amount > 0;
           return (
@@ -437,9 +437,10 @@ export function AlertsScreen({ txns, onBack }: { txns: Txn[]; onBack?: () => voi
 
 /* ───────────────────────── Account ───────────────────────── */
 
-export type AccountKey = "documents" | "vehicle" | "bank" | "preferences" | "performance" | "help";
+export type AccountKey = "edit" | "documents" | "vehicle" | "bank" | "preferences" | "performance" | "help";
 
 const MENU: { k: AccountKey; label: string; Icon: typeof HelpIcon }[] = [
+  { k: "edit", label: "Edit profile", Icon: UserIcon },
   { k: "performance", label: "Ratings & Performance", Icon: ShieldIcon },
   { k: "documents", label: "Documents", Icon: DocIcon },
   { k: "vehicle", label: "Vehicle details", Icon: SteeringIcon },
@@ -462,7 +463,8 @@ export function RiderAccount({ me, onMenu, onLogout }: { me: DriverMe; onMenu: (
     <div style={{ paddingBottom: 12 }}>
       <PageHeader title="My Account" />
       <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ ...card, padding: "18px 16px" }}>
+        <div style={{ ...card, padding: "18px 16px", position: "relative" }}>
+          <button onClick={() => onMenu("edit")} className="press" style={{ position: "absolute", top: 14, right: 14, border: "none", background: "var(--blue-tint)", color: "var(--blue)", borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Edit</button>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <Avatar initials={initials(me.name)} size={58} />
             <div style={{ flex: 1 }}>
@@ -492,7 +494,7 @@ export function RiderAccount({ me, onMenu, onLogout }: { me: DriverMe; onMenu: (
           ))}
         </div>
         <button onClick={onLogout} className="press" style={{ width: "100%", background: "var(--surface)", color: "var(--red)", border: "none", borderRadius: 16, padding: 15, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>Log Out</button>
-        <p style={{ textAlign: "center", fontSize: 11.5, color: "var(--text-disabled)", margin: "0 0 12px" }}>DriveWay Rider v2.0.0</p>
+        <p style={{ textAlign: "center", fontSize: 11.5, color: "var(--on-bg-soft)", margin: "0 0 12px" }}>DriveWay Rider v2.0.0</p>
       </div>
     </div>
   );

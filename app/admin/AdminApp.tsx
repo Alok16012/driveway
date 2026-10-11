@@ -8,7 +8,7 @@ import {
   BellIcon, CarIcon, ChartIcon, CheckIcon, DocIcon, DownloadIcon, GearIcon, GridIcon, HelpIcon, LockIcon, LogoutIcon,
   MapIcon, MegaphoneIcon, RupeeIcon, SearchIcon, SteeringIcon, TagIcon, UsersIcon, XIcon,
 } from "../components/icons";
-import { Avatar, ErrorText, LoadState, PrimaryButton, StatusBadge, Toggle, card, field, label } from "../components/ui";
+import { Avatar, ErrorText, LoadState, PrimaryButton, StatusBadge, Toggle, card, field, label, onLight } from "../components/ui";
 import { inr, vehicleById, type VehicleKind } from "../lib/data";
 import { adminSignIn, friendly, getSession, myProfile, newKey, onAuthChange, rpc, signOut } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
@@ -184,8 +184,8 @@ function TopBar({ title, alerts, loadErr, onRefresh }: { title: string; alerts: 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
       <div style={{ flex: 1 }}>
-        <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Kolkata" })}</p>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>{title}</h1>
+        <p style={{ margin: 0, fontSize: 12.5, color: "var(--on-bg-soft)" }}>{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Kolkata" })}</p>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: "var(--on-bg)" }}>{title}</h1>
         {loadErr && <ErrorText msg={`Couldn't refresh: ${loadErr}`} />}
       </div>
       <button onClick={onRefresh} style={{ ...smallBtn("ghost") }}>Refresh</button>
@@ -250,7 +250,7 @@ function Drawer({ title, onClose, children }: { title: string; onClose: () => vo
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={onClose} className="fade-up" style={{ position: "absolute", inset: 0, background: "rgba(15,23,41,0.4)" }} />
-      <div className="fade-up" style={{ position: "relative", width: "min(440px, 100%)", height: "100%", background: "var(--app-bg)", overflowY: "auto", padding: 20, boxShadow: "var(--shadow-xl)" }}>
+      <div className="fade-up" style={{ position: "relative", width: "min(440px, 100%)", height: "100%", ...onLight, background: "var(--sheet-bg)", overflowY: "auto", padding: 20, boxShadow: "var(--shadow-xl)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{title}</h2>
           <button onClick={onClose} aria-label="Close" style={{ border: "none", background: "var(--surface)", width: 36, height: 36, borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><XIcon s={18} c="var(--ink)" /></button>
@@ -308,8 +308,8 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
     try { await adminSignIn(email.trim(), pw); onLogin(); } catch (e) { setErr((e as Error).message); setPw(""); } finally { setBusy(false); }
   };
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "linear-gradient(165deg,#04246b 0%,#020b24 100%)" }}>
-      <form onSubmit={(e) => { e.preventDefault(); void submit(); }} className="fade-up" style={{ ...card, width: "min(400px,100%)", padding: 28, background: "var(--app-bg)" }}>
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "linear-gradient(170deg,#fb923c 0%,#ea580c 55%,#c2410c 100%)" }}>
+      <form onSubmit={(e) => { e.preventDefault(); void submit(); }} className="fade-up" style={{ ...card, width: "min(400px,100%)", padding: 28, background: "var(--sheet-bg)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}><BrandMark size={40} /><Wordmark sub="ADMIN PANEL" size={22} /></div>
         <h1 style={{ margin: "22px 0 4px", fontSize: 22, fontWeight: 800, textAlign: "center" }}>Admin Portal</h1>
         <p style={{ margin: "0 0 20px", fontSize: 13.5, color: "var(--ink-soft)", textAlign: "center" }}>Sign in with your DriveWay admin account</p>
@@ -828,7 +828,7 @@ function ReportsSection({ d, flash }: { d: Data; flash: (m: string) => void }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-        <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink-soft)" }}>Last 7 days (IST)</span>
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--on-bg)" }}>Last 7 days (IST)</span>
         <button onClick={exportCsv} style={{ ...smallBtn("blue"), display: "flex", alignItems: "center", gap: 6, padding: "9px 14px" }}><DownloadIcon s={16} c="white" /> Export CSV</button>
       </div>
       <div className="adm-grid-4">

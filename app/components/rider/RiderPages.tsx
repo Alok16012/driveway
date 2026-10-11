@@ -12,6 +12,8 @@ import { fmtWhen, type DriverMe, type RideView } from "../../lib/api";
 
 const row: React.CSSProperties = { ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 };
 const small: React.CSSProperties = { margin: "2px 0 0", fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.5 };
+/** `small` for text sitting straight on the canvas (outside a card). */
+const onCanvas: React.CSSProperties = { ...small, color: "var(--on-bg-soft)" };
 const iconTile = (bg: string): React.CSSProperties => ({ width: 42, height: 42, borderRadius: 12, background: bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 });
 
 /* ───────────────────────── Wallet ───────────────────────── */
@@ -37,11 +39,11 @@ export function WalletPage({ me, busy, err, onWithdraw, onPayDues, onBack }: {
         <PrimaryButton tone="ghost" onClick={onPayDues} disabled={busy || dues <= 0} style={{ flex: 1 }}>Clear Dues</PrimaryButton>
       </div>
       <ErrorText msg={err} />
-      <p style={{ ...small, margin: 0, textAlign: "center" }}>
+      <p style={{ ...onCanvas, margin: 0, textAlign: "center" }}>
         {!me.upi ? "Add a UPI ID in Account → UPI for payouts first." : withdrawable < me.min_payout ? `Minimum ${inr(me.min_payout)} withdrawable balance for instant payout.` : `Instant payout to ${me.upi} · ${inr(me.payout_fee)} fee.`}
       </p>
-      <p style={{ margin: "4px 2px 0", fontSize: 13.5, fontWeight: 700 }}>Transactions</p>
-      {me.txns.length === 0 && <p style={{ ...small, textAlign: "center" }}>No transactions yet.</p>}
+      <p style={{ margin: "4px 2px 0", fontSize: 13.5, fontWeight: 700, color: "var(--on-bg)" }}>Transactions</p>
+      {me.txns.length === 0 && <p style={{ ...onCanvas, textAlign: "center" }}>No transactions yet.</p>}
       {me.txns.map((t) => (
         <div key={t.id} style={row}>
           <span style={iconTile(t.amount > 0 ? "var(--success)" : "var(--bg-secondary)")}><WalletIcon s={20} c={t.amount > 0 ? "var(--success-text)" : "var(--ink-soft)"} /></span>
@@ -59,7 +61,7 @@ export function IncentivesScreen({ me }: { me: DriverMe }) {
   const window_ = { today: "Resets at midnight", peak: "Today, 6 – 9 PM", week: "Monday – Sunday" };
   return (
     <div>
-      <div style={{ padding: "18px 16px 8px" }}><p style={{ margin: 0, fontSize: 21, fontWeight: 700 }}>Incentives</p><p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>Hit targets, earn bonuses</p></div>
+      <div style={{ padding: "18px 16px 8px" }}><p style={{ margin: 0, fontSize: 21, fontWeight: 700, color: "var(--on-bg)" }}>Incentives</p><p style={{ margin: 0, fontSize: 12.5, color: "var(--on-bg-soft)" }}>Hit targets, earn bonuses</p></div>
       <div style={{ padding: "0 16px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ borderRadius: 20, padding: 18, background: "linear-gradient(135deg,var(--gold),var(--gold-dark))", color: "var(--blue-dark)", boxShadow: "0 10px 24px rgba(245,166,35,0.35)" }}>
           <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600 }}>Bonuses this week</p>
@@ -142,7 +144,7 @@ export function DocumentsPage({ me, onBack }: { me: DriverMe; onBack: () => void
           <StatusBadge status={me.kyc} />
         </div>
       ))}
-      <p style={{ ...small, textAlign: "center" }}>To replace a document, message Rider Support — the new copy is re-verified before it takes effect.</p>
+      <p style={{ ...onCanvas, textAlign: "center" }}>To replace a document, message Rider Support — the new copy is re-verified before it takes effect.</p>
     </InfoPage>
   );
 }
@@ -163,7 +165,7 @@ export function VehiclePage({ me, onBack }: { me: DriverMe; onBack: () => void }
           </div>
         ))}
       </div>
-      <p style={{ ...small, textAlign: "center" }}>To change your vehicle, contact rider support — a new RC and insurance will need re-verification.</p>
+      <p style={{ ...onCanvas, textAlign: "center" }}>To change your vehicle, contact rider support — a new RC and insurance will need re-verification.</p>
     </InfoPage>
   );
 }

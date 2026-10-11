@@ -20,8 +20,9 @@
 
 /* Design tokens — every screen reads these instead of hard-coding hexes. */
 :root {
-  --app-bg: #eef1fb;      /* page canvas */
-  --bg-primary: #eef1fb;
+  --app-bg: #ea580c;      /* page canvas — DriveWay orange on every route; cards stay white */
+  --bg-primary: #ea580c;
+  --sheet-bg: #fff4e8;    /* bottom sheets / panels keep a light surface for their dark text */
   --surface: #ffffff;     /* cards */
   --ink: #0f1729;         /* headings */
   --ink-primary: #0f1729;
@@ -115,6 +116,14 @@
   --max-width-app: 430px;
   --nav-height: 64px;
   --text-primary: #0f1729;
+  /* Text/lines drawn straight on the orange canvas. `card` (ui.tsx) resets these to ink inside white cards. */
+  --on-bg: #ffffff;
+  --on-bg-soft: rgba(255, 255, 255, 0.85);
+  --on-bg-line: rgba(255, 255, 255, 0.25);
+  --on-bg-accent: #fde68a;
+  /* Red error text gets a light chip so it reads on orange. */
+  --error-chip: var(--error);
+  --error-chip-pad: 6px 10px;
   --shadow-card: 0 2px 10px rgba(15, 23, 41, 0.05);
   --shadow-float: 0 0 40px rgba(15, 23, 41, 0.08);
 }

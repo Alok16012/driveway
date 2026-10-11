@@ -486,3 +486,55 @@ describe("Phone verification required (email-only accounts)", () => {
     await rejects(t.rpc(e, "register_driver", { name: "X Y", vehicle: "bike", model: "Shine", plate: "UP16AB1234", city: "Noida", docs: {} }), /mobile number/);
   });
 });
+
+describe("Customer ends a started trip (customer_end_ride)", () => {
+  async function started(pay: string) {
+    const c = await t.user(); const d = await t.driver("bike");
+    const b = await t.book(c, { option: "bike", pay, to: "dlf" });
+    await t.rpc(d, "accept_ride", b.id); await t.rpc(d, "driver_arrived", b.id);
+    await t.rpc(d, "start_ride", b.id, await t.otpOf(b.id));
+    return { c, d, id: b.id as string };
+  }
+  it("completes the trip with the same bookkeeping as the driver path; repeat is a no-op", async () => {
+    const { c, id } = await started("UPI");
+    const r = await t.rpc(c, "customer_end_ride", id);
+    expect(r.status).toBe("Completed"); expect(r.payment_status).toBe("pending");
+    await t.rpc(c, "customer_end_ride", id);
+    const l = await t.ledger(id);
+    expect(l.filter((x: any) => x.kind === "driver_earning")).toHaveLength(1);
+    expect(l.filter((x: any) => x.kind === "commission")).toHaveLength(1);
+  });
+  it("a cash trip ended by the customer is recorded as paid, so the customer isn't stuck waiting", async () => {
+    const { c, id } = await started("Cash");
+    expect((await t.rpc(c, "customer_end_ride", id)).payment_status).toBe("paid");
+    expect((await t.ledger(id)).filter((x: any) => x.kind === "cash_collected")).toHaveLength(1);
+  });
+  it("only the ride's customer can end it, and only once it has started", async () => {
+    const { id } = await started("UPI");
+    await rejects(t.rpc(await t.user(), "customer_end_ride", id), /ride not found/);
+    const c = await t.user(); const b = await t.book(c, { option: "bike" });
+    await rejects(t.rpc(c, "customer_end_ride", b.id), /has not started/);
+    await rejects(t.rpc(c, "finish_ride", b.id), /permission denied/);
+  });
+});
+
+describe("Editing your own profile", () => {
+  it("a customer can change name and mobile; bad input is refused", async () => {
+    const u = await t.user();
+    await t.rpc(u, "update_my_profile", "New Name", null);
+    await t.rpc(u, "update_my_phone", "9876543210");
+    const p = await t.rpc(u, "my_profile");
+    expect(p.name).toBe("New Name"); expect(p.phone).toBe("919876543210");
+    await rejects(t.rpc(u, "update_my_phone", "12345"), /valid 10-digit/);
+    await rejects(t.rpc(null, "update_my_phone", "9876543210"), /permission denied/);
+  });
+  it("a rider can change name and city; only their own record, only supported cities", async () => {
+    const d = await t.driver("bike");
+    await t.rpc(d, "update_my_driver_profile", "Amar Singh", "Delhi");
+    const row = (await t.admin(`select name, city from public.drivers where id = $1`, [d]))[0];
+    expect(row).toEqual({ name: "Amar Singh", city: "Delhi" });
+    await rejects(t.rpc(d, "update_my_driver_profile", "A", "Delhi"), /2–80 characters/);
+    await rejects(t.rpc(d, "update_my_driver_profile", "Amar", "Mumbai"), /city/);
+    await rejects(t.rpc(await t.user(), "update_my_driver_profile", "Not A Driver", "Noida"), /driver account not found/);
+  });
+});

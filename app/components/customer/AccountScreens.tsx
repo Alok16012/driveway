@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
   BackIcon, BellIcon, CardIcon, ChevronRight, DocIcon, GearIcon, HelpIcon, HistoryIcon, InfoIcon, AlertIcon,
-  PinIcon, SendIcon, WalletIcon, ArrowRight, CalendarIcon, GiftIcon,
+  PinIcon, SendIcon, WalletIcon, ArrowRight, CalendarIcon, GiftIcon, UserIcon,
 } from "../icons";
 import { BrandMark } from "../Brand";
 import VehicleArt, { ParcelArt } from "../VehicleArt";
-import { Avatar, LoadState, PageHeader, PrimaryButton, StatusBadge, Tabs, card, iconBtn } from "../ui";
+import { Avatar, ErrorText, LoadState, PageHeader, PrimaryButton, StatusBadge, Tabs, card, field, iconBtn, label as fieldLabel } from "../ui";
 import { inr, vehicleById } from "../../lib/data";
-import { activeCoupons, fmtWhen, rideLabel, type CouponRow, type RideView } from "../../lib/api";
+import { activeCoupons, fmtWhen, isIndianMobile, rideLabel, type CouponRow, type RideView } from "../../lib/api";
 
 /* ───────────────────────── My rides ───────────────────────── */
 
@@ -131,7 +131,7 @@ export function OffersScreen({ onBack, onUse }: { onBack?: () => void; onUse: (c
     <div>
       <PageHeader title="Offers & Coupons" onBack={onBack} />
       <div style={{ padding: "0 16px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
-        {!list ? <LoadState error={err} onRetry={load} /> : list.length === 0 ? <p style={{ textAlign: "center", color: "var(--ink-soft)", fontSize: 13.5 }}>No offers right now.</p> : list.map((c) => (
+        {!list ? <LoadState error={err} onRetry={load} /> : list.length === 0 ? <p style={{ textAlign: "center", color: "var(--on-bg-soft)", fontSize: 13.5 }}>No offers right now.</p> : list.map((c) => (
           <div key={c.code} style={{ ...card, display: "flex", overflow: "hidden" }}>
             <div style={{ width: 84, background: "linear-gradient(160deg,var(--gold),var(--gold-dark))", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--blue-dark)", position: "relative" }}>
               <span style={{ fontSize: 22, fontWeight: 800, lineHeight: 1 }}>{c.pct ? `${c.off}%` : `₹${c.off}`}</span>
@@ -170,15 +170,15 @@ export function ChatScreen({ title, subtitle, messages, typing, onSend, onBack, 
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px 12px", background: "var(--app-bg)", borderBottom: "1px solid var(--line)" }}>
-        {onBack && <button onClick={onBack} aria-label="Back" className="press" style={iconBtn}><BackIcon c="var(--ink)" /></button>}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px 12px", background: "var(--app-bg)", borderBottom: "1px solid var(--on-bg-line)" }}>
+        {onBack && <button onClick={onBack} aria-label="Back" className="press" style={iconBtn}><BackIcon c="var(--on-bg)" /></button>}
         <div style={{ position: "relative" }}>
           <div style={{ width: 42, height: 42, borderRadius: "50%", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow-card)" }}><BrandMark size={26} /></div>
           <span style={{ position: "absolute", right: 0, bottom: 1, width: 11, height: 11, borderRadius: "50%", background: "var(--green-500)", border: "2px solid var(--app-bg)" }} />
         </div>
         <div style={{ flex: 1 }}>
-          <p style={{ margin: 0, fontSize: 15.5, fontWeight: 600, color: "var(--ink)" }}>{title}</p>
-          <p style={{ margin: 0, fontSize: 11.5, color: "var(--success-text)", fontWeight: 500 }}>{typing ? "typing…" : subtitle ?? "Online · replies in ~2 min"}</p>
+          <p style={{ margin: 0, fontSize: 15.5, fontWeight: 600, color: "var(--on-bg)" }}>{title}</p>
+          <p style={{ margin: 0, fontSize: 11.5, color: "var(--on-bg-soft)", fontWeight: 500 }}>{typing ? "typing…" : subtitle ?? "Online · replies in ~2 min"}</p>
         </div>
       </div>
       <div className="no-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 16px 8px" }}>
@@ -194,7 +194,7 @@ export function ChatScreen({ title, subtitle, messages, typing, onSend, onBack, 
                   background: me ? "linear-gradient(135deg,var(--blue),var(--blue-dark))" : "var(--surface)",
                   color: me ? "white" : "var(--ink)", boxShadow: me ? "0 4px 12px rgba(11,92,255,0.22)" : "var(--shadow-card)",
                 }}>{m.body}</div>
-                <p style={{ margin: "3px 6px 0", fontSize: 10.5, color: "var(--ink-mute)", textAlign: me ? "right" : "left" }}>{m.at}{me && " · ✓✓"}</p>
+                <p style={{ margin: "3px 6px 0", fontSize: 10.5, color: "var(--on-bg-soft)", textAlign: me ? "right" : "left" }}>{m.at}{me && " · ✓✓"}</p>
               </div>
             </div>
           );
@@ -228,9 +228,10 @@ export function ChatScreen({ title, subtitle, messages, typing, onSend, onBack, 
 
 /* ───────────────────────── Profile ───────────────────────── */
 
-export type ProfileKey = "rides" | "places" | "payments" | "wallet" | "notifications" | "help" | "report" | "legal" | "about";
+export type ProfileKey = "edit" | "rides" | "places" | "payments" | "wallet" | "notifications" | "help" | "report" | "legal" | "about";
 
 const MENU: { key: ProfileKey; label: string; Icon: (p: { s?: number; c?: string; w?: number }) => React.ReactElement }[] = [
+  { key: "edit", label: "Edit Profile", Icon: UserIcon },
   { key: "rides", label: "Ride History", Icon: HistoryIcon },
   { key: "places", label: "Saved Places", Icon: PinIcon },
   { key: "payments", label: "Payment Methods", Icon: CardIcon },
@@ -248,9 +249,10 @@ export function ProfileScreen({ user, stats, onMenu, onLogout, onDelete }: {
 }) {
   return (
     <div style={{ paddingBottom: 12 }}>
-      <PageHeader title="Your Profile" right={<span aria-hidden="true" style={{ display: "flex" }}><GearIcon s={22} c="var(--text-secondary)" /></span>} />
+      <PageHeader title="Your Profile" right={<button onClick={() => onMenu("edit")} aria-label="Edit profile" className="press" style={iconBtn}><GearIcon s={22} c="var(--on-bg)" /></button>} />
       <div style={{ padding: "0 16px" }}>
-        <div style={{ ...card, padding: "18px 16px" }}>
+        <div style={{ ...card, padding: "18px 16px", position: "relative" }}>
+          <button onClick={() => onMenu("edit")} className="press" style={{ position: "absolute", top: 14, right: 14, border: "none", background: "var(--blue-tint)", color: "var(--blue)", borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Edit</button>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <Avatar initials={user.initials} size={58} />
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -276,20 +278,83 @@ export function ProfileScreen({ user, stats, onMenu, onLogout, onDelete }: {
         {MENU.map(({ key, label, Icon }, i) => (
           <button key={key} onClick={() => onMenu(key)} className="press" style={{
             width: "100%", display: "flex", alignItems: "center", gap: 16, padding: "16px 2px",
-            background: "none", border: "none", borderTop: i === 0 ? "none" : "1px solid var(--line)", cursor: "pointer", textAlign: "left",
+            background: "none", border: "none", borderTop: i === 0 ? "none" : "1px solid var(--on-bg-line)", cursor: "pointer", textAlign: "left",
           }}>
-            <Icon s={22} c="var(--text-muted)" w={1.6} />
-            <span style={{ flex: 1, fontSize: 15, fontWeight: 500, color: "var(--text-secondary)" }}>{label}</span>
-            <ChevronRight s={16} c="var(--ink-mute)" />
+            <Icon s={22} c="var(--on-bg-soft)" w={1.6} />
+            <span style={{ flex: 1, fontSize: 15, fontWeight: 500, color: "var(--on-bg)" }}>{label}</span>
+            <ChevronRight s={16} c="var(--on-bg-soft)" />
           </button>
         ))}
       </div>
       <div style={{ padding: "22px 16px 12px" }}>
         <button onClick={onLogout} className="press" style={{ width: "100%", background: "var(--surface)", color: "var(--red)", border: "none", borderRadius: 16, padding: 15, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>Log Out</button>
-        <button onClick={onDelete} style={{ display: "block", margin: "12px auto 0", background: "none", border: "none", color: "var(--ink-mute)", fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>Request account deletion</button>
-        <p style={{ textAlign: "center", fontSize: 11.5, color: "var(--text-disabled)", marginTop: 10 }}>DriveWay v1.0.0</p>
+        <button onClick={onDelete} style={{ display: "block", margin: "12px auto 0", background: "none", border: "none", color: "var(--on-bg-soft)", fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>Request account deletion</button>
+        <p style={{ textAlign: "center", fontSize: 11.5, color: "var(--on-bg-soft)", marginTop: 10 }}>DriveWay v1.0.0</p>
       </div>
     </div>
+  );
+}
+
+/* ───────────────────────── Edit profile (customer and rider) ───────────────────────── */
+
+export interface ProfileEdit { name: string; phone: string; city?: string }
+
+/** Name + mobile for everyone; `cities` adds a city picker (riders). `email` is shown read-only — it's the login. */
+export function EditProfilePage({ initial, email, cities, note, onSave, onBack }: {
+  initial: ProfileEdit; email?: string | null; cities?: readonly string[]; note?: string;
+  onSave: (v: ProfileEdit) => Promise<void>; onBack: () => void;
+}) {
+  const [v, setV] = useState<ProfileEdit>(initial);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const set = (x: Partial<ProfileEdit>) => { setV((o) => ({ ...o, ...x })); setErr(null); };
+  const nameOk = v.name.trim().length >= 2 && v.name.trim().length <= 80;
+  const phoneOk = isIndianMobile(v.phone);
+  const changed = v.name.trim() !== initial.name || v.phone !== initial.phone || v.city !== initial.city;
+  const save = async () => {
+    if (busy) return;
+    setBusy(true); setErr(null);
+    try { await onSave({ ...v, name: v.name.trim() }); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <InfoPage title="Edit Profile" onBack={onBack}>
+      <div style={{ ...card, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div>
+          <label style={fieldLabel} htmlFor="pe-name">Full name</label>
+          <input id="pe-name" value={v.name} maxLength={80} onChange={(e) => set({ name: e.target.value })} style={field} autoComplete="name" />
+          {!nameOk && v.name.length > 0 && <ErrorText msg="Name must be 2–80 characters." />}
+        </div>
+        <div>
+          <label style={fieldLabel} htmlFor="pe-phone">Mobile number</label>
+          <div style={{ ...field, display: "flex", alignItems: "center", gap: 10, padding: "0 14px" }}>
+            <span style={{ fontWeight: 600, color: "var(--ink)", borderRight: "1.5px solid var(--line)", paddingRight: 10 }}>🇮🇳 +91</span>
+            <input id="pe-phone" inputMode="numeric" value={v.phone} maxLength={10} onChange={(e) => set({ phone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
+              style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 15, padding: "13px 0", color: "var(--ink)", letterSpacing: "0.04em" }} autoComplete="tel-national" />
+          </div>
+          {!phoneOk && v.phone.length > 0 && <ErrorText msg="Enter a valid 10-digit Indian mobile number." />}
+        </div>
+        {cities && (
+          <div>
+            <span style={fieldLabel}>City</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {cities.map((c) => {
+                const on = c === v.city;
+                return <button key={c} type="button" onClick={() => set({ city: c })} aria-pressed={on} style={{ padding: "9px 14px", borderRadius: 12, cursor: "pointer", fontSize: 13, fontWeight: 600, background: on ? "var(--blue-tint)" : "var(--surface)", color: on ? "var(--blue)" : "var(--ink)", border: on ? "1.5px solid var(--blue)" : "1.5px solid var(--line)" }}>{c}</button>;
+              })}
+            </div>
+          </div>
+        )}
+        {email && (
+          <div>
+            <span style={fieldLabel}>Email</span>
+            <p style={{ margin: 0, fontSize: 14, color: "var(--ink-soft)" }}>{email} · used to log in, can&apos;t be changed here</p>
+          </div>
+        )}
+        <ErrorText msg={err} />
+        <PrimaryButton onClick={() => void save()} disabled={!nameOk || !phoneOk || !changed || busy}>{busy ? "Saving…" : "Save changes"}</PrimaryButton>
+      </div>
+      {note && <p style={{ margin: 0, fontSize: 12.5, color: "var(--on-bg-soft)", textAlign: "center", lineHeight: 1.5 }}>{note}</p>}
+    </InfoPage>
   );
 }
 

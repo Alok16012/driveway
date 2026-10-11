@@ -71,17 +71,17 @@ export function KycFlow({ onSubmitted }: { onSubmitted: () => void }) {
   return (
     <div className="fade-up" style={{ position: "absolute", inset: 0, zIndex: 190, background: "var(--app-bg)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 16px 8px" }}>
-        {step > 0 && <button onClick={() => setStep(step - 1)} aria-label="Back" className="press" style={iconBtn}><BackIcon c="var(--ink)" /></button>}
+        {step > 0 && <button onClick={() => setStep(step - 1)} aria-label="Back" className="press" style={iconBtn}><BackIcon c="var(--on-bg)" /></button>}
         <div style={{ flex: 1 }}>
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--blue)" }}>STEP {step + 1} OF 4</p>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>{["Personal details", "Your vehicle", "Upload documents", "Payout details"][step]}</h2>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--on-bg-accent)" }}>STEP {step + 1} OF 4</p>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--on-bg)" }}>{["Personal details", "Your vehicle", "Upload documents", "Payout details"][step]}</h2>
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, padding: "4px 16px 18px" }}>
         {STEPS.map((s, i) => (
           <div key={s} style={{ flex: 1 }}>
-            <span style={{ display: "block", height: 4, borderRadius: 4, background: i <= step ? "var(--blue)" : "var(--line-strong)" }} />
-            <span style={{ display: "block", marginTop: 4, fontSize: 10.5, fontWeight: 600, color: i <= step ? "var(--ink)" : "var(--ink-mute)" }}>{s}</span>
+            <span style={{ display: "block", height: 4, borderRadius: 4, background: i <= step ? "var(--on-bg)" : "var(--on-bg-line)" }} />
+            <span style={{ display: "block", marginTop: 4, fontSize: 10.5, fontWeight: 600, color: i <= step ? "var(--on-bg)" : "var(--on-bg-soft)" }}>{s}</span>
           </div>
         ))}
       </div>
@@ -165,7 +165,7 @@ export function KycFlow({ onSubmitted }: { onSubmitted: () => void }) {
               <input id="ku" value={k.upi} maxLength={97} onChange={(e) => set({ upi: e.target.value.trim() })} placeholder="name@okaxis" style={field} />
               {k.upi && !UPI_RE.test(k.upi) && <ErrorText msg="Enter a UPI ID like name@okaxis." />}
             </div>
-            <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.5 }}>Payouts go to this UPI ID. Only DriveWay admins reviewing your application can see your documents.</p>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--on-bg-soft)", lineHeight: 1.5 }}>Payouts go to this UPI ID. Only DriveWay admins reviewing your application can see your documents.</p>
           </>
         )}
         <ErrorText msg={err} />
@@ -185,8 +185,8 @@ export function PendingApproval({ name, kyc, note, checking, onRefresh, onReappl
   return (
     <div className="fade-up" style={{ position: "absolute", inset: 0, zIndex: 190, background: "var(--app-bg)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" }}>
       <div style={{ width: 96, height: 96, borderRadius: "50%", background: rejected ? "var(--error)" : "var(--gold-tint)", display: "flex", alignItems: "center", justifyContent: "center" }}><ClockIcon s={48} c={rejected ? "var(--red)" : "var(--gold-dark)"} /></div>
-      <h1 style={{ margin: "20px 0 6px", fontSize: 24, fontWeight: 800 }}>{rejected ? "Application not approved" : "Verification in progress"}</h1>
-      <p style={{ margin: 0, fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.55 }}>
+      <h1 style={{ margin: "20px 0 6px", fontSize: 24, fontWeight: 800, color: "var(--on-bg)" }}>{rejected ? "Application not approved" : "Verification in progress"}</h1>
+      <p style={{ margin: 0, fontSize: 14, color: "var(--on-bg-soft)", lineHeight: 1.55 }}>
         {rejected ? <>Sorry {name.split(" ")[0]}, we couldn&apos;t approve your application{note ? `: ${note}` : "."} You can fix it and apply again.</>
           : <>Thanks {name.split(" ")[0]}! Our team is checking your documents. This usually takes under 24 hours.</>}
       </p>

@@ -38,6 +38,11 @@ const STATUS_LINE: Record<string, string> = {
   NoDrivers: "No drivers were available",
 };
 
+/** Home screen canvas — the same orange as the Kolkata launch screen; text sitting on it is white. */
+export const HOME_BG = "linear-gradient(170deg,#fb923c 0%,#ea580c 45%,#c2410c 100%)";
+const ON_BG = "white";
+const ON_BG_SOFT = "rgba(255,255,255,0.85)";
+
 const SERVICES: RideOption[] = ["bike", "auto", "erick", "mini", "sedan", "suv", "any", "rental", "parcel"];
 
 export default function HomeScreen(p: HomeProps) {
@@ -49,17 +54,17 @@ export default function HomeScreen(p: HomeProps) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 10px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <BrandMark size={34} />
-          <Wordmark />
+          <Wordmark light />
         </div>
         <button aria-label="Notifications" onClick={p.onNotifications} className="press" style={iconBtn}>
-          <BellIcon s={25} c="var(--text-secondary)" w={1.7} />
-          {p.unread > 0 && <span style={{ position: "absolute", top: 1, right: 2, width: 8, height: 8, borderRadius: "50%", background: "var(--red)", border: "1.5px solid var(--app-bg)" }} />}
+          <BellIcon s={25} c={ON_BG} w={1.7} />
+          {p.unread > 0 && <span style={{ position: "absolute", top: 1, right: 2, width: 8, height: 8, borderRadius: "50%", background: "var(--red)", border: "1.5px solid #fb923c" }} />}
         </button>
       </div>
 
       <div style={{ padding: "2px 16px 12px" }}>
-        <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)", fontWeight: 500 }}>{greeting()}, {p.firstName} 👋</p>
-        <p style={{ margin: 0, fontSize: 21, fontWeight: 700, color: "var(--ink)", letterSpacing: "-0.02em" }}>Where to today?</p>
+        <p style={{ margin: 0, fontSize: 12.5, color: ON_BG_SOFT, fontWeight: 500 }}>{greeting()}, {p.firstName} 👋</p>
+        <p style={{ margin: 0, fontSize: 21, fontWeight: 700, color: ON_BG, letterSpacing: "-0.02em" }}>Where to today?</p>
       </div>
 
       {/* ── Map + where-to card ── */}
@@ -145,8 +150,8 @@ export default function HomeScreen(p: HomeProps) {
 
       {/* ── Ride categories ── */}
       <div style={{ padding: "22px 16px 0" }}>
-        <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)", fontWeight: 500 }}>Pick your ride</p>
-        <p style={{ margin: 0, fontSize: 19, fontWeight: 700, color: "var(--ink)", letterSpacing: "-0.02em" }}>Our Services</p>
+        <p style={{ margin: 0, fontSize: 12.5, color: ON_BG_SOFT, fontWeight: 500 }}>Pick your ride</p>
+        <p style={{ margin: 0, fontSize: 19, fontWeight: 700, color: ON_BG, letterSpacing: "-0.02em" }}>Our Services</p>
       </div>
       <div style={{ padding: "12px 12px 0", display: "grid", gridTemplateColumns: "repeat(4,1fr)", rowGap: 14, columnGap: 6 }}>
         {SERVICES.map((o) => (
@@ -160,7 +165,7 @@ export default function HomeScreen(p: HomeProps) {
               boxShadow: "0 6px 10px -2px rgba(15,23,41,0.16), 0 2px 4px rgba(15,23,41,0.06)",
             }}>{o === "any" ? <AnyArt size={50} /> : o === "rental" ? <RentalArt size={48} /> : o === "parcel" ? <ParcelArt size={50} /> : <VehicleArt kind={o} size={50} />}</div>
             {o === "parcel" && <span style={{ position: "absolute", top: -6, right: 2, background: "var(--red)", color: "white", fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 6 }}>NEW</span>}
-            <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--ink)" }}>{o === "any" ? "Book Any" : o === "rental" ? "Rental" : o === "parcel" ? "Parcel" : vehicleById(o).name}</span>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: ON_BG }}>{o === "any" ? "Book Any" : o === "rental" ? "Rental" : o === "parcel" ? "Parcel" : vehicleById(o).name}</span>
           </button>
         ))}
       </div>
@@ -254,7 +259,7 @@ function PromoCarousel({ onOffers, onRide }: { onOffers: () => void; onRide: () 
       </div>
       <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 12 }}>
         {[0, 1].map((i) => (
-          <span key={i} style={{ width: i === index ? 20 : 7, height: 7, borderRadius: 999, background: i === index ? "var(--blue)" : "rgba(11,92,255,0.22)", transition: "width 0.3s" }} />
+          <span key={i} style={{ width: i === index ? 20 : 7, height: 7, borderRadius: 999, background: i === index ? ON_BG : "rgba(255,255,255,0.45)", transition: "width 0.3s" }} />
         ))}
       </div>
     </div>

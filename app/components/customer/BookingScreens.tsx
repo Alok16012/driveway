@@ -7,10 +7,10 @@ import {
 } from "../icons";
 import MapView, { SIM_APPROACH_SEC, SIM_TRIP_SEC } from "../MapView";
 import VehicleArt, { AnyArt, ParcelArt, RentalArt } from "../VehicleArt";
-import { Avatar, ErrorText, Footer, LoadState, PageHeader, PrimaryButton, Stars, StatusBadge, card, field, iconBtn } from "../ui";
+import { Avatar, ErrorText, Footer, LoadState, PageHeader, PrimaryButton, Stars, StatusBadge, card, field, iconBtn, onLight } from "../ui";
 import { PARCEL_TYPES, RIDE_STEPS, inr, vehicleById, type PayMethod, type VehicleKind } from "../../lib/data";
 import {
-  activeCoupons, bookRide, cancelRide, closeRide, isIndianMobile, newKey, payRide, quote as fetchQuote, rateRide, rideLabel,
+  activeCoupons, bookRide, cancelRide, closeRide, customerEndRide, isIndianMobile, newKey, payRide, quote as fetchQuote, rateRide, rideLabel,
   type CouponRow, type FareLine, type Place, type Quote, type QuoteOption, type RideView,
 } from "../../lib/api";
 import type { RideOption } from "./types";
@@ -84,7 +84,7 @@ export function SearchPage({ places, initialTo, onBack, onDone }: { places: Plac
         </div>
         <ErrorText msg={err} />
 
-        <p style={{ margin: "20px 2px 6px", fontSize: 12, fontWeight: 600, color: "var(--ink-mute)", letterSpacing: "0.06em" }}>
+        <p style={{ margin: "20px 2px 6px", fontSize: 12, fontWeight: 600, color: "var(--on-bg-soft)", letterSpacing: "0.06em" }}>
           {q ? "RESULTS" : focus === "from" ? "CHOOSE PICKUP" : "SAVED & RECENT"}
         </p>
         <div style={{ ...card, padding: "4px 14px", marginBottom: 24 }}>
@@ -205,7 +205,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
   const couponState = coupon ? cur.coupon : null;
 
   return (
-    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", background: "var(--surface)" }}>
+    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", background: "var(--app-bg)" }}>
       {/* ── map ── */}
       <div style={{ position: "relative" }}>
         <MapView mode="route" height={bigMap ? 520 : 290} radius={0} />
@@ -239,7 +239,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
 
       {/* ── AC / Non-AC ── */}
       <div style={{ padding: "12px 14px 10px" }}>
-        <p style={{ margin: "0 2px 8px", fontSize: 13, fontWeight: 600, color: "var(--ink-soft)" }}>Choose AC or Non-AC vehicle</p>
+        <p style={{ margin: "0 2px 8px", fontSize: 13, fontWeight: 600, color: "var(--on-bg)" }}>Choose AC or Non-AC vehicle</p>
         <div role="radiogroup" aria-label="AC or Non-AC vehicle" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           {[true, false].map((v) => {
             const on = ac === v;
@@ -262,7 +262,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
       </div>
 
       {/* ── ride options ── */}
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, margin: "4px 14px 14px", background: "var(--surface)", borderRadius: 18, overflow: "hidden", boxShadow: "var(--shadow-card)", alignSelf: "stretch" }}>
         {visible.map((o) => {
           const on = o === sel;
           const p = pick(o);
@@ -304,7 +304,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
           );
           return o === "parcel"
             ? <div key={o} style={{ margin: "10px 14px 6px", borderRadius: 12, overflow: "hidden", border: "1px solid var(--line)", boxShadow: "var(--shadow-sm)" }}>{row}</div>
-            : <div key={o} style={{ borderTop: "1px solid var(--line)" }}>{row}</div>;
+            : <div key={o} style={{ borderTop: o === visible[0] ? "none" : "1px solid var(--line)" }}>{row}</div>;
         })}
         <button onClick={() => setSheet("fare")} style={{ display: "block", margin: "6px auto 14px", background: "none", border: "none", color: "var(--blue)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Fares are estimates · View fare details</button>
       </div>
@@ -546,7 +546,7 @@ export function ParcelPage({ from, to, quote: q, pay: initialPay, coupon, onBack
         </div>
 
         <div>
-          <p style={secLabel}>Instructions for the delivery partner <span style={{ fontWeight: 400, color: "var(--ink-mute)" }}>(optional)</span></p>
+          <p style={secLabel}>Instructions for the delivery partner <span style={{ fontWeight: 400, color: "var(--on-bg-soft)" }}>(optional)</span></p>
           <textarea value={note} onChange={(e) => setNote(e.target.value.slice(0, 160))} rows={2} placeholder="e.g. Hand over at the security desk, call on arrival" aria-label="Instructions" style={{ ...field, resize: "none" }} />
         </div>
 
@@ -557,7 +557,7 @@ export function ParcelPage({ from, to, quote: q, pay: initialPay, coupon, onBack
           </div>
         </div>
 
-        <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.5, cursor: "pointer" }}>
+        <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 12.5, color: "var(--on-bg-soft)", lineHeight: 1.5, cursor: "pointer" }}>
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} style={{ marginTop: 3, width: 18, height: 18, accentColor: "var(--blue)" }} />
           <span>The package doesn&apos;t contain prohibited items — alcohol, drugs, cash, jewellery, weapons or hazardous goods — and is packed safely.</span>
         </label>
@@ -571,7 +571,7 @@ export function ParcelPage({ from, to, quote: q, pay: initialPay, coupon, onBack
 }
 
 const capLabel: React.CSSProperties = { margin: 0, fontSize: 11, color: "var(--ink-mute)", fontWeight: 600 };
-const secLabel: React.CSSProperties = { margin: "0 2px 8px", fontSize: 13.5, fontWeight: 600, color: "var(--ink)" };
+const secLabel: React.CSSProperties = { margin: "0 2px 8px", fontSize: 13.5, fontWeight: 600, color: "var(--on-bg)" };
 
 /* ───────────────────────── 4. Live tracking ───────────────────────── */
 
@@ -596,10 +596,11 @@ function useSince(iso: string | null) {
   return iso ? Math.max(0, (now - new Date(iso).getTime()) / 1000) : 0;
 }
 
-export function LiveRidePage({ ride, onBack, onCancelled, onChat, onShare, onRetry, onDismiss }: {
-  ride: RideView; onBack: () => void; onCancelled: () => void; onChat: () => void; onShare: () => void; onRetry: () => void; onDismiss: () => void;
+export function LiveRidePage({ ride, onBack, onCancelled, onEnded, onChat, onShare, onRetry, onDismiss }: {
+  ride: RideView; onBack: () => void; onCancelled: () => void; onEnded: () => void; onChat: () => void; onShare: () => void; onRetry: () => void; onDismiss: () => void;
 }) {
   const [asking, setAsking] = useState(false);
+  const [ending, setEnding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const step = RIDE_STEPS.indexOf(ride.status);
@@ -621,6 +622,11 @@ export function LiveRidePage({ ride, onBack, onCancelled, onChat, onShare, onRet
     if (busy) return;
     setBusy(true); setErr(null);
     try { await cancelRide(ride.id, reason); onCancelled(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  const endTrip = async () => {
+    if (busy) return;
+    setBusy(true); setErr(null);
+    try { await customerEndRide(ride.id); setEnding(false); onEnded(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
 
   return (
@@ -647,16 +653,16 @@ export function LiveRidePage({ ride, onBack, onCancelled, onChat, onShare, onRet
       </div>
 
       <div style={{ flex: 1, marginTop: -20, position: "relative", background: "var(--app-bg)", borderRadius: "22px 22px 0 0", padding: "8px 16px 24px" }}>
-        <div style={{ width: 40, height: 4, borderRadius: 4, background: "var(--line-strong)", margin: "0 auto 12px" }} />
+        <div style={{ width: 40, height: 4, borderRadius: 4, background: "var(--on-bg-line)", margin: "0 auto 12px" }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--ink)" }}>{(parcel ? PARCEL_LABEL : LABEL)[ride.status]}</p>
+          <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--on-bg)" }}>{(parcel ? PARCEL_LABEL : LABEL)[ride.status]}</p>
           <StatusBadge status={ride.status} />
         </div>
 
         {!none && (
           <div style={{ display: "flex", gap: 4, margin: "10px 0 14px" }}>
             {RIDE_STEPS.slice(0, 4).map((s, i) => (
-              <span key={s} style={{ flex: 1, height: 4, borderRadius: 4, background: i < step ? "var(--blue)" : i === step ? "var(--blue-soft)" : "var(--line-strong)" }} />
+              <span key={s} style={{ flex: 1, height: 4, borderRadius: 4, background: i < step ? "var(--on-bg)" : i === step ? "var(--on-bg-soft)" : "var(--on-bg-line)", opacity: i === step ? 0.6 : 1 }} />
             ))}
           </div>
         )}
@@ -742,7 +748,26 @@ export function LiveRidePage({ ride, onBack, onCancelled, onChat, onShare, onRet
             Cancel Ride
           </button>
         )}
+        {ride.status === "Started" && (
+          <button onClick={() => { setErr(null); setEnding(true); }} className="press" style={{ width: "100%", marginTop: 12, background: "var(--surface)", color: "var(--ink)", border: "none", borderRadius: 16, padding: 14, fontSize: 14.5, fontWeight: 600, cursor: "pointer", boxShadow: "var(--shadow-card)" }}>
+            {parcel ? "End delivery" : "End trip"}
+          </button>
+        )}
       </div>
+
+      {ending && (
+        <Sheet onClose={() => setEnding(false)}>
+          <p style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 700 }}>{parcel ? "End this delivery?" : "End this trip now?"}</p>
+          <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--ink-soft)" }}>
+            {ride.pay === "Cash" ? `We'll record ${inr(ride.fare - ride.discount + ride.wait_fee)} as paid in cash to your driver.` : `You'll pay ${inr(ride.fare - ride.discount + ride.wait_fee)} with ${ride.pay} on the next screen.`}
+          </p>
+          <ErrorText msg={err} />
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <PrimaryButton tone="ghost" onClick={() => setEnding(false)}>Not yet</PrimaryButton>
+            <PrimaryButton onClick={() => void endTrip()} disabled={busy}>{busy ? "Ending…" : parcel ? "End delivery" : "End trip"}</PrimaryButton>
+          </div>
+        </Sheet>
+      )}
 
       {asking && (
         <Sheet onClose={() => setAsking(false)}>
@@ -769,7 +794,7 @@ export function Sheet({ children, onClose }: { children: React.ReactNode; onClos
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 150, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
       <div onClick={onClose} className="fade-up" style={{ position: "absolute", inset: 0, background: "rgba(15,23,41,0.45)" }} />
-      <div className="slide-up" style={{ position: "relative", background: "var(--app-bg)", borderRadius: "24px 24px 0 0", padding: "10px 18px calc(20px + env(safe-area-inset-bottom))", maxHeight: "85%", overflowY: "auto" }}>
+      <div className="slide-up" style={{ position: "relative", ...onLight, background: "var(--sheet-bg)", borderRadius: "24px 24px 0 0", padding: "10px 18px calc(20px + env(safe-area-inset-bottom))", maxHeight: "85%", overflowY: "auto" }}>
         <div style={{ width: 40, height: 4, borderRadius: 4, background: "var(--line-strong)", margin: "0 auto 14px" }} />
         {children}
       </div>
@@ -810,10 +835,10 @@ export function TripDonePage({ ride, walletBalance, onDone, onReceipt }: { ride:
         <div className="fade-up" style={{ width: 76, height: 76, margin: "0 auto", borderRadius: "50%", background: "linear-gradient(135deg,#34c38f,var(--green))", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 10px 24px rgba(47,158,118,0.35)" }}>
           <CheckIcon s={38} c="white" w={3} />
         </div>
-        <p style={{ margin: "14px 0 0", fontSize: 22, fontWeight: 800 }}>{ride.service === "parcel" ? "Package Delivered!" : "Trip Completed!"}</p>
-        <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--ink-soft)" }}>{ride.from.name} → {ride.to.name}</p>
-        <p style={{ margin: "14px 0 0", fontSize: 38, fontWeight: 800, letterSpacing: "-0.02em" }}>{inr(ride.total)}</p>
-        <p style={{ margin: "4px 0 0", fontSize: 13, fontWeight: 600, color: paid ? "var(--success-text)" : "var(--warning-text)" }}>
+        <p style={{ margin: "14px 0 0", fontSize: 22, fontWeight: 800, color: "var(--on-bg)" }}>{ride.service === "parcel" ? "Package Delivered!" : "Trip Completed!"}</p>
+        <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--on-bg-soft)" }}>{ride.from.name} → {ride.to.name}</p>
+        <p style={{ margin: "14px 0 0", fontSize: 38, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--on-bg)" }}>{inr(ride.total)}</p>
+        <p style={{ margin: "4px 0 0", fontSize: 13, fontWeight: 600, color: "var(--on-bg)" }}>
           {paid ? `✓ Paid · ${ride.pay}` : cash ? `Please pay ${inr(ride.total)} in cash — your driver will confirm` : `Payment due · ${inr(ride.total)}`}
         </p>
       </div>
@@ -862,7 +887,7 @@ export function TripDonePage({ ride, walletBalance, onDone, onReceipt }: { ride:
             <ErrorText msg={err} />
           </div>
         )}
-        <button onClick={onReceipt} style={{ display: "block", margin: "0 auto", background: "none", border: "none", color: "var(--blue)", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>View Receipt</button>
+        <button onClick={onReceipt} style={{ display: "block", margin: "0 auto", background: "none", border: "none", color: "var(--on-bg)", fontSize: 13.5, fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}>View Receipt</button>
       </div>
 
       <Footer>

@@ -138,6 +138,9 @@ export async function activeCoupons(): Promise<CouponRow[]> {
 
 export const myProfile = () => rpc<Profile | null>("my_profile");
 export const updateMyProfile = (name: string, email: string) => rpc<void>("update_my_profile", { p_name: name, p_email: email });
+/** 10-digit Indian mobile; stored as 91XXXXXXXXXX like sign-up. */
+export const updateMyPhone = (phone: string) => rpc<void>("update_my_phone", { p_phone: phone });
+export const updateMyDriverProfile = (name: string, city: string) => rpc<void>("update_my_driver_profile", { p_name: name, p_city: city });
 export const quote = (from: string, to: string, ac: boolean, coupon: string | null) =>
   rpc<Quote>("quote", { p_from: from, p_to: to, p_ac: ac, p_coupon: coupon });
 
@@ -155,6 +158,8 @@ export const cancelRide = (id: string, reason: string) => rpc<RideView>("cancel_
 export const payRide = (id: string, method: Exclude<PayMethod, "Cash">) => rpc<RideView>("pay_ride", { p_ride: id, p_method: method });
 export const rateRide = (id: string, stars: number, tags: string[]) => rpc<void>("rate_ride", { p_ride: id, p_stars: stars, p_tags: tags });
 export const closeRide = (id: string) => rpc<void>("close_ride", { p_ride: id });
+/** Customer ends a started trip themselves (cash trips are recorded as paid). */
+export const customerEndRide = (id: string) => rpc<RideView>("customer_end_ride", { p_ride: id });
 export const myWallet = () => rpc<{ balance: number; txns: Txn[] }>("my_wallet");
 export const supportMessage = (body: string, role: "Customer" | "Driver", ride: string | null = null) =>
   rpc<{ id: string; code: string; status: string }>("support_message", { p_body: body, p_role: role, p_ride: ride });

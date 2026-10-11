@@ -4,35 +4,57 @@ import { useState } from "react";
 import { ArrowRight, BackIcon, BellIcon, PinIcon, CheckIcon } from "./icons";
 import { ErrorText, PrimaryButton, card, field, iconBtn, label } from "./ui";
 import { emailSignIn, emailSignUp, isIndianMobile } from "../lib/api";
+import KolkataSkyline, { LANDMARKS } from "./KolkataSkyline";
 
-/** Brand splash — deep navy so the DriveWay gradient logo reads the way it was drawn. */
-export function SplashScreen({ tagline, cta = "Get Started", onStart, footer }: {
-  tagline: string; cta?: string; onStart: () => void; footer?: React.ReactNode;
+/** Brand splash — deep navy so the DriveWay gradient logo reads the way it was drawn.
+ * `kolkata` swaps in the customer app's orange launch look with the city's landmarks;
+ * without `onStart` it is the brief launch screen (no button). */
+export function SplashScreen({ tagline, cta = "Get Started", onStart, footer, kolkata }: {
+  tagline: string; cta?: string; onStart?: () => void; footer?: React.ReactNode; kolkata?: boolean;
 }) {
   return (
     <div style={{
       position: "absolute", inset: 0, zIndex: 200,
-      background: "linear-gradient(165deg,#04246b 0%,#020b24 100%)",
+      background: kolkata ? "linear-gradient(170deg,#fb923c 0%,#ea580c 55%,#c2410c 100%)" : "linear-gradient(165deg,#04246b 0%,#020b24 100%)",
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
-      <div style={{ position: "absolute", right: -80, top: -90, width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(31,214,201,0.30), transparent 70%)" }} />
-      <div style={{ position: "absolute", left: -70, bottom: 120, width: 260, height: 260, borderRadius: "50%", background: "radial-gradient(circle, rgba(126,226,31,0.16), transparent 70%)" }} />
-      {/* A road winding off into the distance */}
-      <svg viewBox="0 0 400 200" preserveAspectRatio="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, width: "100%", height: 220 }} aria-hidden="true">
-        <path d="M120 200 C 160 140, 250 120, 400 70 L 400 110 C 290 140, 230 160, 230 200z" fill="rgba(255,255,255,0.07)" />
-        <path d="M175 200 C 210 150, 290 125, 400 90" stroke="rgba(255,255,255,0.35)" strokeWidth="2.5" strokeDasharray="10 12" fill="none" />
-      </svg>
+      {kolkata ? (
+        <div style={{ position: "absolute", left: "50%", top: -120, width: 420, height: 420, marginLeft: -210, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,237,180,0.45), transparent 68%)" }} />
+      ) : (
+        <>
+          <div style={{ position: "absolute", right: -80, top: -90, width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(31,214,201,0.30), transparent 70%)" }} />
+          <div style={{ position: "absolute", left: -70, bottom: 120, width: 260, height: 260, borderRadius: "50%", background: "radial-gradient(circle, rgba(126,226,31,0.16), transparent 70%)" }} />
+          {/* A road winding off into the distance */}
+          <svg viewBox="0 0 400 200" preserveAspectRatio="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, width: "100%", height: 220 }} aria-hidden="true">
+            <path d="M120 200 C 160 140, 250 120, 400 70 L 400 110 C 290 140, 230 160, 230 200z" fill="rgba(255,255,255,0.07)" />
+            <path d="M175 200 C 210 150, 290 125, 400 90" stroke="rgba(255,255,255,0.35)" strokeWidth="2.5" strokeDasharray="10 12" fill="none" />
+          </svg>
+        </>
+      )}
 
       <div className="fade-up" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1 }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/driveway-logo.png" alt="DriveWay" style={{ width: 240, maxWidth: "66%", height: "auto", display: "block" }} />
-        <p style={{ margin: "20px 0 0", fontSize: 15, color: "rgba(255,255,255,0.75)", letterSpacing: "0.04em" }}>{tagline}</p>
+        <img src="/driveway-logo.png" alt="DriveWay" style={{ width: 240, maxWidth: "66%", height: "auto", display: "block", filter: kolkata ? "drop-shadow(0 4px 14px rgba(124,45,18,0.35))" : undefined }} />
+        <p style={{ margin: "20px 0 0", fontSize: 15, color: kolkata ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.75)", letterSpacing: "0.04em" }}>{tagline}</p>
       </div>
 
-      <div style={{ padding: "0 20px calc(22px + env(safe-area-inset-bottom))", position: "relative", zIndex: 1 }}>
-        <PrimaryButton tone="gold" onClick={onStart}>{cta} <ArrowRight s={18} c="var(--blue-dark)" /></PrimaryButton>
-        {footer}
-      </div>
+      {kolkata && (
+        <div style={{ position: "relative", zIndex: 1, padding: "0 8px" }}>
+          <KolkataSkyline />
+          <p className="fade-up" style={{ margin: "8px 0 0", textAlign: "center", fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", color: "rgba(255,255,255,0.85)", animationDelay: "1s" }}>
+            {LANDMARKS.join(" · ").toUpperCase()}
+          </p>
+        </div>
+      )}
+
+      {onStart ? (
+        <div style={{ padding: `${kolkata ? 18 : 0}px 20px calc(22px + env(safe-area-inset-bottom))`, position: "relative", zIndex: 1 }}>
+          <PrimaryButton tone={kolkata ? "blue" : "gold"} onClick={onStart}>{cta} <ArrowRight s={18} c={kolkata ? "white" : "var(--blue-dark)"} /></PrimaryButton>
+          {footer}
+        </div>
+      ) : (
+        <div style={{ height: "calc(36px + env(safe-area-inset-bottom))" }} />
+      )}
     </div>
   );
 }
@@ -40,7 +62,7 @@ export function SplashScreen({ tagline, cta = "Get Started", onStart, footer }: 
 const Shell = ({ children, onBack }: { children: React.ReactNode; onBack?: () => void }) => (
   <div className="fade-up" style={{ position: "absolute", inset: 0, zIndex: 190, background: "var(--app-bg)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
     <div style={{ padding: "18px 16px 0", minHeight: 42 }}>
-      {onBack && <button onClick={onBack} aria-label="Back" className="press" style={iconBtn}><BackIcon c="var(--ink)" /></button>}
+      {onBack && <button onClick={onBack} aria-label="Back" className="press" style={iconBtn}><BackIcon c="var(--on-bg)" /></button>}
     </div>
     {children}
   </div>
@@ -48,10 +70,10 @@ const Shell = ({ children, onBack }: { children: React.ReactNode; onBack?: () =>
 
 const H = ({ title, accent, body }: { title: string; accent?: string; body: string }) => (
   <div style={{ padding: "8px 24px 0" }}>
-    <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: "var(--ink)", lineHeight: 1.2 }}>
-      {title}{accent && <><br /><span style={{ color: "var(--blue)" }}>{accent}</span></>}
+    <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: "var(--on-bg)", lineHeight: 1.2 }}>
+      {title}{accent && <><br /><span style={{ color: "var(--on-bg-accent)" }}>{accent}</span></>}
     </h1>
-    <p style={{ margin: "10px 0 0", fontSize: 14.5, color: "var(--ink-soft)", lineHeight: 1.55 }}>{body}</p>
+    <p style={{ margin: "10px 0 0", fontSize: 14.5, color: "var(--on-bg-soft)", lineHeight: 1.55 }}>{body}</p>
   </div>
 );
 
@@ -59,13 +81,13 @@ const isEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e.trim());
 const MIN_PASSWORD = 6;
 
 const SwitchLink = ({ q, cta, onClick }: { q: string; cta: string; onClick: () => void }) => (
-  <p style={{ margin: 0, textAlign: "center", fontSize: 13.5, color: "var(--ink-soft)" }}>
-    {q} <button type="button" onClick={onClick} style={{ background: "none", border: "none", padding: 0, color: "var(--blue)", fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}>{cta}</button>
+  <p style={{ margin: 0, textAlign: "center", fontSize: 13.5, color: "var(--on-bg-soft)" }}>
+    {q} <button type="button" onClick={onClick} style={{ background: "none", border: "none", padding: 0, color: "var(--on-bg-accent)", fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}>{cta}</button>
   </p>
 );
 
 const Terms = () => (
-  <p style={{ marginTop: "auto", fontSize: 11.5, color: "var(--ink-mute)", textAlign: "center", lineHeight: 1.5 }}>
+  <p style={{ marginTop: "auto", fontSize: 11.5, color: "var(--on-bg-soft)", textAlign: "center", lineHeight: 1.5 }}>
     By continuing you agree to DriveWay&apos;s Terms of Service and Privacy Policy.
   </p>
 );
@@ -158,7 +180,7 @@ export function ProfileSetup({ onDone }: { onDone: (p: { name: string; email: st
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }}
         style={{ padding: "24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
         <div><label style={label} htmlFor="n">Full Name</label><input id="n" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Amit Sharma" style={field} autoComplete="name" /></div>
-        <div><label style={label} htmlFor="e">Email <span style={{ fontWeight: 400, color: "var(--ink-mute)" }}>(optional)</span></label><input id="e" type="email" value={email} maxLength={254} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" style={field} autoComplete="email" /></div>
+        <div><label style={label} htmlFor="e">Email <span style={{ fontWeight: 400, color: "var(--on-bg-soft)" }}>(optional)</span></label><input id="e" type="email" value={email} maxLength={254} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" style={field} autoComplete="email" /></div>
         <ErrorText msg={err} />
         <div style={{ marginTop: "auto" }}><PrimaryButton type="submit" disabled={!name.trim() || busy}>{busy ? "Saving…" : "Continue"}</PrimaryButton></div>
       </form>

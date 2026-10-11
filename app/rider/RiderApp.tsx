@@ -9,13 +9,13 @@ import { AlertsScreen, EarningsScreen, RequestPopup, RiderAccount, RiderHome, Tr
 import {
   BankPage, CancelTripSheet, DocumentsPage, IncentivesScreen, PerformancePage, PreferencesPage, SosSheet, TripDetailPage, VehiclePage, WalletPage, type RiderPrefs,
 } from "../components/rider/RiderPages";
-import { ChatScreen, type ChatMessage } from "../components/customer/AccountScreens";
+import { ChatScreen, EditProfilePage, type ChatMessage } from "../components/customer/AccountScreens";
 import { LoadState, Toast } from "../components/ui";
-import { inr } from "../lib/data";
+import { CITIES, inr } from "../lib/data";
 import { NATIVE_APP } from "../lib/native";
 import {
   acceptRide, completeRide, confirmCash, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, myDriver, myDriverTrips,
-  myTrip, newKey, onAuthChange, payDues, rateCustomer, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyUpi, watchResume, watchRides,
+  myTrip, newKey, onAuthChange, payDues, rateCustomer, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides,
   type DriverMe, type RideView,
 } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
@@ -215,8 +215,8 @@ export default function RiderApp() {
 
         {stage === "loading" && <LoadState error={bootErr} onRetry={() => void boot()} />}
         {stage === "splash" && (
-          <SplashScreen tagline="Drive · Earn · Grow" cta="Start Riding" onStart={() => setStage("login")}
-            footer={NATIVE_APP ? undefined : <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.55)" }}><Link href="/" style={{ color: "var(--gold)" }}>Book a ride instead</Link></p>} />
+          <SplashScreen kolkata tagline="Drive · Earn · Grow" cta="Start Riding" onStart={() => setStage("login")}
+            footer={NATIVE_APP ? undefined : <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.75)" }}><Link href="/" style={{ color: "white", fontWeight: 600 }}>Book a ride instead</Link></p>} />
         )}
         {stage === "login" && <EmailLogin title="Welcome, Rider" accent="Let's get you earning" onSignedIn={() => void boot()} onSignUp={() => setStage("signup")} />}
         {stage === "signup" && (
@@ -259,6 +259,15 @@ export default function RiderApp() {
                 {detail.k === "performance" && <PerformancePage me={me} trips={trips ?? []} onBack={back} />}
                 {detail.k === "documents" && <DocumentsPage me={me} onBack={back} />}
                 {detail.k === "vehicle" && <VehiclePage me={me} onBack={back} />}
+                {detail.k === "edit" && (
+                  <EditProfilePage initial={{ name: me.name, phone: (me.phone ?? "").replace(/^91/, ""), city: me.city }} cities={CITIES} onBack={back}
+                    note="Vehicle and documents need re-verification — change them through Help & Support."
+                    onSave={async (v) => {
+                      if (v.name !== me.name || v.city !== me.city) await updateMyDriverProfile(v.name, v.city ?? me.city);
+                      if (v.phone !== (me.phone ?? "").replace(/^91/, "")) await updateMyPhone(v.phone);
+                      await refreshMe(); back(); flash("Profile updated");
+                    }} />
+                )}
                 {detail.k === "bank" && <BankPage upi={me.upi} onBack={back} onSave={async (u) => { await updateMyUpi(u); await refreshMe(); flash("UPI ID updated"); }} />}
                 {detail.k === "preferences" && <PreferencesPage prefs={prefs} onBack={back} onChange={changePrefs} />}
                 {detail.k === "trip" && (() => {

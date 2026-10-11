@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import BottomNav, { ChatGlyph, HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph } from "../BottomNav";
 import { EmailLogin, PermissionStep, ProfileSetup, SignUp, SplashScreen } from "../Auth";
-import HomeScreen from "./HomeScreen";
+import HomeScreen, { HOME_BG } from "./HomeScreen";
 import { ChooseRidePage, LiveRidePage, ParcelPage, SearchPage, TripDonePage } from "./BookingScreens";
-import { ChatScreen, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen, type ChatMessage, type ProfileKey } from "./AccountScreens";
+import { ChatScreen, EditProfilePage, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen, type ChatMessage, type ProfileKey } from "./AccountScreens";
 import type { RideOption } from "./types";
 import { LoadState, Toast, card } from "../ui";
 import { CardIcon, UpiIcon, WalletIcon } from "../icons";
@@ -14,11 +14,12 @@ import { inr, type PayMethod } from "../../lib/data";
 import { NATIVE_APP } from "../../lib/native";
 import {
   cancelRide, closeRide, fmtWhen, getSession, myActiveRide, myProfile, myRides, myWallet, onAuthChange, payRide, places as fetchPlaces,
-  signOut, supportMessage, updateMyProfile, watchResume, watchRides, type Place, type Profile, type Quote, type RideView, type Txn,
+  signOut, supportMessage, updateMyPhone, updateMyProfile, watchResume, watchRides, type Place, type Profile, type Quote, type RideView, type Txn,
 } from "../../lib/api";
 import { supabase } from "../../lib/supabase/client";
 
 const SHELL_MAX_W = 430;
+const INTRO_MS = 2600;          // Kolkata launch screen shown each time the app opens
 const LIVE: RideView["status"][] = ["Searching", "Arriving", "Arrived", "Started"];
 
 type Tab = "home" | "rides" | "offers" | "support" | "profile";
@@ -53,6 +54,7 @@ export default function CustomerApp() {
   const [pendingCoupon, setPendingCoupon] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [bootErr, setBootErr] = useState<string | null>(null);
+  const [intro, setIntro] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const lastStatus = useRef<string | null>(null);
@@ -74,6 +76,7 @@ export default function CustomerApp() {
     } catch (e) { setBootErr((e as Error).message); }
   }, []);
   useEffect(() => { void boot(); }, [boot]);
+  useEffect(() => { const t = setTimeout(() => setIntro(false), INTRO_MS); return () => clearTimeout(t); }, []);
   useEffect(() => onAuthChange((signedIn) => { if (!signedIn) { setStage("splash"); setActive(null); setRides(null); setStack([]); } }), []);
 
   /* ── server state ── */
@@ -168,6 +171,7 @@ export default function CustomerApp() {
         onReceipt={() => push({ k: "ride", id: active.id })} />;
     }
     return <LiveRidePage ride={active} onBack={() => goTab("home")} onChat={() => push({ k: "chat" })}
+      onEnded={() => { void refreshActive(); void refreshRides(); void refreshMe(); }}
       onCancelled={() => { void refreshActive(); void refreshRides(); goTab("home"); flash(active.cancel_fee_now > 0 ? `Ride cancelled · ${inr(active.cancel_fee_now)} fee due` : "Ride cancelled — no charge"); }}
       onShare={() => flash("Trip sharing and SOS alerts need the notifications service — call 112 in an emergency")}
       onRetry={() => { const to = active.to; const prefer = optionOf(active); void closeRide(active.id).then(refreshActive); setStack([{ k: "search", to: places.find((p) => p.id === to.id), prefer }]); }}
@@ -178,12 +182,19 @@ export default function CustomerApp() {
     <div style={{ position: "fixed", inset: 0, background: "var(--app-bg)", display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: SHELL_MAX_W, height: "100%", position: "relative", background: "var(--app-bg)", overflow: "hidden", boxShadow: "var(--shadow-float)", display: "flex", flexDirection: "column" }}>
 
+        {/* Signed-out users land on the splash, which already shows the landmarks. */}
+        {intro && stage !== "splash" && (
+          <div onClick={() => setIntro(false)} style={{ position: "absolute", inset: 0, zIndex: 300 }}>
+            <SplashScreen kolkata tagline="Ride · Reach · Relax" />
+          </div>
+        )}
+
         {stage === "loading" && <LoadState error={bootErr} onRetry={() => void boot()} />}
         {stage === "splash" && (
-          <SplashScreen tagline="Ride · Reach · Relax" onStart={() => setStage("login")}
+          <SplashScreen kolkata tagline="Ride · Reach · Relax" onStart={() => setStage("login")}
             footer={NATIVE_APP ? undefined :
-              <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-                <Link href="/rider" style={{ color: "var(--gold)" }}>Drive with DriveWay</Link>
+              <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
+                <Link href="/rider" style={{ color: "white", fontWeight: 600 }}>Drive with DriveWay</Link>
               </p>
             } />
         )}
@@ -206,6 +217,7 @@ export default function CustomerApp() {
         ) : (
           <div ref={scrollRef} className="no-scroll" style={{
             flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain",
+            background: !detail && tab === "home" ? HOME_BG : undefined,
             paddingBottom: showNav ? "calc(76px + env(safe-area-inset-bottom))" : undefined,
           }}>
             {detail?.k === "search" && (
@@ -230,7 +242,15 @@ export default function CustomerApp() {
                 onCancel={() => void cancelRide(r.id, "Changed my plans").then(() => { void refreshRides(); back(); flash("Scheduled ride cancelled"); }, (e) => flash((e as Error).message))} />
                 : <LoadState error={ridesErr} onRetry={() => void refreshRides()} />;
             })()}
-            {detail?.k === "info" && <ProfileInfo which={detail.key} rides={rides ?? []} wallet={wallet} onBack={back} />}
+            {detail?.k === "info" && detail.key === "edit" && me && (
+              <EditProfilePage initial={{ name: me.name, phone: (me.phone ?? "").replace(/^91/, "") }} email={me.email} onBack={back}
+                onSave={async (v) => {
+                  if (v.name !== me.name) await updateMyProfile(v.name, me.email ?? "");
+                  if (v.phone !== (me.phone ?? "").replace(/^91/, "")) await updateMyPhone(v.phone);
+                  await refreshMe(); back(); flash("Profile updated");
+                }} />
+            )}
+            {detail?.k === "info" && detail.key !== "edit" && <ProfileInfo which={detail.key} rides={rides ?? []} wallet={wallet} onBack={back} />}
 
             {!detail && tab === "home" && (
               <HomeScreen
@@ -279,6 +299,7 @@ export default function CustomerApp() {
 function ProfileInfo({ which, rides, wallet, onBack }: { which: ProfileKey | "notifications"; rides: RideView[]; wallet: { balance: number; txns: Txn[] }; onBack: () => void }) {
   const row: React.CSSProperties = { ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 };
   const small: React.CSSProperties = { margin: "2px 0 0", fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.5 };
+  const onCanvas: React.CSSProperties = { ...small, color: "var(--on-bg-soft)" };
 
   switch (which) {
     case "places":
@@ -302,7 +323,7 @@ function ProfileInfo({ which, rides, wallet, onBack }: { which: ProfileKey | "no
             <p style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.75)" }}>Available balance</p>
             <p style={{ margin: "4px 0 0", fontSize: 30, fontWeight: 800 }}>{inr(wallet.balance)}</p>
           </div>
-          {wallet.txns.length === 0 && <p style={{ ...small, textAlign: "center" }}>No wallet activity yet. Refunds and wallet payments will show here.</p>}
+          {wallet.txns.length === 0 && <p style={{ ...onCanvas, textAlign: "center" }}>No wallet activity yet. Refunds and wallet payments will show here.</p>}
           {wallet.txns.map((t) => (
             <div key={t.id} style={row}><WalletIcon s={20} c="var(--ink-soft)" /><div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{t.note ?? t.kind}</p><p style={small}>{fmtWhen(t.at)}</p></div><span style={{ fontWeight: 700, color: t.amount > 0 ? "var(--success-text)" : "var(--ink)" }}>{t.amount > 0 ? "+ " : "− "}{inr(Math.abs(t.amount))}</span></div>
           ))}
@@ -311,7 +332,7 @@ function ProfileInfo({ which, rides, wallet, onBack }: { which: ProfileKey | "no
     case "notifications":
       return (
         <InfoPage title="Notifications" onBack={onBack}>
-          {rides.length === 0 && <p style={{ ...small, textAlign: "center" }}>Ride updates will appear here.</p>}
+          {rides.length === 0 && <p style={{ ...onCanvas, textAlign: "center" }}>Ride updates will appear here.</p>}
           {rides.slice(0, 10).map((r) => (
             <div key={r.id} style={row}>
               <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--blue)", flexShrink: 0 }} />
@@ -324,7 +345,7 @@ function ProfileInfo({ which, rides, wallet, onBack }: { which: ProfileKey | "no
     case "report":
       return (
         <InfoPage title="Report an Issue" onBack={onBack}>
-          <p style={small}>Open Help &amp; Support and describe the problem — include the ride ID. Each message creates or updates your support ticket.</p>
+          <p style={onCanvas}>Open Help &amp; Support and describe the problem — include the ride ID. Each message creates or updates your support ticket.</p>
         </InfoPage>
       );
     case "legal":

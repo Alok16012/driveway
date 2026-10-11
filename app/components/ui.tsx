@@ -12,12 +12,12 @@ export function PageHeader({ title, onBack, right, sub }: { title: string; onBac
     }}>
       {onBack && (
         <button onClick={onBack} aria-label="Back" className="press" style={iconBtn}>
-          <BackIcon c="var(--ink)" />
+          <BackIcon c="var(--on-bg)" />
         </button>
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "var(--ink)" }}>{title}</h2>
-        {sub && <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>{sub}</p>}
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "var(--on-bg)" }}>{title}</h2>
+        {sub && <p style={{ margin: 0, fontSize: 12, color: "var(--on-bg-soft)" }}>{sub}</p>}
       </div>
       {right && <div style={{ display: "flex", alignItems: "center", gap: 18 }}>{right}</div>}
     </div>
@@ -99,12 +99,18 @@ export function PrimaryButton({ children, onClick, disabled, tone = "blue", styl
   );
 }
 
+/** For light surfaces (cards, sheets, drawers) on the orange canvas: "text on the canvas" is ordinary dark ink again. */
+export const onLight = {
+  color: "var(--ink)",
+  "--on-bg": "var(--ink)", "--on-bg-soft": "var(--ink-soft)", "--on-bg-line": "var(--line)", "--on-bg-accent": "var(--blue)",
+} as React.CSSProperties;
+
 export const card: React.CSSProperties = {
-  background: "var(--surface)", borderRadius: 18, boxShadow: "var(--shadow-card)",
+  background: "var(--surface)", borderRadius: 18, boxShadow: "var(--shadow-card)", ...onLight,
 };
 
 export const label: React.CSSProperties = {
-  display: "block", margin: "0 0 8px", fontSize: 13.5, fontWeight: 600, color: "var(--ink)",
+  display: "block", margin: "0 0 8px", fontSize: 13.5, fontWeight: 600, color: "var(--on-bg)",
 };
 
 export const field: React.CSSProperties = {
@@ -118,7 +124,7 @@ export function Footer({ children }: { children: React.ReactNode }) {
     <div style={{
       position: "sticky", bottom: 0, zIndex: 20,
       padding: "12px 16px calc(14px + env(safe-area-inset-bottom))",
-      background: "linear-gradient(to top, var(--app-bg) 75%, rgba(238,241,251,0))",
+      background: "linear-gradient(to top, var(--app-bg) 75%, transparent)",
     }}>{children}</div>
   );
 }
@@ -183,13 +189,13 @@ export function OtpInput({ value, onChange, length = 4, autoFocus = true }: { va
 /** Inline error line under a form or action. */
 export function ErrorText({ msg }: { msg: string | null | undefined }) {
   if (!msg) return null;
-  return <p role="alert" style={{ margin: "8px 2px 0", fontSize: 12.5, color: "var(--error-text)", lineHeight: 1.45 }}>{msg}</p>;
+  return <p role="alert" style={{ margin: "8px 2px 0", fontSize: 12.5, color: "var(--error-text)", lineHeight: 1.45, background: "var(--error-chip, none)", padding: "var(--error-chip-pad, 0)", borderRadius: 10 }}>{msg}</p>;
 }
 
 /** Full-area spinner/message while data loads, or an error with a retry button. */
 export function LoadState({ error, onRetry, label = "Loading…" }: { error?: string | null; onRetry?: () => void; label?: string }) {
   return (
-    <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--ink-soft)", fontSize: 14 }}>
+    <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--on-bg-soft)", fontSize: 14 }}>
       {error ? <>
         <p style={{ margin: 0, color: "var(--error-text)", fontWeight: 600 }}>{error}</p>
         {onRetry && <button onClick={onRetry} style={{ marginTop: 12, border: "none", background: "var(--blue)", color: "white", borderRadius: 12, padding: "10px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Try again</button>}
