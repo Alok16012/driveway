@@ -109,24 +109,6 @@ export default function HomeScreen(p: HomeProps) {
         </div>
       </div>
 
-      {/* ── AC / Non-AC preference ── */}
-      <div style={{ padding: "14px 16px 0" }}>
-        <div style={{ background: "var(--surface)", borderRadius: 18, padding: "12px 12px 12px 14px", boxShadow: "var(--shadow-card)", display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>Vehicle type</span>
-            <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-soft)" }}>{p.ac ? "AC cars for every ride" : "Non-AC · cheaper car fares"}</span>
-          </span>
-          <div role="radiogroup" aria-label="AC or Non-AC vehicle" style={{ display: "flex", background: "var(--bg-secondary)", borderRadius: 999, padding: 3 }}>
-            {[true, false].map((v) => (
-              <button key={String(v)} role="radio" aria-checked={p.ac === v} onClick={() => p.onAc(v)} style={{
-                border: "none", cursor: "pointer", borderRadius: 999, padding: "8px 14px", fontSize: 13, fontWeight: 700,
-                background: p.ac === v ? (v ? "var(--blue)" : "var(--ink)") : "transparent", color: p.ac === v ? "white" : "var(--ink-soft)",
-              }}>{v ? "❄ AC" : "Non-AC"}</button>
-            ))}
-          </div>
-        </div>
-      </div>
-
       {/* ── Active ride ── */}
       {p.active && (
         <div style={{ padding: "16px 16px 0" }}>
@@ -149,21 +131,43 @@ export default function HomeScreen(p: HomeProps) {
       )}
 
       {/* ── Ride categories ── */}
-      <div style={{ padding: "22px 16px 0" }}>
-        <p style={{ margin: 0, fontSize: 12.5, color: ON_BG_SOFT, fontWeight: 500 }}>Pick your ride</p>
-        <p style={{ margin: 0, fontSize: 19, fontWeight: 700, color: ON_BG, letterSpacing: "-0.02em" }}>Our Services</p>
+      <div style={{ padding: "22px 16px 0", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
+        <div>
+          <p style={{ margin: 0, fontSize: 12.5, color: ON_BG_SOFT, fontWeight: 500 }}>Pick your ride</p>
+          <p style={{ margin: 0, fontSize: 19, fontWeight: 700, color: ON_BG, letterSpacing: "-0.02em" }}>Our Services</p>
+        </div>
+        {/* AC / Non-AC preference — applies to the car options (badged below). */}
+        <div role="radiogroup" aria-label="AC or Non-AC vehicle" style={{ display: "flex", background: "rgba(255,255,255,0.22)", borderRadius: 999, padding: 3 }}>
+          {[true, false].map((v) => (
+            <button key={String(v)} role="radio" aria-checked={p.ac === v} onClick={() => p.onAc(v)} style={{
+              border: "none", cursor: "pointer", borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 700,
+              background: p.ac === v ? "var(--surface)" : "transparent", color: p.ac === v ? (v ? "var(--blue)" : "var(--ink)") : ON_BG,
+              boxShadow: p.ac === v ? "var(--shadow-sm)" : "none",
+            }}>{v ? "❄ AC" : "Non-AC"}</button>
+          ))}
+        </div>
       </div>
       <div style={{ padding: "12px 12px 0", display: "grid", gridTemplateColumns: "repeat(4,1fr)", rowGap: 14, columnGap: 6 }}>
         {SERVICES.map((o) => (
           <button key={o} onClick={() => p.onSearch(o)} className="press" style={{
             background: "none", border: "none", padding: 0, cursor: "pointer",
-            display: "flex", flexDirection: "column", alignItems: "center", gap: 7, position: "relative",
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 11, position: "relative",
           }}>
             <div style={{
               width: "100%", maxWidth: 70, aspectRatio: "1 / 1", background: "var(--surface)", borderRadius: "28%",
               display: "flex", alignItems: "center", justifyContent: "center",
               boxShadow: "0 6px 10px -2px rgba(15,23,41,0.16), 0 2px 4px rgba(15,23,41,0.06)",
-            }}>{o === "any" ? <AnyArt size={50} /> : o === "rental" ? <RentalArt size={48} /> : o === "parcel" ? <ParcelArt size={50} /> : <VehicleArt kind={o} size={50} />}</div>
+              position: "relative",
+            }}>
+              {o === "any" ? <AnyArt size={50} /> : o === "rental" ? <RentalArt size={48} /> : o === "parcel" ? <ParcelArt size={50} /> : <VehicleArt kind={o} size={50} />}
+              {(o === "any" || o === "rental" || (o !== "parcel" && vehicleById(o).ac)) && (
+                <span style={{
+                  position: "absolute", bottom: -7, left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap",
+                  fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, border: "1.5px solid var(--surface)",
+                  background: p.ac ? "var(--info-bg)" : "var(--surface-dim)", color: p.ac ? "var(--blue)" : "var(--text-muted)",
+                }}>{p.ac ? "❄ AC" : "NON-AC"}</span>
+              )}
+            </div>
             {o === "parcel" && <span style={{ position: "absolute", top: -6, right: 2, background: "var(--red)", color: "white", fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 6 }}>NEW</span>}
             <span style={{ fontSize: 12.5, fontWeight: 600, color: ON_BG }}>{o === "any" ? "Book Any" : o === "rental" ? "Rental" : o === "parcel" ? "Parcel" : vehicleById(o).name}</span>
           </button>
