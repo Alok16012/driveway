@@ -19,7 +19,7 @@ import {
 import { supabase } from "../../lib/supabase/client";
 
 const SHELL_MAX_W = 430;
-const INTRO_MS = 2600;          // Kolkata launch screen shown each time the app opens
+const INTRO_MAX_MS = 6000;      // safety cap on the launch video (it normally ends itself after ~2s)
 const LIVE: RideView["status"][] = ["Searching", "Arriving", "Arrived", "Started"];
 
 type Tab = "home" | "rides" | "offers" | "support" | "profile";
@@ -76,7 +76,7 @@ export default function CustomerApp() {
     } catch (e) { setBootErr((e as Error).message); }
   }, []);
   useEffect(() => { void boot(); }, [boot]);
-  useEffect(() => { const t = setTimeout(() => setIntro(false), INTRO_MS); return () => clearTimeout(t); }, []);
+  useEffect(() => { const t = setTimeout(() => setIntro(false), INTRO_MAX_MS); return () => clearTimeout(t); }, []);
   useEffect(() => onAuthChange((signedIn) => { if (!signedIn) { setStage("splash"); setActive(null); setRides(null); setStack([]); } }), []);
 
   /* ── server state ── */
@@ -182,10 +182,12 @@ export default function CustomerApp() {
     <div style={{ position: "fixed", inset: 0, background: "var(--app-bg)", display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: SHELL_MAX_W, height: "100%", position: "relative", background: "var(--app-bg)", overflow: "hidden", boxShadow: "var(--shadow-float)", display: "flex", flexDirection: "column" }}>
 
-        {/* Signed-out users land on the splash, which already shows the landmarks. */}
-        {intro && stage !== "splash" && (
-          <div onClick={() => setIntro(false)} style={{ position: "absolute", inset: 0, zIndex: 300 }}>
-            <SplashScreen kolkata tagline="Ride · Reach · Relax" />
+        {/* Kolkata launch video, played each time the app opens; tap to skip. */}
+        {intro && (
+          <div onClick={() => setIntro(false)} style={{ position: "absolute", inset: 0, zIndex: 300, background: "#ea580c" }}>
+            <video src="/driveway-intro.mp4" autoPlay muted playsInline preload="auto"
+              onEnded={() => setIntro(false)} onError={() => setIntro(false)}
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           </div>
         )}
 
