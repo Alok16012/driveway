@@ -154,7 +154,7 @@ export default function HomeScreen(p: HomeProps) {
             display: "flex", flexDirection: "column", alignItems: "center", gap: 11, position: "relative",
           }}>
             <div style={{
-              width: "100%", maxWidth: 70, aspectRatio: "1 / 1", background: "var(--surface)", borderRadius: "28%",
+              width: "100%", maxWidth: 70, aspectRatio: "1 / 1", background: "#FFD1A8", borderRadius: "28%",
               display: "flex", alignItems: "center", justifyContent: "center",
               boxShadow: "0 6px 10px -2px rgba(15,23,41,0.16), 0 2px 4px rgba(15,23,41,0.06)",
               position: "relative",
