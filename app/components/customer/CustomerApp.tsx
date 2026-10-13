@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import BottomNav, { ChatGlyph, HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph } from "../BottomNav";
-import { EmailLogin, PermissionStep, ProfileSetup, SignUp, SplashScreen } from "../Auth";
+import { EmailLogin, PermissionStep, ProfileSetup, SignUp, VideoSplash } from "../Auth";
 import HomeScreen, { HOME_BG } from "./HomeScreen";
 import { ChooseRidePage, LiveRidePage, ParcelPage, SearchPage, TripDonePage } from "./BookingScreens";
 import { ChatScreen, EditProfilePage, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen, type ChatMessage, type ProfileKey } from "./AccountScreens";
@@ -19,7 +19,6 @@ import {
 import { supabase } from "../../lib/supabase/client";
 
 const SHELL_MAX_W = 430;
-const INTRO_MAX_MS = 6000;      // safety cap on the launch video (it normally ends itself after ~2s)
 const LIVE: RideView["status"][] = ["Searching", "Arriving", "Arrived", "Started"];
 
 type Tab = "home" | "rides" | "offers" | "support" | "profile";
@@ -55,6 +54,7 @@ export default function CustomerApp() {
   const [toast, setToast] = useState<string | null>(null);
   const [bootErr, setBootErr] = useState<string | null>(null);
   const [intro, setIntro] = useState(true);
+  const endIntro = useCallback(() => setIntro(false), []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const lastStatus = useRef<string | null>(null);
@@ -76,7 +76,6 @@ export default function CustomerApp() {
     } catch (e) { setBootErr((e as Error).message); }
   }, []);
   useEffect(() => { void boot(); }, [boot]);
-  useEffect(() => { const t = setTimeout(() => setIntro(false), INTRO_MAX_MS); return () => clearTimeout(t); }, []);
   useEffect(() => onAuthChange((signedIn) => { if (!signedIn) { setStage("splash"); setActive(null); setRides(null); setStack([]); } }), []);
 
   /* ── server state ── */
@@ -182,24 +181,19 @@ export default function CustomerApp() {
     <div style={{ position: "fixed", inset: 0, background: "var(--app-bg)", display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: SHELL_MAX_W, height: "100%", position: "relative", background: "var(--app-bg)", overflow: "hidden", boxShadow: "var(--shadow-float)", display: "flex", flexDirection: "column" }}>
 
-        {/* Kolkata launch video, played each time the app opens; tap to skip. */}
-        {intro && (
-          <div onClick={() => setIntro(false)} style={{ position: "absolute", inset: 0, zIndex: 300, background: "#ea580c" }}>
-            <video src="/driveway-intro.mp4" autoPlay muted playsInline preload="auto"
-              onEnded={() => setIntro(false)} onError={() => setIntro(false)}
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-          </div>
-        )}
-
-        {stage === "loading" && <LoadState error={bootErr} onRetry={() => void boot()} />}
-        {stage === "splash" && (
-          <SplashScreen kolkata tagline="Ride · Reach · Relax" onStart={() => setStage("login")}
+        {/* Kolkata launch video, played each time the app opens. Signed-out users stay on its last
+            frame until they tap Get Started; everyone else continues into the app when it ends. */}
+        {(intro || stage === "splash") && (
+          <VideoSplash src="/driveway-intro.mp4" onDone={stage === "loading" && !bootErr ? undefined : endIntro}
+            onStart={stage === "splash" ? () => { setIntro(false); setStage("login"); } : undefined}
             footer={NATIVE_APP ? undefined :
               <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
                 <Link href="/rider" style={{ color: "white", fontWeight: 600 }}>Drive with DriveWay</Link>
               </p>
             } />
         )}
+
+        {stage === "loading" && <LoadState error={bootErr} onRetry={() => void boot()} />}
         {stage === "login" && <EmailLogin title="Welcome to" accent="DriveWay" onSignedIn={() => void boot()} onSignUp={() => setStage("signup")} />}
         {stage === "signup" && (
           <SignUp onLogin={() => setStage("login")} onSignedUp={(hasSession) => {
