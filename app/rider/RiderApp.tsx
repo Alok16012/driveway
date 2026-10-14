@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import BottomNav, { HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph, WalletGlyph } from "../components/BottomNav";
-import { EmailLogin, ForgotPassword, ResetPassword, SignUp, VideoSplash } from "../components/Auth";
+import { BlockedScreen, EmailLogin, ForgotPassword, ResetPassword, SignUp, VideoSplash } from "../components/Auth";
 import { KycFlow, PendingApproval } from "../components/rider/Kyc";
 import { AlertsScreen, EarningsScreen, RequestPopup, RiderAccount, RiderHome, TripPage, TripsScreen, type AccountKey, type QuickKey } from "../components/rider/RiderScreens";
 import {
@@ -14,7 +14,7 @@ import { HOME_BG, LoadState, Toast } from "../components/ui";
 import { CITIES, inr } from "../lib/data";
 import { NATIVE_APP } from "../lib/native";
 import {
-  acceptRide, completeRide, confirmCash, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, isRecoveryLink, myDriver, myDriverTrips,
+  acceptRide, completeRide, confirmCash, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, isRecoveryLink, myDriver, myDriverTrips, myProfile,
   myTrip, newKey, onAuthChange, recoveryLinkError, payDues, rateCustomer, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides,
   type DriverMe, type RideView,
 } from "../lib/api";
@@ -24,7 +24,7 @@ const SHELL_MAX_W = 430;
 const PREFS_KEY = "driveway:rider-prefs";
 
 type Tab = "home" | "earnings" | "trips" | "incentives" | "account";
-type Stage = "loading" | "splash" | "login" | "signup" | "forgot" | "reset" | "kyc" | "pending" | "app";
+type Stage = "loading" | "splash" | "login" | "signup" | "forgot" | "reset" | "kyc" | "pending" | "app" | "blocked";
 type Detail = { k: "alerts" } | { k: "support" } | { k: "trip"; id: string } | { k: "wallet" } | { k: "performance" } | { k: Exclude<AccountKey, "help" | "performance"> };
 
 const readPrefs = (): RiderPrefs => {
@@ -74,9 +74,9 @@ export default function RiderApp() {
     try {
       if (!(await getSession())) { const bad = recoveryLinkError(); if (bad) { setLoginNotice(bad); setStage("login"); } else setStage("splash"); return; }
       if (recovering.current) { setStage("reset"); return; }
-      const d = await myDriver();
+      const [p, d] = await Promise.all([myProfile(), myDriver()]);
       setMe(d);
-      setStage(!d ? "kyc" : d.kyc === "Approved" ? "app" : "pending");
+      setStage(p?.blocked || d?.suspended ? "blocked" : !d ? "kyc" : d.kyc === "Approved" ? "app" : "pending");
     } catch (e) { setBootErr((e as Error).message); }
   }, []);
   useEffect(() => { void boot(); }, [boot]);
@@ -84,9 +84,10 @@ export default function RiderApp() {
 
   const refreshMe = useCallback(async () => {
     try {
-      const d = await myDriver();
+      const [p, d] = await Promise.all([myProfile(), myDriver()]);
       setMe(d);
-      if (d && d.kyc !== "Approved") setStage("pending");
+      if (p?.blocked || d?.suspended) setStage("blocked");          // blocked or suspended by the admin mid-session
+      else if (d && d.kyc !== "Approved") setStage("pending");
     } catch { /* next poll retries */ }
   }, []);
   const refreshTrip = useCallback(async () => {
@@ -237,6 +238,7 @@ export default function RiderApp() {
           }} />
         )}
         {stage === "kyc" && <KycFlow onSubmitted={() => void boot()} />}
+        {stage === "blocked" && <BlockedScreen who="rider" />}
         {stage === "pending" && me && (
           <PendingApproval name={me.name} kyc={me.kyc === "Rejected" ? "Rejected" : "Pending"} note={me.kyc_note} checking={checking}
             onRefresh={() => { setChecking(true); void boot().finally(() => setChecking(false)); }}

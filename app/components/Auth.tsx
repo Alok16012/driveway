@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, BackIcon, BellIcon, PinIcon, CheckIcon } from "./icons";
+import { ArrowRight, BackIcon, BellIcon, PinIcon, CheckIcon, LockIcon, LogoutIcon } from "./icons";
 import { ErrorText, PrimaryButton, card, field, iconBtn, label } from "./ui";
-import { emailDomainExists, emailSignIn, emailSignUp, isIndianMobile, sendPasswordReset, updatePassword } from "../lib/api";
+import { emailDomainExists, emailSignIn, emailSignUp, isIndianMobile, sendPasswordReset, signOut, updatePassword } from "../lib/api";
 import KolkataSkyline, { LANDMARKS } from "./KolkataSkyline";
 
 /** Brand splash — deep navy so the DriveWay gradient logo reads the way it was drawn.
@@ -284,6 +284,34 @@ function InvalidEmailPopup({ onClose }: { onClose: () => void }) {
 }
 
 /** Name and email — shown once, after the first sign-in. */
+/** Shown instead of the app when an admin has blocked (or, for riders, suspended) the account.
+ * Nothing can be booked, accepted or edited — the server refuses it too; the only way out is logging out. */
+export function BlockedScreen({ who }: { who: "customer" | "rider" }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Shell>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 24px 24px" }}>
+        <div role="alert" className="fade-up" style={{ ...card, padding: "28px 22px", textAlign: "center" }}>
+          <span style={{ width: 64, height: 64, margin: "0 auto", borderRadius: "50%", background: "var(--error)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <LockIcon s={30} c="var(--error-text)" />
+          </span>
+          <h1 style={{ margin: "16px 0 6px", fontSize: 22, fontWeight: 800, color: "var(--ink)" }}>Your account is blocked</h1>
+          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: "var(--ink-soft)" }}>
+            {who === "rider"
+              ? "You can't go online, take rides or make changes to your account right now. Please contact DriveWay support to have it reviewed."
+              : "You can't book rides or make changes to your account right now. Please contact DriveWay support to have it reviewed."}
+          </p>
+        </div>
+      </div>
+      <div style={{ padding: "0 24px calc(24px + env(safe-area-inset-bottom))" }}>
+        <PrimaryButton tone="ghost" disabled={busy} onClick={() => { setBusy(true); void signOut().finally(() => setBusy(false)); }}>
+          <LogoutIcon s={18} c="var(--ink)" /> {busy ? "Logging out…" : "Log out"}
+        </PrimaryButton>
+      </div>
+    </Shell>
+  );
+}
+
 export function ProfileSetup({ onDone }: { onDone: (p: { name: string; email: string }) => Promise<void> }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

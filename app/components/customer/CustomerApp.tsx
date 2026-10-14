@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import BottomNav, { ChatGlyph, HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph } from "../BottomNav";
-import { EmailLogin, ForgotPassword, PermissionStep, ProfileSetup, ResetPassword, SignUp, VideoSplash } from "../Auth";
+import { BlockedScreen, EmailLogin, ForgotPassword, PermissionStep, ProfileSetup, ResetPassword, SignUp, VideoSplash } from "../Auth";
 import HomeScreen, { HOME_BG } from "./HomeScreen";
 import { ChooseRidePage, LiveRidePage, ParcelPage, SearchPage, TripDonePage } from "./BookingScreens";
 import { ChatScreen, EditProfilePage, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen, type ChatMessage, type ProfileKey } from "./AccountScreens";
@@ -22,7 +22,7 @@ const SHELL_MAX_W = 430;
 const LIVE: RideView["status"][] = ["Searching", "Arriving", "Arrived", "Started"];
 
 type Tab = "home" | "rides" | "offers" | "support" | "profile";
-type Stage = "loading" | "splash" | "login" | "signup" | "forgot" | "reset" | "setup" | "perm" | "app";
+type Stage = "loading" | "splash" | "login" | "signup" | "forgot" | "reset" | "setup" | "perm" | "app" | "blocked";
 
 type Detail =
   | { k: "search"; to?: Place; prefer?: RideOption }
@@ -75,7 +75,7 @@ export default function CustomerApp() {
       if (recovering.current) { setStage("reset"); return; }
       const p = await myProfile();
       setMe(p);
-      setStage(p && p.name ? "app" : "setup");
+      setStage(p?.blocked ? "blocked" : p && p.name ? "app" : "setup");
     } catch (e) { setBootErr((e as Error).message); }
   }, []);
   useEffect(() => { void boot(); }, [boot]);
@@ -90,7 +90,12 @@ export default function CustomerApp() {
     try { setRides(await myRides()); } catch (e) { setRidesErr((e as Error).message); }
   }, []);
   const refreshMe = useCallback(async () => {
-    try { setMe(await myProfile()); setWallet(await myWallet()); } catch { /* shown on next action */ }
+    try {
+      const p = await myProfile();
+      setMe(p);
+      if (p?.blocked) { setStage("blocked"); return; }      // blocked by the admin mid-session
+      setWallet(await myWallet());
+    } catch { /* shown on next action */ }
   }, []);
 
   useEffect(() => {
@@ -99,8 +104,9 @@ export default function CustomerApp() {
     void refreshActive(); void refreshRides(); void refreshMe();
     const stop = watchRides(() => { void refreshActive(); });
     const t = setInterval(() => { void refreshActive(); }, 4000);   // fallback if the realtime socket drops
-    const unResume = watchResume(() => { void refreshActive(); void refreshRides(); });
-    return () => { stop(); clearInterval(t); unResume(); };
+    const acct = setInterval(() => { void refreshMe(); }, 30000);   // notices an admin block mid-session
+    const unResume = watchResume(() => { void refreshActive(); void refreshRides(); void refreshMe(); });
+    return () => { stop(); clearInterval(t); clearInterval(acct); unResume(); };
   }, [stage, refreshActive, refreshRides, refreshMe, flash]);
 
   // Status-change toasts (works the same after an app restart — state comes from the server).
@@ -210,6 +216,7 @@ export default function CustomerApp() {
           <ProfileSetup onDone={async ({ name, email }) => { await updateMyProfile(name, email); setMe(await myProfile()); setStage("perm"); }} />
         )}
         {stage === "perm" && <PermissionStep onDone={() => setStage("app")} />}
+        {stage === "blocked" && <BlockedScreen who="customer" />}
 
         {stage === "app" && (chatOpen ? (
           <div style={{ flex: 1, minHeight: 0, paddingBottom: showNav ? "calc(76px + env(safe-area-inset-bottom))" : undefined }}>

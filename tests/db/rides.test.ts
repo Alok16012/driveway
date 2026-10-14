@@ -184,6 +184,37 @@ describe("Booking and dispatch (BUG-07, J2, J3, J5, J10, J11, E)", () => {
     await t.rpc(adm, "admin_set_blocked", u, true);
     await rejects(t.book(u, { option: "bike" }), /blocked/);
   });
+  it("blocked customers cannot change their name, email or phone; unblocking restores it", async () => {
+    const adm = await t.user({ admin: true }); const u = await t.user();
+    await t.rpc(adm, "admin_set_blocked", u, true);
+    await rejects(t.rpc(u, "update_my_profile", "New Name", null), /blocked/);
+    await rejects(t.rpc(u, "update_my_phone", "9876543210"), /blocked/);
+    expect((await t.rpc(u, "my_profile")).blocked).toBe(true);
+    await t.rpc(adm, "admin_set_blocked", u, false);
+    await t.rpc(u, "update_my_profile", "New Name", null);
+    expect((await t.rpc(u, "my_profile")).name).toBe("New Name");
+  });
+  it("blocked or suspended riders cannot go online, accept, or edit their details; suspended riders can still book", async () => {
+    const adm = await t.user({ admin: true });
+    const blocked = await t.driver("bike");
+    await t.rpc(adm, "admin_set_blocked", blocked, true);
+    await rejects(t.rpc(blocked, "set_online", true), /blocked/);
+    await rejects(t.rpc(blocked, "update_my_upi", "rider@okaxis"), /blocked/);
+    await rejects(t.rpc(blocked, "update_my_driver_profile", "Other Name", "Delhi"), /blocked/);
+    await rejects(t.rpc(blocked, "update_my_phone", "9876543210"), /blocked/);
+    // even if still marked online, a blocked rider cannot take a ride
+    await t.admin(`select set_config('request.jwt.claim.sub', '', false)`);  // setup runs as no one, not as the rider
+    await t.admin(`update public.drivers set online = true, last_seen = now() where id = $1`, [blocked]);
+    const r = await t.book(await t.user(), { option: "bike" });
+    await rejects(t.rpc(blocked, "accept_ride", r.id), /blocked/);
+
+    const sus = await t.driver("bike");
+    await t.rpc(adm, "admin_set_suspended", sus, true);
+    await rejects(t.rpc(sus, "update_my_upi", "rider@okaxis"), /blocked/);
+    await rejects(t.rpc(sus, "update_my_driver_profile", "Other Name", "Delhi"), /blocked/);
+    await t.rpc(sus, "set_online", false);                     // going offline is always allowed
+    expect((await t.book(sus, { option: "auto" })).status).toBe("Searching");
+  });
   it("J2: no eligible driver → NoDrivers after the timeout, never another category", async () => {
     await t.driver("sedan");                                  // a Sedan is online, but nobody drives a Mini
     const u = await t.user();
