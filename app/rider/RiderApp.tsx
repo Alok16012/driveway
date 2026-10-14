@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import BottomNav, { HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph, WalletGlyph } from "../components/BottomNav";
-import { EmailLogin, SignUp, SplashScreen } from "../components/Auth";
+import { EmailLogin, ForgotPassword, ResetPassword, SignUp, SplashScreen } from "../components/Auth";
 import { KycFlow, PendingApproval } from "../components/rider/Kyc";
 import { AlertsScreen, EarningsScreen, RequestPopup, RiderAccount, RiderHome, TripPage, TripsScreen, type AccountKey, type QuickKey } from "../components/rider/RiderScreens";
 import {
@@ -14,8 +14,8 @@ import { LoadState, Toast } from "../components/ui";
 import { CITIES, inr } from "../lib/data";
 import { NATIVE_APP } from "../lib/native";
 import {
-  acceptRide, completeRide, confirmCash, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, myDriver, myDriverTrips,
-  myTrip, newKey, onAuthChange, payDues, rateCustomer, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides,
+  acceptRide, completeRide, confirmCash, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, isRecoveryLink, myDriver, myDriverTrips,
+  myTrip, newKey, onAuthChange, recoveryLinkError, payDues, rateCustomer, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides,
   type DriverMe, type RideView,
 } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
@@ -24,7 +24,7 @@ const SHELL_MAX_W = 430;
 const PREFS_KEY = "driveway:rider-prefs";
 
 type Tab = "home" | "earnings" | "trips" | "incentives" | "account";
-type Stage = "loading" | "splash" | "login" | "signup" | "kyc" | "pending" | "app";
+type Stage = "loading" | "splash" | "login" | "signup" | "forgot" | "reset" | "kyc" | "pending" | "app";
 type Detail = { k: "alerts" } | { k: "support" } | { k: "trip"; id: string } | { k: "wallet" } | { k: "performance" } | { k: Exclude<AccountKey, "help" | "performance"> };
 
 const readPrefs = (): RiderPrefs => {
@@ -50,6 +50,8 @@ export default function RiderApp() {
   const [toast, setToast] = useState<string | null>(null);
   const [bootErr, setBootErr] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [loginNotice, setLoginNotice] = useState<string | null>(null);
+  const recovering = useRef(isRecoveryLink());
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
   const skipped = useRef(new Set<string>());
@@ -68,7 +70,8 @@ export default function RiderApp() {
   const boot = useCallback(async () => {
     setBootErr(null);
     try {
-      if (!(await getSession())) { setStage("splash"); return; }
+      if (!(await getSession())) { const bad = recoveryLinkError(); if (bad) { setLoginNotice(bad); setStage("login"); } else setStage("splash"); return; }
+      if (recovering.current) { setStage("reset"); return; }
       const d = await myDriver();
       setMe(d);
       setStage(!d ? "kyc" : d.kyc === "Approved" ? "app" : "pending");
@@ -218,7 +221,9 @@ export default function RiderApp() {
           <SplashScreen kolkata tagline="Drive · Earn · Grow" cta="Start Riding" onStart={() => setStage("login")}
             footer={NATIVE_APP ? undefined : <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.75)" }}><Link href="/" style={{ color: "white", fontWeight: 600 }}>Book a ride instead</Link></p>} />
         )}
-        {stage === "login" && <EmailLogin title="Welcome, Rider" accent="Let's get you earning" onSignedIn={() => void boot()} onSignUp={() => setStage("signup")} />}
+        {stage === "login" && <EmailLogin title="Welcome, Rider" accent="Let's get you earning" notice={loginNotice} onSignedIn={() => void boot()} onSignUp={() => setStage("signup")} onForgot={() => { setLoginNotice(null); setStage("forgot"); }} />}
+        {stage === "forgot" && <ForgotPassword onBack={() => setStage("login")} />}
+        {stage === "reset" && <ResetPassword onDone={() => { recovering.current = false; flash("Password updated — you're signed in."); void boot(); }} />}
         {stage === "signup" && (
           <SignUp onLogin={() => setStage("login")} onSignedUp={(hasSession) => {
             if (hasSession) { void boot(); return; }

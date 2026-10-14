@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import BottomNav, { ChatGlyph, HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph } from "../BottomNav";
-import { EmailLogin, PermissionStep, ProfileSetup, SignUp, VideoSplash } from "../Auth";
+import { EmailLogin, ForgotPassword, PermissionStep, ProfileSetup, ResetPassword, SignUp, VideoSplash } from "../Auth";
 import HomeScreen, { HOME_BG } from "./HomeScreen";
 import { ChooseRidePage, LiveRidePage, ParcelPage, SearchPage, TripDonePage } from "./BookingScreens";
 import { ChatScreen, EditProfilePage, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen, type ChatMessage, type ProfileKey } from "./AccountScreens";
@@ -13,7 +13,7 @@ import { CardIcon, UpiIcon, WalletIcon } from "../icons";
 import { inr, type PayMethod } from "../../lib/data";
 import { NATIVE_APP } from "../../lib/native";
 import {
-  cancelRide, closeRide, fmtWhen, getSession, myActiveRide, myProfile, myRides, myWallet, onAuthChange, payRide, places as fetchPlaces,
+  cancelRide, closeRide, fmtWhen, getSession, isRecoveryLink, myActiveRide, myProfile, myRides, myWallet, onAuthChange, payRide, recoveryLinkError, places as fetchPlaces,
   signOut, supportMessage, updateMyPhone, updateMyProfile, watchResume, watchRides, type Place, type Profile, type Quote, type RideView, type Txn,
 } from "../../lib/api";
 import { supabase } from "../../lib/supabase/client";
@@ -22,7 +22,7 @@ const SHELL_MAX_W = 430;
 const LIVE: RideView["status"][] = ["Searching", "Arriving", "Arrived", "Started"];
 
 type Tab = "home" | "rides" | "offers" | "support" | "profile";
-type Stage = "loading" | "splash" | "login" | "signup" | "setup" | "perm" | "app";
+type Stage = "loading" | "splash" | "login" | "signup" | "forgot" | "reset" | "setup" | "perm" | "app";
 
 type Detail =
   | { k: "search"; to?: Place; prefer?: RideOption }
@@ -54,6 +54,8 @@ export default function CustomerApp() {
   const [toast, setToast] = useState<string | null>(null);
   const [bootErr, setBootErr] = useState<string | null>(null);
   const [intro, setIntro] = useState(true);
+  const [loginNotice, setLoginNotice] = useState<string | null>(null);
+  const recovering = useRef(isRecoveryLink());
   const endIntro = useCallback(() => setIntro(false), []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -69,7 +71,8 @@ export default function CustomerApp() {
   const boot = useCallback(async () => {
     setBootErr(null);
     try {
-      if (!(await getSession())) { setStage("splash"); return; }
+      if (!(await getSession())) { const bad = recoveryLinkError(); if (bad) { setLoginNotice(bad); setStage("login"); } else setStage("splash"); return; }
+      if (recovering.current) { setStage("reset"); return; }
       const p = await myProfile();
       setMe(p);
       setStage(p && p.name ? "app" : "setup");
@@ -194,7 +197,9 @@ export default function CustomerApp() {
         )}
 
         {stage === "loading" && <LoadState error={bootErr} onRetry={() => void boot()} />}
-        {stage === "login" && <EmailLogin title="Welcome to" accent="DriveWay" onSignedIn={() => void boot()} onSignUp={() => setStage("signup")} />}
+        {stage === "login" && <EmailLogin title="Welcome to" accent="DriveWay" notice={loginNotice} onSignedIn={() => void boot()} onSignUp={() => setStage("signup")} onForgot={() => { setLoginNotice(null); setStage("forgot"); }} />}
+        {stage === "forgot" && <ForgotPassword onBack={() => setStage("login")} />}
+        {stage === "reset" && <ResetPassword onDone={() => { recovering.current = false; flash("Password updated — you're signed in."); void boot(); }} />}
         {stage === "signup" && (
           <SignUp onLogin={() => setStage("login")} onSignedUp={(hasSession) => {
             if (hasSession) { void boot(); return; }

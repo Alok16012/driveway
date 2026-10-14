@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, BackIcon, BellIcon, PinIcon, CheckIcon } from "./icons";
 import { ErrorText, PrimaryButton, card, field, iconBtn, label } from "./ui";
-import { emailSignIn, emailSignUp, isIndianMobile } from "../lib/api";
+import { emailSignIn, emailSignUp, isIndianMobile, sendPasswordReset, updatePassword } from "../lib/api";
 import KolkataSkyline, { LANDMARKS } from "./KolkataSkyline";
 
 /** Brand splash — deep navy so the DriveWay gradient logo reads the way it was drawn.
@@ -118,11 +118,13 @@ const Terms = () => (
 );
 
 /** Email + password sign-in (Supabase Auth). */
-export function EmailLogin({ title, accent, onSignedIn, onSignUp }: { title: string; accent: string; onSignedIn: () => void; onSignUp: () => void }) {
+export function EmailLogin({ title, accent, onSignedIn, onSignUp, onForgot, notice }: {
+  title: string; accent: string; onSignedIn: () => void; onSignUp: () => void; onForgot: () => void; notice?: string | null;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(notice ?? null);
   const ok = isEmail(email) && password.length > 0;
   const submit = async () => {
     if (!ok || busy) return;
@@ -134,11 +136,85 @@ export function EmailLogin({ title, accent, onSignedIn, onSignUp }: { title: str
       <H title={title} accent={accent} body="Log in with your email and password." />
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ padding: "28px 24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
         <div><label style={label} htmlFor="le">Email</label><input id="le" type="email" value={email} maxLength={254} onChange={(e) => { setEmail(e.target.value); setErr(null); }} placeholder="you@example.com" style={field} autoComplete="email" /></div>
-        <div><label style={label} htmlFor="lp">Password</label><input id="lp" type="password" value={password} onChange={(e) => { setPassword(e.target.value); setErr(null); }} placeholder="Your password" style={field} autoComplete="current-password" /></div>
+        <div>
+          <label style={label} htmlFor="lp">Password</label><input id="lp" type="password" value={password} onChange={(e) => { setPassword(e.target.value); setErr(null); }} placeholder="Your password" style={field} autoComplete="current-password" />
+          <div style={{ textAlign: "right", marginTop: 8 }}>
+            <button type="button" onClick={onForgot} style={{ background: "none", border: "none", padding: 0, color: "var(--on-bg-accent)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Forgot password?</button>
+          </div>
+        </div>
         <ErrorText msg={err} />
         <PrimaryButton type="submit" disabled={!ok || busy}>{busy ? "Logging in…" : "Log in"}</PrimaryButton>
         <SwitchLink q="New to DriveWay?" cta="Create an account" onClick={onSignUp} />
         <Terms />
+      </form>
+    </Shell>
+  );
+}
+
+/** Email → reset link. Says the same thing whether or not the email has an account. */
+export function ForgotPassword({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async () => {
+    if (!isEmail(email) || busy) return;
+    setBusy(true); setErr(null);
+    try { await sendPasswordReset(email); setSent(true); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <Shell onBack={onBack}>
+      {sent ? (
+        <>
+          <H title="Check your" accent="inbox" body={`If ${email.trim()} has a DriveWay account, we've sent it a link to reset your password. The link works once and expires in an hour.`} />
+          <div style={{ padding: "28px 24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
+            <PrimaryButton onClick={onBack}>Back to log in</PrimaryButton>
+            <SwitchLink q="No email? Check spam, or" cta="send it again" onClick={() => setSent(false)} />
+          </div>
+        </>
+      ) : (
+        <>
+          <H title="Forgot your" accent="password?" body="Enter the email you signed up with and we'll send you a link to set a new one." />
+          <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ padding: "28px 24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
+            <div><label style={label} htmlFor="fe">Email</label><input id="fe" type="email" value={email} maxLength={254} onChange={(e) => { setEmail(e.target.value); setErr(null); }} placeholder="you@example.com" style={field} autoComplete="email" /></div>
+            <ErrorText msg={err} />
+            <PrimaryButton type="submit" disabled={!isEmail(email) || busy}>{busy ? "Sending…" : "Send reset link"}</PrimaryButton>
+            <SwitchLink q="Remembered it?" cta="Log in" onClick={onBack} />
+          </form>
+        </>
+      )}
+    </Shell>
+  );
+}
+
+/** Opened from the emailed link (a recovery session) → choose a new password. */
+export function ResetPassword({ onDone }: { onDone: () => void }) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const ok = password.length >= MIN_PASSWORD && confirm === password;
+  const submit = async () => {
+    if (!ok || busy) return;
+    setBusy(true); setErr(null);
+    try { await updatePassword(password); onDone(); } catch (e) { setErr((e as Error).message); setBusy(false); }
+  };
+  return (
+    <Shell>
+      <H title="Set a new" accent="password" body="Choose a new password for your DriveWay account." />
+      <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ padding: "28px 24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
+        <div>
+          <label style={label} htmlFor="rp">New Password</label>
+          <input id="rp" type="password" value={password} onChange={(e) => { setPassword(e.target.value); setErr(null); }} placeholder={`At least ${MIN_PASSWORD} characters`} style={field} autoComplete="new-password" />
+          {password.length > 0 && password.length < MIN_PASSWORD && <ErrorText msg={`Use at least ${MIN_PASSWORD} characters.`} />}
+        </div>
+        <div>
+          <label style={label} htmlFor="rc">Confirm Password</label>
+          <input id="rc" type="password" value={confirm} onChange={(e) => { setConfirm(e.target.value); setErr(null); }} placeholder="Type it again" style={field} autoComplete="new-password" />
+          {confirm.length > 0 && confirm !== password && <ErrorText msg="Passwords don't match." />}
+        </div>
+        <ErrorText msg={err} />
+        <PrimaryButton type="submit" disabled={!ok || busy}>{busy ? "Saving…" : "Save password"}</PrimaryButton>
       </form>
     </Shell>
   );

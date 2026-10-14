@@ -6,6 +6,7 @@
 
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase/client";
+import { NATIVE_APP } from "./native";
 import type { PayMethod, RideStatus, VehicleKind } from "./data";
 
 /* ───────────── Types returned by the server ───────────── */
@@ -119,6 +120,26 @@ export async function getSession(): Promise<Session | null> {
 export function onAuthChange(cb: (signedIn: boolean) => void) {
   const { data } = supabase().auth.onAuthStateChange((_e, s) => cb(!!s));
   return () => data.subscription.unsubscribe();
+}
+
+/* Password reset. The emailed link comes back to the app it was asked from (/ or /rider) with
+ * `#…type=recovery` (or `#error=…` once expired); read the hash at load, before Supabase consumes it. */
+const landingHash = typeof window === "undefined" ? "" : window.location.hash;
+export const isRecoveryLink = () => /[#&]type=recovery\b/.test(landingHash);
+export function recoveryLinkError(): string | null {
+  if (!/[#&]error=/.test(landingHash)) return null;
+  return /otp_expired/.test(landingHash) ? "That reset link has expired or was already used — ask for a new one." : "That reset link didn't work — ask for a new one.";
+}
+/** Emails a reset link. The native apps leave the redirect to the project's Site URL (the web app). */
+export async function sendPasswordReset(email: string) {
+  const redirectTo = NATIVE_APP ? undefined : `${window.location.origin}${window.location.pathname.startsWith("/rider") ? "/rider" : "/"}`;
+  const { error } = await supabase().auth.resetPasswordForEmail(email.trim(), { redirectTo });
+  if (error) throw new Error(/rate limit|security purposes/i.test(error.message) ? "Too many requests — wait a minute and try again." : friendly(error));
+}
+/** Sets a new password for the signed-in (recovery) session. */
+export async function updatePassword(password: string) {
+  const { error } = await supabase().auth.updateUser({ password });
+  if (error) throw new Error(/different from the old/i.test(error.message) ? "Choose a password different from your old one." : friendly(error));
 }
 
 /* ───────────── Reference data ───────────── */
