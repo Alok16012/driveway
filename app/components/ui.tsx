@@ -105,6 +105,10 @@ export const onLight = {
   "--on-bg": "var(--ink)", "--on-bg-soft": "var(--ink-soft)", "--on-bg-line": "var(--line)", "--on-bg-accent": "var(--blue)",
 } as React.CSSProperties;
 
+/** Home-screen canvas — the same orange as the Kolkata launch screen; text sitting on it is white.
+ * Shared by the customer and rider home tabs. */
+export const HOME_BG = "linear-gradient(170deg,#fb923c 0%,#ea580c 45%,#c2410c 100%)";
+
 export const card: React.CSSProperties = {
   background: "var(--surface)", borderRadius: 18, boxShadow: "var(--shadow-card)", ...onLight,
 };

@@ -148,6 +148,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
   const [coupon, setCoupon] = useState<string | null>(initialCoupon);
   const [when, setWhen] = useState<[string, string] | null>(null);
   const [passenger, setPassenger] = useState<{ name: string; phone: string } | null>(null);
+  const [addOn, setAddOn] = useState(0);
   const [rental, setRental] = useState<{ pkg: string; car: VehicleKind }>({ pkg: "r2", car: "mini" });
   const [sheet, setSheet] = useState<null | "pay" | "coupon" | "who" | "when" | "rental" | "fare">(null);
   const [bigMap, setBigMap] = useState(false);
@@ -178,6 +179,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
   };
   const cur = pick(sel);
   const isParcel = sel === "parcel";
+  const extra = isParcel ? 0 : addOn;
   const nameOf = (o: RideOption) => (o === "any" ? "Book Any" : o === "rental" ? "Hourly Rental" : o === "parcel" ? "Parcel" : vehicleById(o).name);
   const visible = ORDER.filter((o) => o === "any" || o === "rental" || o === "parcel" || !!opt(o as VehicleKind));
 
@@ -188,7 +190,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
     try {
       await bookRide({
         option: sel, from: from.id, to: to.id, ac, pay, coupon, when: when?.[1] ?? null, passenger,
-        rental: sel === "rental" ? rental : undefined, idem: idem.current,
+        rental: sel === "rental" ? rental : undefined, add_on: extra, idem: idem.current,
       });
       onBooked(!!when);
     } catch (e) {
@@ -319,9 +321,17 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
           <span style={{ width: 1, height: 26, background: "var(--line-strong)" }} />
           <button onClick={() => setSheet("who")} style={barBtn}><UserIcon s={21} c="var(--ink-soft)" /> <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{passenger ? passenger.name.split(" ")[0] : "Myself"}</span></button>
         </div>
+        {!isParcel && cur.available && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 2px 10px" }}>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", lineHeight: 1.25 }}>Add on for faster pickup</span>
+            {ADD_ONS.map((n) => (
+              <button key={n} aria-pressed={addOn === n} onClick={() => setAddOn(addOn === n ? 0 : n)} className="press" style={{ ...chip(addOn === n), padding: "7px 12px" }}>+{inr(n)}</button>
+            ))}
+          </div>
+        )}
         <ErrorText msg={bookErr} />
         <PrimaryButton onClick={() => void book()} disabled={busy || !cur.available || (!!couponState && !couponState.ok)}>
-          {busy ? "Booking…" : isParcel ? "Continue to Parcel details" : `${when ? "Schedule" : "Book"} ${sel === "any" ? "Any" : sel === "rental" ? "Rental" : nameOf(sel)} · ${inr(cur.fare - cur.discount)}`}
+          {busy ? "Booking…" : isParcel ? "Continue to Parcel details" : `${when ? "Schedule" : "Book"} ${sel === "any" ? "Any" : sel === "rental" ? "Rental" : nameOf(sel)} · ${inr(cur.fare - cur.discount + extra)}`}
         </PrimaryButton>
       </div>
 
@@ -394,8 +404,9 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
                 : sel === "parcel" ? r("Bike delivery, up to 1 kg", inr(cur.fare))
                 : cur.lines?.map((l) => r(l.label, money(l.amount)))}
               {cur.discount > 0 && r(`Coupon ${coupon}`, "− " + inr(cur.discount))}
+              {extra > 0 && r("Add-on for faster pickup", inr(extra))}
               <div style={{ borderTop: "1px dashed var(--line-strong)", margin: "6px 0" }} />
-              {r("Estimated total", inr(cur.fare - cur.discount), true)}
+              {r("Estimated total", inr(cur.fare - cur.discount + extra), true)}
             </div>
             <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.5 }}>Waiting time after 3 free minutes is added at the end. Cancelling after a driver is on the way: {inr(cur.cancel)}.</p>
           </Sheet>
@@ -405,6 +416,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
   );
 }
 
+const ADD_ONS = [10, 20, 30];
 const sheetTitle: React.CSSProperties = { margin: "0 0 12px", fontSize: 18, fontWeight: 700, color: "var(--ink)" };
 const chip = (on: boolean): React.CSSProperties => ({
   borderRadius: 12, cursor: "pointer", fontSize: 13, fontWeight: 600,
@@ -845,7 +857,8 @@ export function TripDonePage({ ride, walletBalance, onDone, onReceipt }: { ride:
 
       <div style={{ padding: "18px 16px 0", flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ ...card, padding: "12px 16px" }}>
-          {line("Trip fare", inr(ride.fare))}
+          {line("Trip fare", inr(ride.fare - (ride.add_on ?? 0)))}
+          {ride.add_on > 0 && line("Add-on for faster pickup", inr(ride.add_on))}
           {ride.wait_fee > 0 && line("Waiting charge", inr(ride.wait_fee))}
           {ride.discount > 0 && line(`Coupon ${ride.coupon ?? ""}`, "− " + inr(ride.discount))}
           {line("Total", inr(ride.total), true)}

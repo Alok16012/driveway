@@ -49,7 +49,7 @@ export function RiderHome({ me, online, toggling, toggleErr, onToggle, onOpenEar
   return (
     <div style={{ paddingBottom: 24 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 10px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><BrandMark size={34} /><Wordmark light sub="RIDER · DRIVE · EARN" /></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><BrandMark size={26} badge /><Wordmark light sub="RIDER · DRIVE · EARN" /></div>
         <button aria-label="Notifications" onClick={onAlerts} className="press" style={iconBtn}>
           <BellIcon s={25} c="var(--on-bg)" w={1.7} />
           {unread > 0 && <span style={{ position: "absolute", top: 1, right: 2, width: 8, height: 8, borderRadius: "50%", background: "var(--red)", border: "1.5px solid var(--app-bg)" }} />}
@@ -249,7 +249,7 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
           </p>
         </div>
         <div style={{ ...card, padding: "12px 16px", marginTop: 18 }}>
-          {([["Trip fare", inr(trip.fare)], trip.wait_fee ? ["Waiting charge", inr(trip.wait_fee)] : null, [`Platform commission (${trip.commission_pct}%)`, "− " + inr(gross - earn)]].filter(Boolean) as string[][]).map(([l, v]) => (
+          {([["Trip fare", inr(trip.fare - (trip.add_on ?? 0))], trip.add_on ? ["Add-on for faster pickup", inr(trip.add_on)] : null, trip.wait_fee ? ["Waiting charge", inr(trip.wait_fee)] : null, [`Platform commission (${trip.commission_pct}%)`, "− " + inr(gross - earn)]].filter(Boolean) as string[][]).map(([l, v]) => (
             <div key={l} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "var(--ink-soft)", padding: "4px 0" }}><span>{l}</span><span>{v}</span></div>
           ))}
           <div style={{ borderTop: "1px dashed var(--line-strong)", margin: "6px 0" }} />

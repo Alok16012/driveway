@@ -77,6 +77,15 @@ describe("Pricing on the server (BUG-17, BUG-18, BUG-22, D)", () => {
     expect(e.lines.some((l: any) => /Minimum fare/.test(l.label))).toBe(true);
     await t.admin(`update public.vehicles set min_fare = 30 where id = 'erick'`);
   });
+  it("a ₹10/₹20/₹30 add-on is charged on top of the quoted fare; other amounts are refused", async () => {
+    const u = await t.user();
+    const base = (await t.rpc(u, "quote", "cur", "dlf", true, null)).options.find((o: any) => o.id === "auto").fare;
+    const b = await t.book(u, { option: "auto", add_on: 20 });
+    const r = (await t.as(u, `select fare, total, add_on from public.rides where id = '${b.id}'`))[0];
+    expect(r).toEqual({ fare: base + 20, total: base + 20, add_on: 20 });
+    expect((await t.rpc(u, "my_active_ride")).add_on).toBe(20);
+    for (const bad of [5, 50, -10, "x"]) await rejects(t.book(await t.user(), { option: "auto", add_on: bad }), /add-on/);
+  });
   it("pickup equal to drop is refused (quote and booking)", async () => {
     const u = await t.user();
     await rejects(t.rpc(u, "quote", "dlf", "dlf", true, null), /must be different/);

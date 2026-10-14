@@ -5,7 +5,7 @@ import { ArrowRight, BellIcon, BriefcaseIcon, ChevronRight, ClockIcon, HomeIcon,
 import { BrandMark, Wordmark } from "../Brand";
 import MapView from "../MapView";
 import VehicleArt, { AnyArt, ParcelArt, RentalArt } from "../VehicleArt";
-import { iconBtn } from "../ui";
+import { HOME_BG, iconBtn } from "../ui";
 import { vehicleById } from "../../lib/data";
 import type { Place, RideView } from "../../lib/api";
 import type { RideOption } from "./types";
@@ -38,12 +38,11 @@ const STATUS_LINE: Record<string, string> = {
   NoDrivers: "No drivers were available",
 };
 
-/** Home screen canvas — the same orange as the Kolkata launch screen; text sitting on it is white. */
-export const HOME_BG = "linear-gradient(170deg,#fb923c 0%,#ea580c 45%,#c2410c 100%)";
+export { HOME_BG };
 const ON_BG = "white";
 const ON_BG_SOFT = "rgba(255,255,255,0.85)";
 
-const SERVICES: RideOption[] = ["bike", "auto", "erick", "mini", "sedan", "suv", "any", "rental", "parcel"];
+const SERVICES: RideOption[] = ["bike", "mini", "sedan", "suv", "any", "rental", "parcel", "auto", "erick"];
 
 export default function HomeScreen(p: HomeProps) {
   const quick = p.places.filter((x) => x.kind && x.kind !== "current");
@@ -53,7 +52,7 @@ export default function HomeScreen(p: HomeProps) {
       {/* ── Top bar ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 10px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <BrandMark size={34} />
+          <BrandMark size={26} badge />
           <Wordmark light />
         </div>
         <button aria-label="Notifications" onClick={p.onNotifications} className="press" style={iconBtn}>

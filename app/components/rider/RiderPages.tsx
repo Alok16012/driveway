@@ -241,7 +241,7 @@ export function TripDetailPage({ ride, onHelp, onBack }: { ride: RideView; onHel
       </div>
       <div style={{ ...card, padding: "12px 16px" }}>
         {[["Customer", ride.customer?.name ?? "—"], ["Distance · time", `${ride.km} km · ${ride.mins} min`], ["Payment", `${ride.pay} · ${ride.payment_status}`],
-          ...(done ? [["Trip fare", inr(ride.fare)], ...(ride.wait_fee ? [["Waiting charge", inr(ride.wait_fee)]] : []), [`Commission (${ride.commission_pct}%)`, "− " + inr(gross - earn)]] : [])].map(([l, v]) => (
+          ...(done ? [["Trip fare", inr(ride.fare - (ride.add_on ?? 0))], ...(ride.add_on ? [["Add-on for faster pickup", inr(ride.add_on)]] : []), ...(ride.wait_fee ? [["Waiting charge", inr(ride.wait_fee)]] : []), [`Commission (${ride.commission_pct}%)`, "− " + inr(gross - earn)]] : [])].map(([l, v]) => (
           <div key={l} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "5px 0" }}><span style={{ color: "var(--ink-soft)" }}>{l}</span><span style={{ fontWeight: 600 }}>{v}</span></div>
         ))}
         {done && (

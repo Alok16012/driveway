@@ -98,7 +98,8 @@ export function RideDetailPage({ ride, onBack, onHelp, onPay, onCancel }: {
             <>{row("Cancellation reason", ride.status === "NoDrivers" ? "No drivers available" : ride.cancel_reason ?? "—")}{row("Cancellation fee", inr(ride.cancel_fee))}</>
           ) : (
             <>
-              {row(ride.status === "Completed" ? "Trip fare" : "Quoted fare", inr(ride.fare))}
+              {row(ride.status === "Completed" ? "Trip fare" : "Quoted fare", inr(ride.fare - (ride.add_on ?? 0)))}
+              {ride.add_on > 0 && row("Add-on for faster pickup", inr(ride.add_on))}
               {ride.wait_fee > 0 && row("Waiting charge", inr(ride.wait_fee))}
               {ride.discount > 0 && row(`Coupon ${ride.coupon ?? ""}`, "− " + inr(ride.discount), false, "var(--success-text)")}
             </>

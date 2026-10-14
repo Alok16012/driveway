@@ -10,7 +10,7 @@ import {
   BankPage, CancelTripSheet, DocumentsPage, IncentivesScreen, PerformancePage, PreferencesPage, SosSheet, TripDetailPage, VehiclePage, WalletPage, type RiderPrefs,
 } from "../components/rider/RiderPages";
 import { ChatScreen, EditProfilePage, type ChatMessage } from "../components/customer/AccountScreens";
-import { LoadState, Toast } from "../components/ui";
+import { HOME_BG, LoadState, Toast } from "../components/ui";
 import { CITIES, inr } from "../lib/data";
 import { NATIVE_APP } from "../lib/native";
 import {
@@ -250,7 +250,7 @@ export default function RiderApp() {
               quick={["Payout issue", "Customer didn't show", "App problem", "Document update"]} />
           </div>
         ) : (
-          <div ref={scrollRef} className="no-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", paddingBottom: showNav ? "calc(76px + env(safe-area-inset-bottom))" : undefined }}>
+          <div ref={scrollRef} className="no-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", background: !trip && !detail && tab === "home" ? HOME_BG : undefined, paddingBottom: showNav ? "calc(76px + env(safe-area-inset-bottom))" : undefined }}>
             {trip ? (
               <TripPage trip={trip} busy={busy} err={err}
                 onBack={() => flash("Finish or cancel this trip first")}

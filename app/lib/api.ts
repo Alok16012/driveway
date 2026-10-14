@@ -28,7 +28,7 @@ export type PaymentStatus = "unpaid" | "pending" | "paid" | "refunded" | "partia
 export interface RideView {
   id: string; code: string; status: RideStatus; service: "ride" | "any" | "rental" | "parcel";
   vehicle: VehicleKind; requested: VehicleKind[]; ac: boolean; from: PlaceRef; to: PlaceRef; km: number; mins: number;
-  fare: number; discount: number; coupon: string | null; wait_fee: number; cancel_fee: number; total: number;
+  fare: number; discount: number; coupon: string | null; wait_fee: number; add_on: number; cancel_fee: number; total: number;
   pay: PayMethod; payment_status: PaymentStatus; refunded: number; scheduled_for: string | null;
   passenger: { name: string; phone: string } | null;
   parcel: { type: string; weight: string; weight_label: string; receiver: { name: string; phone: string }; note: string; sender: { name: string; phone: string } } | null;
@@ -191,6 +191,7 @@ export interface BookRequest {
   passenger?: { name: string; phone: string } | null;
   parcel?: { type: string; weight: string; receiver: { name: string; phone: string }; note: string };
   rental?: { pkg: string; car: VehicleKind };
+  add_on?: number;                                      // ₹10 / ₹20 / ₹30 on top of the fare
   idem: string;
 }
 export const bookRide = (p: BookRequest) => rpc<{ id: string; code: string; status: RideStatus; duplicate: boolean }>("book_ride", { p });

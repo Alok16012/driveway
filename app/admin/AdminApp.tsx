@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { VideoSplash } from "../components/Auth";
 import { BrandMark, Wordmark } from "../components/Brand";
 import MapView from "../components/MapView";
 import VehicleArt from "../components/VehicleArt";
@@ -81,12 +82,16 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-IN"
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).map((s) => s[0]).join("").slice(0, 2).toUpperCase() || "?";
 const paidOf = (r: RideRow) => (r.payment_status === "paid" || r.payment_status.includes("refunded") ? r.total : 0);
 
+const SPLASH_MAX_W = 430;   // same column as the customer and rider apps
+
 export default function AdminApp() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [section, setSection] = useState<Section>("dashboard");
   const [data, setData] = useState<Data | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [intro, setIntro] = useState(true);
+  const endIntro = useCallback(() => setIntro(false), []);
 
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2600); };
 
@@ -115,18 +120,30 @@ export default function AdminApp() {
     try { await rpc(fn, args); flash(ok); await reload(); return true; } catch (e) { flash((e as Error).message); return false; }
   };
 
-  if (authed === null) return <LoadState />;
-  if (!authed) return <AdminLogin onLogin={() => setAuthed(true)} />;
-  if (!data) return <LoadState error={loadErr} onRetry={() => void reload()} />;
+  // Kolkata launch video, played each time the panel opens (portrait, so it sits in a phone-width column).
+  // Signed-out admins stay on its last frame until they tap Admin Login; signed-in admins continue when it ends.
+  const splash = intro && (
+    <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "#ea580c", display: "flex", justifyContent: "center" }}>
+      <div style={{ width: "100%", maxWidth: SPLASH_MAX_W, height: "100%", position: "relative", boxShadow: "var(--shadow-float)" }}>
+        <VideoSplash src="/driveway-intro.mp4" cta="Admin Login" onDone={authed === null ? undefined : endIntro}
+          onStart={authed === false ? endIntro : undefined} />
+      </div>
+    </div>
+  );
+
+  if (authed === null) return <>{splash}<LoadState /></>;
+  if (!authed) return <>{splash}<AdminLogin onLogin={() => setAuthed(true)} /></>;
+  if (!data) return <>{splash}<LoadState error={loadErr} onRetry={() => void reload()} /></>;
 
   const pending = data.drivers.filter((d) => d.kyc === "Pending").length;
   const open = data.tickets.filter((t) => t.status !== "Resolved").length;
 
   return (
+    <>{splash}
     <div className="adm-shell">
       <aside className="adm-side">
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 6px", flexShrink: 0 }}>
-          <BrandMark size={30} />
+          <BrandMark size={24} badge />
           <Wordmark light sub="ADMIN PANEL" size={18} />
         </div>
         <nav className="adm-nav" aria-label="Admin sections">
@@ -136,18 +153,18 @@ export default function AdminApp() {
             return (
               <button key={id} onClick={() => setSection(id)} aria-current={on ? "page" : undefined} style={{
                 display: "flex", alignItems: "center", gap: 11, border: "none", cursor: "pointer", borderRadius: 12, padding: "10px 12px",
-                background: on ? "var(--gold)" : "transparent", color: on ? "var(--blue-dark)" : "rgba(255,255,255,0.75)",
+                background: on ? "var(--surface)" : "transparent", color: on ? "var(--blue)" : "rgba(255,255,255,0.85)",
                 fontSize: 13.5, fontWeight: on ? 700 : 500, textAlign: "left", whiteSpace: "nowrap", flexShrink: 0,
               }}>
-                <Icon s={18} c={on ? "var(--blue-dark)" : "rgba(255,255,255,0.75)"} />
+                <Icon s={18} c={on ? "var(--blue)" : "rgba(255,255,255,0.85)"} />
                 <span style={{ flex: 1 }}>{l}</span>
-                {badge > 0 && <span style={{ minWidth: 20, height: 20, borderRadius: 10, background: on ? "var(--blue-dark)" : "var(--red)", color: "white", fontSize: 10.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 6px" }}>{badge}</span>}
+                {badge > 0 && <span style={{ minWidth: 20, height: 20, borderRadius: 10, background: on ? "var(--blue)" : "var(--red)", color: "white", fontSize: 10.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 6px" }}>{badge}</span>}
               </button>
             );
           })}
         </nav>
         <div className="adm-side-foot" style={{ marginTop: "auto", paddingTop: 20 }}>
-          <button onClick={() => void signOut()} style={{ display: "flex", alignItems: "center", gap: 10, border: "none", background: "rgba(255,255,255,0.08)", color: "white", borderRadius: 12, padding: "10px 12px", cursor: "pointer", fontSize: 13.5, fontWeight: 500, width: "100%" }}>
+          <button onClick={() => void signOut()} style={{ display: "flex", alignItems: "center", gap: 10, border: "none", background: "rgba(255,255,255,0.14)", color: "white", borderRadius: 12, padding: "10px 12px", cursor: "pointer", fontSize: 13.5, fontWeight: 500, width: "100%" }}>
             <LogoutIcon s={18} c="white" /> Log out
           </button>
         </div>
@@ -173,6 +190,7 @@ export default function AdminApp() {
         <div className="fade-up" role="status" style={{ position: "fixed", left: "50%", bottom: 28, transform: "translateX(-50%)", zIndex: 300, background: "var(--ink)", color: "white", borderRadius: 14, padding: "12px 18px", fontSize: 13.5, fontWeight: 500, boxShadow: "var(--shadow-xl)" }}>{toast}</div>
       )}
     </div>
+    </>
   );
 }
 
