@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, BackIcon, BellIcon, PinIcon, CheckIcon } from "./icons";
 import { ErrorText, PrimaryButton, card, field, iconBtn, label } from "./ui";
-import { emailSignIn, emailSignUp, isIndianMobile, sendPasswordReset, updatePassword } from "../lib/api";
+import { emailDomainExists, emailSignIn, emailSignUp, isIndianMobile, sendPasswordReset, updatePassword } from "../lib/api";
 import KolkataSkyline, { LANDMARKS } from "./KolkataSkyline";
 
 /** Brand splash — deep navy so the DriveWay gradient logo reads the way it was drawn.
@@ -102,7 +102,8 @@ const H = ({ title, accent, body }: { title: string; accent?: string; body: stri
   </div>
 );
 
-const isEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e.trim());
+/** local@domain.tld — no spaces, no empty or doubled dots, a letters-only TLD of 2+ chars. */
+const isEmail = (e: string) => /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)*\.[a-z]{2,}$/i.test(e.trim()) && !e.includes("..");
 const MIN_PASSWORD = 6;
 
 const SwitchLink = ({ q, cta, onClick }: { q: string; cta: string; onClick: () => void }) => (
@@ -228,16 +229,20 @@ export function SignUp({ onSignedUp, onLogin }: { onSignedUp: (hasSession: boole
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const ok = name.trim().length > 0 && isEmail(email) && isIndianMobile(phone) && password.length >= MIN_PASSWORD;
+  const [badEmail, setBadEmail] = useState(false);
+  // The email is checked on submit, not here, so a bad one gets the popup instead of a silently greyed-out button.
+  const ok = name.trim().length > 0 && email.trim().length > 0 && isIndianMobile(phone) && password.length >= MIN_PASSWORD;
   const submit = async () => {
     if (!ok || busy) return;
+    if (!isEmail(email)) { setBadEmail(true); return; }
     setBusy(true); setErr(null);
+    if (!(await emailDomainExists(email))) { setBadEmail(true); setBusy(false); return; }
     try { onSignedUp(await emailSignUp({ name, email, phone, password })); } catch (e) { setErr((e as Error).message); setBusy(false); }
   };
   return (
     <Shell onBack={onLogin}>
       <H title="Create your" accent="DriveWay account" body="A few details and you're ready to ride." />
-      <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ padding: "24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
+      <form noValidate onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ padding: "24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
         <div><label style={label} htmlFor="sn">Full Name</label><input id="sn" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Amit Sharma" style={field} autoComplete="name" /></div>
         <div><label style={label} htmlFor="se">Email</label><input id="se" type="email" value={email} maxLength={254} onChange={(e) => { setEmail(e.target.value); setErr(null); }} placeholder="you@example.com" style={field} autoComplete="email" /></div>
         <div>
@@ -260,7 +265,21 @@ export function SignUp({ onSignedUp, onLogin }: { onSignedUp: (hasSession: boole
         <SwitchLink q="Already have an account?" cta="Log in" onClick={onLogin} />
         <Terms />
       </form>
+      {badEmail && <InvalidEmailPopup onClose={() => { setBadEmail(false); document.getElementById("se")?.focus(); }} />}
     </Shell>
+  );
+}
+
+function InvalidEmailPopup({ onClose }: { onClose: () => void }) {
+  return (
+    <div role="alertdialog" aria-modal="true" aria-labelledby="iet" aria-describedby="ieb" onClick={onClose}
+      style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(2,11,36,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div className="fade-up" onClick={(e) => e.stopPropagation()} style={{ ...card, width: "100%", maxWidth: 320, padding: "22px 20px 18px", textAlign: "center" }}>
+        <p id="iet" style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "var(--ink)" }}>Invalid email</p>
+        <p id="ieb" style={{ margin: "8px 0 18px", fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.5 }}>Please enter a valid email address, like you@example.com.</p>
+        <PrimaryButton onClick={onClose}>OK</PrimaryButton>
+      </div>
+    </div>
   );
 }
 

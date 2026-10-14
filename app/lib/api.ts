@@ -88,6 +88,27 @@ export const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in cr
 
 export const isIndianMobile = (p: string) => /^[6-9]\d{9}$/.test(p);
 
+/** Does the email's domain exist and accept mail? Looked up over DNS-over-HTTPS (only the domain is sent),
+ * because the native apps are static exports with no server of their own. A domain with MX records — or,
+ * failing that, an A record, which mail falls back to — counts; a nonexistent domain or a "null MX" doesn't.
+ * Fails open: if the lookup itself can't be made, sign-up goes ahead and the confirmation email is the check. */
+export async function emailDomainExists(email: string): Promise<boolean> {
+  const domain = email.trim().split("@").pop()!.toLowerCase();
+  const lookup = async (type: "MX" | "A") => {
+    const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=${type}`,
+      { headers: { accept: "application/dns-json" }, signal: AbortSignal.timeout(5000) });
+    if (!r.ok) throw new Error(`DNS lookup failed (${r.status})`);
+    return (await r.json()) as { Status: number; Answer?: { type: number; data: string }[] };
+  };
+  try {
+    const mx = await lookup("MX");
+    if (mx.Status === 3) return false; // NXDOMAIN — no such domain
+    const hosts = (mx.Answer ?? []).filter((a) => a.type === 15);
+    if (hosts.length) return !hosts.every((a) => /^0\s+\.?$/.test(a.data.trim())); // "0 ." = domain accepts no mail
+    return (await lookup("A")).Answer?.some((a) => a.type === 1) ?? false;
+  } catch { return true; }
+}
+
 /** Customer and rider sign-in. */
 export async function emailSignIn(email: string, password: string) {
   const { error } = await supabase().auth.signInWithPassword({ email: email.trim(), password });
