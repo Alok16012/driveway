@@ -312,6 +312,20 @@ export function BlockedScreen({ who }: { who: "customer" | "rider" }) {
   );
 }
 
+/** Pinned above a blocked account's (read-only) app: they can look around, but not book, ride or edit. */
+export function BlockedBanner({ who }: { who: "customer" | "rider" }) {
+  return (
+    <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", paddingTop: "calc(10px + env(safe-area-inset-top))", background: "var(--error)", color: "var(--error-text)", flexShrink: 0 }}>
+      <LockIcon s={18} c="var(--error-text)" />
+      <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.45, fontWeight: 600 }}>
+        {who === "rider"
+          ? "Your account is blocked — you can't go online, take rides or edit your details. Contact support to have it reviewed."
+          : "Your account is blocked — you can't book rides or edit your profile. Contact support to have it reviewed."}
+      </p>
+    </div>
+  );
+}
+
 export function ProfileSetup({ onDone }: { onDone: (p: { name: string; email: string }) => Promise<void> }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

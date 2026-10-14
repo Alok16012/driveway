@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import BottomNav, { HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph, WalletGlyph } from "../components/BottomNav";
-import { BlockedScreen, EmailLogin, ForgotPassword, ResetPassword, SignUp, VideoSplash } from "../components/Auth";
+import { BlockedBanner, BlockedScreen, EmailLogin, ForgotPassword, ResetPassword, SignUp, VideoSplash } from "../components/Auth";
 import { KycFlow, PendingApproval } from "../components/rider/Kyc";
 import { AlertsScreen, EarningsScreen, RequestPopup, RiderAccount, RiderHome, TripPage, TripsScreen, type AccountKey, type QuickKey } from "../components/rider/RiderScreens";
 import {
@@ -34,6 +34,7 @@ const readPrefs = (): RiderPrefs => {
 
 export default function RiderApp() {
   const [stage, setStage] = useState<Stage>("loading");
+  const [blocked, setBlocked] = useState(false);   // blocked or suspended: the app stays open, read-only
   const [me, setMe] = useState<DriverMe | null>(null);
   const [tab, setTab] = useState<Tab>("home");
   const [stack, setStack] = useState<Detail[]>([]);
@@ -76,7 +77,10 @@ export default function RiderApp() {
       if (recovering.current) { setStage("reset"); return; }
       const [p, d] = await Promise.all([myProfile(), myDriver()]);
       setMe(d);
-      setStage(p?.blocked || d?.suspended ? "blocked" : !d ? "kyc" : d.kyc === "Approved" ? "app" : "pending");
+      const b = !!(p?.blocked || d?.suspended);
+      setBlocked(b);
+      // With no rider record there's nothing to show read-only — and a blocked account can't apply.
+      setStage(!d ? (b ? "blocked" : "kyc") : d.kyc === "Approved" ? "app" : "pending");
     } catch (e) { setBootErr((e as Error).message); }
   }, []);
   useEffect(() => { void boot(); }, [boot]);
@@ -86,8 +90,10 @@ export default function RiderApp() {
     try {
       const [p, d] = await Promise.all([myProfile(), myDriver()]);
       setMe(d);
-      if (p?.blocked || d?.suspended) setStage("blocked");          // blocked or suspended by the admin mid-session
-      else if (d && d.kyc !== "Approved") setStage("pending");
+      const b = !!(p?.blocked || d?.suspended);                    // blocked or suspended by the admin mid-session
+      setBlocked(b);
+      if (b) setStack((s) => s.filter((x) => x.k !== "edit" && x.k !== "bank"));
+      if (d && d.kyc !== "Approved") setStage("pending");
     } catch { /* next poll retries */ }
   }, []);
   const refreshTrip = useCallback(async () => {
@@ -121,7 +127,7 @@ export default function RiderApp() {
   /* ── dispatch: poll for offers while online and free (this is also the heartbeat) ── */
   const online = !!me?.online;
   useEffect(() => {
-    if (stage !== "app" || !online || trip) { setOffer(null); return; }
+    if (stage !== "app" || !online || blocked || trip) { setOffer(null); return; }
     let live = true;
     const poll = async () => {
       try {
@@ -133,9 +139,11 @@ export default function RiderApp() {
     const t = setInterval(() => void poll(), 3000);
     const unResume = watchResume(() => void poll());
     return () => { live = false; clearInterval(t); unResume(); };
-  }, [stage, online, trip, prefs.cash]);
+  }, [stage, online, blocked, trip, prefs.cash]);
 
+  const BLOCKED_MSG = "Your account is blocked — contact support";
   const toggleOnline = async (v: boolean) => {
+    if (v && blocked) { setToggleErr(BLOCKED_MSG); return; }
     setToggling(true); setToggleErr(null);
     try { await setOnline(v); await refreshMe(); flash(v ? "You're online — looking for rides" : "You're offline"); }
     catch (e) { setToggleErr((e as Error).message); } finally { setToggling(false); }
@@ -239,6 +247,7 @@ export default function RiderApp() {
         )}
         {stage === "kyc" && <KycFlow onSubmitted={() => void boot()} />}
         {stage === "blocked" && <BlockedScreen who="rider" />}
+        {(stage === "app" || stage === "pending") && blocked && <BlockedBanner who="rider" />}
         {stage === "pending" && me && (
           <PendingApproval name={me.name} kyc={me.kyc === "Rejected" ? "Rejected" : "Pending"} note={me.kyc_note} checking={checking}
             onRefresh={() => { setChecking(true); void boot().finally(() => setChecking(false)); }}
@@ -272,7 +281,7 @@ export default function RiderApp() {
                 {detail.k === "performance" && <PerformancePage me={me} trips={trips ?? []} onBack={back} />}
                 {detail.k === "documents" && <DocumentsPage me={me} onBack={back} />}
                 {detail.k === "vehicle" && <VehiclePage me={me} onBack={back} />}
-                {detail.k === "edit" && (
+                {detail.k === "edit" && !blocked && (
                   <EditProfilePage initial={{ name: me.name, phone: (me.phone ?? "").replace(/^91/, ""), city: me.city }} cities={CITIES} onBack={back}
                     note="Vehicle and documents need re-verification — change them through Help & Support."
                     onSave={async (v) => {
@@ -281,7 +290,7 @@ export default function RiderApp() {
                       await refreshMe(); back(); flash("Profile updated");
                     }} />
                 )}
-                {detail.k === "bank" && <BankPage upi={me.upi} onBack={back} onSave={async (u) => { await updateMyUpi(u); await refreshMe(); flash("UPI ID updated"); }} />}
+                {detail.k === "bank" && !blocked && <BankPage upi={me.upi} onBack={back} onSave={async (u) => { await updateMyUpi(u); await refreshMe(); flash("UPI ID updated"); }} />}
                 {detail.k === "preferences" && <PreferencesPage prefs={prefs} onBack={back} onChange={changePrefs} />}
                 {detail.k === "trip" && (() => {
                   const r = trips?.find((x) => x.id === detail.id);
@@ -299,7 +308,7 @@ export default function RiderApp() {
                 {tab === "earnings" && <EarningsScreen me={me} />}
                 {tab === "trips" && <TripsScreen trips={trips} commissionPct={me.commission_pct} onOpen={(r) => push({ k: "trip", id: r.id })} />}
                 {tab === "incentives" && <IncentivesScreen me={me} />}
-                {tab === "account" && <RiderAccount me={me} onMenu={(k) => { if (k === "performance") void refreshTrips(); push(k === "help" ? { k: "support" } : { k }); }} onLogout={() => void logout()} />}
+                {tab === "account" && <RiderAccount me={me} locked={blocked} onMenu={(k) => { if (blocked && (k === "edit" || k === "bank")) { flash(BLOCKED_MSG); return; } if (k === "performance") void refreshTrips(); push(k === "help" ? { k: "support" } : { k }); }} onLogout={() => void logout()} />}
               </>
             )}
           </div>
@@ -315,7 +324,7 @@ export default function RiderApp() {
           ]} />
         )}
 
-        {stage === "app" && offer && !trip && <RequestPopup key={offer.id} offer={offer} autoAccept={prefs.autoAccept} busy={busy} err={null} onAccept={() => void accept()} onDecline={decline} />}
+        {stage === "app" && offer && !trip && !blocked && <RequestPopup key={offer.id} offer={offer} autoAccept={prefs.autoAccept} busy={busy} err={null} onAccept={() => void accept()} onDecline={decline} />}
         {sheet === "cancel" && trip && (
           <CancelTripSheet busy={busy} err={err} onClose={() => setSheet(null)}
             onConfirm={(reason) => void act(() => { selfCancelled.current = true; return driverCancelRide(trip.id, reason); }, "Ride cancelled — it's been offered to other drivers").then(() => setSheet(null))} />

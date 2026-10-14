@@ -457,14 +457,14 @@ export const rates = (me: DriverMe) => {
   };
 };
 
-export function RiderAccount({ me, onMenu, onLogout }: { me: DriverMe; onMenu: (k: AccountKey) => void; onLogout: () => void }) {
+export function RiderAccount({ me, locked, onMenu, onLogout }: { me: DriverMe; locked?: boolean; onMenu: (k: AccountKey) => void; onLogout: () => void }) {
   const r = rates(me);
   return (
     <div style={{ paddingBottom: 12 }}>
       <PageHeader title="My Account" />
       <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ ...card, padding: "18px 16px", position: "relative" }}>
-          <button onClick={() => onMenu("edit")} className="press" style={{ position: "absolute", top: 14, right: 14, border: "none", background: "var(--blue-tint)", color: "var(--blue)", borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Edit</button>
+          {!locked && <button onClick={() => onMenu("edit")} className="press" style={{ position: "absolute", top: 14, right: 14, border: "none", background: "var(--blue-tint)", color: "var(--blue)", borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Edit</button>}
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <Avatar initials={initials(me.name)} size={58} />
             <div style={{ flex: 1 }}>
@@ -487,7 +487,7 @@ export function RiderAccount({ me, onMenu, onLogout }: { me: DriverMe; onMenu: (
           ))}
         </div>
         <div style={{ ...card, padding: "0 14px" }}>
-          {MENU.map(({ k, label: l, Icon }, i) => (
+          {MENU.filter((m) => !(locked && (m.k === "edit" || m.k === "bank"))).map(({ k, label: l, Icon }, i) => (
             <button key={k} onClick={() => onMenu(k)} className="press" style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "14px 0", background: "none", border: "none", borderTop: i ? "1px solid var(--line)" : "none", cursor: "pointer", textAlign: "left" }}>
               <Icon s={21} c="var(--text-muted)" w={1.6} /><span style={{ flex: 1, fontSize: 14.5, fontWeight: 500, color: "var(--text-secondary)" }}>{l}</span><ChevronRight s={16} c="var(--ink-mute)" />
             </button>

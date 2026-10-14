@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import BottomNav, { ChatGlyph, HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph } from "../BottomNav";
-import { BlockedScreen, EmailLogin, ForgotPassword, PermissionStep, ProfileSetup, ResetPassword, SignUp, VideoSplash } from "../Auth";
+import { BlockedBanner, EmailLogin, ForgotPassword, PermissionStep, ProfileSetup, ResetPassword, SignUp, VideoSplash } from "../Auth";
 import HomeScreen, { HOME_BG } from "./HomeScreen";
 import { ChooseRidePage, LiveRidePage, ParcelPage, SearchPage, TripDonePage } from "./BookingScreens";
 import { ChatScreen, EditProfilePage, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen, type ChatMessage, type ProfileKey } from "./AccountScreens";
@@ -22,7 +22,7 @@ const SHELL_MAX_W = 430;
 const LIVE: RideView["status"][] = ["Searching", "Arriving", "Arrived", "Started"];
 
 type Tab = "home" | "rides" | "offers" | "support" | "profile";
-type Stage = "loading" | "splash" | "login" | "signup" | "forgot" | "reset" | "setup" | "perm" | "app" | "blocked";
+type Stage = "loading" | "splash" | "login" | "signup" | "forgot" | "reset" | "setup" | "perm" | "app";
 
 type Detail =
   | { k: "search"; to?: Place; prefer?: RideOption }
@@ -75,7 +75,7 @@ export default function CustomerApp() {
       if (recovering.current) { setStage("reset"); return; }
       const p = await myProfile();
       setMe(p);
-      setStage(p?.blocked ? "blocked" : p && p.name ? "app" : "setup");
+      setStage(p && (p.name || p.blocked) ? "app" : "setup");   // blocked accounts get the app read-only
     } catch (e) { setBootErr((e as Error).message); }
   }, []);
   useEffect(() => { void boot(); }, [boot]);
@@ -93,7 +93,8 @@ export default function CustomerApp() {
     try {
       const p = await myProfile();
       setMe(p);
-      if (p?.blocked) { setStage("blocked"); return; }      // blocked by the admin mid-session
+      // Blocked by the admin mid-session: drop any booking or edit screen that's open.
+      if (p?.blocked) setStack((s) => s.filter((d) => !(d.k === "search" || d.k === "choose" || d.k === "parcel" || (d.k === "info" && d.key === "edit"))));
       setWallet(await myWallet());
     } catch { /* shown on next action */ }
   }, []);
@@ -135,7 +136,10 @@ export default function CustomerApp() {
   const back = () => setStack((s) => s.slice(0, -1));
   const goTab = (t: Tab) => { setStack([]); setTab(t); if (t !== "rides") setRidesTab("past"); if (t === "rides") void refreshRides(); };
 
+  const blocked = !!me?.blocked;
+  const BLOCKED_MSG = "Your account is blocked — contact support";
   const startBooking = (to?: Place, prefer?: RideOption) => {
+    if (blocked) { flash(BLOCKED_MSG); return; }
     if (active && LIVE.includes(active.status)) { push({ k: "live" }); flash("You already have a ride in progress"); return; }
     push({ k: "search", to, prefer });
   };
@@ -182,7 +186,7 @@ export default function CustomerApp() {
       onEnded={() => { void refreshActive(); void refreshRides(); void refreshMe(); }}
       onCancelled={() => { void refreshActive(); void refreshRides(); goTab("home"); flash(active.cancel_fee_now > 0 ? `Ride cancelled · ${inr(active.cancel_fee_now)} fee due` : "Ride cancelled — no charge"); }}
       onShare={() => flash("Trip sharing and SOS alerts need the notifications service — call 112 in an emergency")}
-      onRetry={() => { const to = active.to; const prefer = optionOf(active); void closeRide(active.id).then(refreshActive); setStack([{ k: "search", to: places.find((p) => p.id === to.id), prefer }]); }}
+      onRetry={() => { if (blocked) { flash(BLOCKED_MSG); return; } const to = active.to; const prefer = optionOf(active); void closeRide(active.id).then(refreshActive); setStack([{ k: "search", to: places.find((p) => p.id === to.id), prefer }]); }}
       onDismiss={() => { void closeRide(active.id).then(refreshActive); goTab("home"); }} />;
   };
 
@@ -216,7 +220,7 @@ export default function CustomerApp() {
           <ProfileSetup onDone={async ({ name, email }) => { await updateMyProfile(name, email); setMe(await myProfile()); setStage("perm"); }} />
         )}
         {stage === "perm" && <PermissionStep onDone={() => setStage("app")} />}
-        {stage === "blocked" && <BlockedScreen who="customer" />}
+        {stage === "app" && blocked && <BlockedBanner who="customer" />}
 
         {stage === "app" && (chatOpen ? (
           <div style={{ flex: 1, minHeight: 0, paddingBottom: showNav ? "calc(76px + env(safe-area-inset-bottom))" : undefined }}>
@@ -250,7 +254,7 @@ export default function CustomerApp() {
                 onCancel={() => void cancelRide(r.id, "Changed my plans").then(() => { void refreshRides(); back(); flash("Scheduled ride cancelled"); }, (e) => flash((e as Error).message))} />
                 : <LoadState error={ridesErr} onRetry={() => void refreshRides()} />;
             })()}
-            {detail?.k === "info" && detail.key === "edit" && me && (
+            {detail?.k === "info" && detail.key === "edit" && me && !blocked && (
               <EditProfilePage initial={{ name: me.name, phone: (me.phone ?? "").replace(/^91/, "") }} email={me.email} onBack={back}
                 onSave={async (v) => {
                   if (v.name !== me.name) await updateMyProfile(v.name, me.email ?? "");
@@ -273,13 +277,13 @@ export default function CustomerApp() {
             )}
             {!detail && tab === "rides" && <RidesScreen key={ridesTab} initialTab={ridesTab} rides={rides} error={ridesErr} onRetry={() => void refreshRides()} onOpen={(r) => push({ k: "ride", id: r.id })} onBook={() => startBooking()} />}
             {!detail && tab === "offers" && (
-              <OffersScreen onUse={(code) => { setPendingCoupon(code); flash(`${code} will be applied to your next ride`); startBooking(); }} />
+              <OffersScreen onUse={(code) => { if (blocked) { flash(BLOCKED_MSG); return; } setPendingCoupon(code); flash(`${code} will be applied to your next ride`); startBooking(); }} />
             )}
             {!detail && tab === "profile" && me && (
               <ProfileScreen
                 user={{ name: me.name, email: me.email ?? "", phone: me.phone ? `+${me.phone}` : "", rating: me.rating, initials: initialsOf(me.name) }}
-                stats={{ rides: me.completed, saved: 0, coupons: 0 }}
-                onMenu={(key) => push(key === "rides" ? { k: "rides" } : key === "help" ? { k: "chat" } : { k: "info", key })}
+                stats={{ rides: me.completed, saved: 0, coupons: 0 }} locked={blocked}
+                onMenu={(key) => key === "edit" && blocked ? flash(BLOCKED_MSG) : push(key === "rides" ? { k: "rides" } : key === "help" ? { k: "chat" } : { k: "info", key })}
                 onLogout={() => void logout()}
                 onDelete={() => void supportMessage("Please delete my DriveWay account and personal data.", "Customer").then(() => flash("Deletion request sent to support — we'll confirm by SMS"), (e) => flash((e as Error).message))}
               />

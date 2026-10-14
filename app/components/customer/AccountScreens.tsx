@@ -244,16 +244,16 @@ const MENU: { key: ProfileKey; label: string; Icon: (p: { s?: number; c?: string
   { key: "about", label: "About DriveWay", Icon: InfoIcon },
 ];
 
-export function ProfileScreen({ user, stats, onMenu, onLogout, onDelete }: {
+export function ProfileScreen({ user, stats, locked, onMenu, onLogout, onDelete }: {
   user: { name: string; initials: string; email: string; phone: string; rating: number | null };
-  stats: { rides: number; saved: number; coupons: number }; onMenu: (k: ProfileKey) => void; onLogout: () => void; onDelete: () => void;
+  stats: { rides: number; saved: number; coupons: number }; locked?: boolean; onMenu: (k: ProfileKey) => void; onLogout: () => void; onDelete: () => void;
 }) {
   return (
     <div style={{ paddingBottom: 12 }}>
-      <PageHeader title="Your Profile" right={<button onClick={() => onMenu("edit")} aria-label="Edit profile" className="press" style={iconBtn}><GearIcon s={22} c="var(--on-bg)" /></button>} />
+      <PageHeader title="Your Profile" right={locked ? undefined : <button onClick={() => onMenu("edit")} aria-label="Edit profile" className="press" style={iconBtn}><GearIcon s={22} c="var(--on-bg)" /></button>} />
       <div style={{ padding: "0 16px" }}>
         <div style={{ ...card, padding: "18px 16px", position: "relative" }}>
-          <button onClick={() => onMenu("edit")} className="press" style={{ position: "absolute", top: 14, right: 14, border: "none", background: "var(--blue-tint)", color: "var(--blue)", borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Edit</button>
+          {!locked && <button onClick={() => onMenu("edit")} className="press" style={{ position: "absolute", top: 14, right: 14, border: "none", background: "var(--blue-tint)", color: "var(--blue)", borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Edit</button>}
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <Avatar initials={user.initials} size={58} />
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -276,7 +276,7 @@ export function ProfileScreen({ user, stats, onMenu, onLogout, onDelete }: {
         </div>
       </div>
       <div style={{ padding: "18px 16px 0" }}>
-        {MENU.map(({ key, label, Icon }, i) => (
+        {MENU.filter((m) => !(locked && m.key === "edit")).map(({ key, label, Icon }, i) => (
           <button key={key} onClick={() => onMenu(key)} className="press" style={{
             width: "100%", display: "flex", alignItems: "center", gap: 16, padding: "16px 2px",
             background: "none", border: "none", borderTop: i === 0 ? "none" : "1px solid var(--on-bg-line)", cursor: "pointer", textAlign: "left",
