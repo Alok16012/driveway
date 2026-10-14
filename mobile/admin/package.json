@@ -1,0 +1,5 @@
+{
+  "name": "driveway-admin-android",
+  "private": true,
+  "description": "Capacitor shell for the admin app. Dependencies resolve from the root package."
+}

@@ -1,0 +1,7 @@
+{
+  "appId": "com.driveway.admin",
+  "appName": "DriveWay Admin",
+  "webDir": "www",
+  "server": { "androidScheme": "https", "appStartPath": "/admin" },
+  "android": { "allowMixedContent": false }
+}
