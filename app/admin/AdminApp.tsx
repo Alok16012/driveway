@@ -120,7 +120,7 @@ export default function AdminApp() {
     try { await rpc(fn, args); flash(ok); await reload(); return true; } catch (e) { flash((e as Error).message); return false; }
   };
 
-  // Kolkata launch video, played each time the panel opens (portrait, so it sits in a phone-width column).
+  // Muted launch video, played each time the panel opens (portrait, so it sits in a phone-width column).
   // Signed-out admins stay on its last frame until they tap Admin Login; signed-in admins continue when it ends.
   const splash = intro && (
     <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "#ea580c", display: "flex", justifyContent: "center" }}>

@@ -59,6 +59,30 @@ export function SplashScreen({ tagline, cta = "Get Started", onStart, footer, ko
   );
 }
 
+/** Launch image. Signed-out users (`onStart` given) stay on it with the CTA;
+ * otherwise it calls `onDone` after `holdMs`. Tap skips the wait. */
+export function ImageSplash({ src, cta = "Get Started", onStart, onDone, footer, holdMs = 2500 }: {
+  src: string; cta?: string; onStart?: () => void; onDone?: () => void; footer?: React.ReactNode; holdMs?: number;
+}) {
+  const [ended, setEnded] = useState(false);
+  const finish = () => setEnded(true);
+  useEffect(() => { const t = setTimeout(finish, holdMs); return () => clearTimeout(t); }, [holdMs]);
+  useEffect(() => { if (ended && !onStart) onDone?.(); }, [ended, onStart, onDone]);
+
+  return (
+    <div onClick={ended ? undefined : finish} style={{ position: "absolute", inset: 0, zIndex: 300, background: "#ea580c", overflow: "hidden" }}>
+      <img src={src} alt="DriveWay — Ride · Reach · Relax"
+        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      {onStart && (
+        <div className="fade-up" style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "18px 20px calc(22px + env(safe-area-inset-bottom))" }}>
+          <PrimaryButton tone="blue" onClick={onStart}>{cta} <ArrowRight s={18} c="white" /></PrimaryButton>
+          {footer}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Launch video. Signed-out users (`onStart` given) see it hold on its last frame with the CTA;
  * otherwise it calls `onDone` once it finishes. Tap skips to the end; a timer covers a stalled video. */
 export function VideoSplash({ src, cta = "Get Started", onStart, onDone, footer, maxMs = 6000 }: {

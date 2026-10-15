@@ -194,8 +194,8 @@ export default function CustomerApp() {
     <div style={{ position: "fixed", inset: 0, background: "var(--app-bg)", display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: SHELL_MAX_W, height: "100%", position: "relative", background: "var(--app-bg)", overflow: "hidden", boxShadow: "var(--shadow-float)", display: "flex", flexDirection: "column" }}>
 
-        {/* Kolkata launch video, played each time the app opens. Signed-out users stay on its last
-            frame until they tap Get Started; everyone else continues into the app when it ends. */}
+        {/* Muted launch video, played each time the app opens. Signed-out users stay on its last frame
+            until they tap Get Started; everyone else continues into the app when it ends. */}
         {(intro || stage === "splash") && (
           <VideoSplash src="/driveway-intro.mp4" onDone={stage === "loading" && !bootErr ? undefined : endIntro}
             onStart={stage === "splash" ? () => { setIntro(false); setStage("login"); } : undefined}
