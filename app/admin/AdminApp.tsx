@@ -16,11 +16,11 @@ import { supabase } from "../lib/supabase/client";
 
 /* ───────────────────────── Data shapes (rows the admin's RLS lets it read) ───────────────────────── */
 
-interface Prof { id: string; name: string; phone: string | null; email: string | null; blocked: boolean; rating: number | null; is_admin: boolean; created_at: string }
+interface Prof { id: string; name: string; phone: string | null; email: string | null; blocked: boolean; rating: number | null; is_admin: boolean; created_at: string; deleted_at?: string | null }
 interface Drv {
   id: string; name: string; vehicle: VehicleKind; model: string; plate: string; ac: boolean; city: string; kyc: "Pending" | "Approved" | "Rejected";
   kyc_note: string | null; docs: Record<string, string>; upi: string | null; suspended: boolean; online: boolean; last_seen: string | null;
-  rating: number | null; trips: number; created_at: string; profiles: { phone: string | null; blocked: boolean } | null;
+  rating: number | null; trips: number; created_at: string; profiles: { phone: string | null; blocked: boolean; deleted_at?: string | null } | null;
 }
 interface RideRow {
   id: string; code: string; customer_id: string; driver_id: string | null; service: string; vehicle: VehicleKind | null; requested_vehicles: VehicleKind[];
@@ -28,7 +28,7 @@ interface RideRow {
   cancel_fee: number; total: number; pay_method: string; payment_status: string; refunded: number; status: string; cancel_reason: string | null;
   cancelled_by: string | null; rating: number | null; created_at: string; completed_at: string | null; scheduled_for: string | null;
 }
-interface Vehicle { id: VehicleKind; name: string; base: number; per_km: number; per_min: number; min_fare: number; cancel_fee: number; ac: boolean; enabled: boolean; sort: number }
+interface Vehicle { id: VehicleKind; name: string; base: number; per_km: number; per_min: number; min_fare: number; cancel_fee: number; commission_pct: number; commission_pct_non_ac: number; ac: boolean; enabled: boolean; sort: number }
 interface Settings { commission_pct: number; surge_on: boolean; surge_mult: number; non_ac_factor: number }
 interface Coupon { code: string; title: string; body: string; off: number; pct: boolean; max_off: number | null; min_fare: number; expires_at: string; active: boolean; uses: number; total_limit: number | null; per_user_limit: number }
 interface Ledger { id: number; ride_id: string | null; user_id: string | null; party: string; kind: string; amount: number; method: string | null; note: string | null; created_at: string }
@@ -45,8 +45,8 @@ async function loadAll(): Promise<Data> {
   const sb = supabase();
   const q = async <T,>(p: PromiseLike<{ data: T | null; error: { message: string } | null }>) => { const { data, error } = await p; if (error) throw new Error(friendly(error)); return data as T; };
   const [profiles, drivers, rides, vehicles, settings, coupons, ledger, tickets, audit, places] = await Promise.all([
-    q<Prof[]>(sb.from("profiles").select("id,name,phone,email,blocked,rating,is_admin,created_at").order("created_at", { ascending: false }).limit(1000)),
-    q<Drv[]>(sb.from("drivers").select("*, profiles(phone,blocked)").order("created_at", { ascending: false }).limit(1000)),
+    q<Prof[]>(sb.from("profiles").select("*").order("created_at", { ascending: false }).limit(1000)),
+    q<Drv[]>(sb.from("drivers").select("*, profiles(*)").order("created_at", { ascending: false }).limit(1000)),
     q<RideRow[]>(sb.from("rides").select("*").order("created_at", { ascending: false }).limit(1000)),
     q<Vehicle[]>(sb.from("vehicles").select("*").order("sort")),
     q<Settings>(sb.from("settings").select("*").single()),
@@ -56,7 +56,8 @@ async function loadAll(): Promise<Data> {
     q<Audit[]>(sb.from("audit_log").select("*").order("at", { ascending: false }).limit(100)),
     q<Place[]>(sb.from("places").select("id,name")),
   ]);
-  return { profiles, drivers, rides, vehicles, settings, coupons, ledger, tickets, audit, places };
+  // Deleted riders keep an anonymised row for ride history; nameOf still finds their name via profiles.
+  return { profiles, drivers: drivers.filter((x) => !x.profiles?.deleted_at), rides, vehicles, settings, coupons, ledger, tickets, audit, places };
 }
 
 type Section = "dashboard" | "live" | "rides" | "customers" | "drivers" | "pricing" | "coupons" | "payments" | "reports" | "support" | "notify" | "settings";
@@ -524,11 +525,13 @@ function CustomersSection({ d, act }: { d: Data; act: Act }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const driverIds = new Set(d.drivers.map((x) => x.id));
-  const rows = d.profiles.filter((p) => !driverIds.has(p.id) && !p.is_admin);
+  const rows = d.profiles.filter((p) => !driverIds.has(p.id) && !p.is_admin && !p.deleted_at);
   const stats = (id: string) => { const rs = d.rides.filter((r) => r.customer_id === id); return { rides: rs.filter((r) => r.status === "Completed").length, spent: rs.reduce((s, r) => s + paidOf(r) - r.refunded, 0), list: rs }; };
   const list = rows.filter((c) => `${c.name} ${c.phone} ${c.email}`.toLowerCase().includes(q.toLowerCase()));
   const sel = rows.find((c) => c.id === open);
   const toggle = (c: Prof) => void act("admin_set_blocked", { p_user: c.id, p_blocked: !c.blocked }, `${c.name || "Customer"} ${c.blocked ? "unblocked" : "blocked"}`);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const remove = async (c: Prof) => { if (await act("admin_delete_customer", { p_user: c.id }, `${c.name || "Customer"} deleted`)) setOpen(null); setConfirmDel(false); };
   return (
     <Panel title={`${rows.length} customers`} right={<SearchBox value={q} onChange={setQ} placeholder="Search name, phone, email…" />}>
       <div className="adm-table-wrap">
@@ -538,16 +541,19 @@ function CustomersSection({ d, act }: { d: Data; act: Act }) {
             {list.map((c) => { const s = stats(c.id); return (
               <tr key={c.id} onClick={() => setOpen(c.id)}>
                 <td><span style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar initials={initials(c.name || "?")} size={30} />{c.name || "(no name yet)"}</span></td>
-                <td>{c.phone ? `+${c.phone}` : "—"}</td><td style={{ color: "var(--ink-soft)" }}>{c.email ?? "—"}</td><td>{s.rides}</td><td>{inr(s.spent)}</td><td>{when(c.created_at)}</td>
+                <td>{c.phone ? `+${c.phone}` : "—"}</td><td style={{ color: "var(--ink-soft)" }}><span title={c.email ?? undefined} style={{ display: "block", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }}>{c.email ?? "—"}</span></td><td>{s.rides}</td><td>{inr(s.spent)}</td><td>{when(c.created_at)}</td>
                 <td><StatusBadge status={c.blocked ? "Blocked" : "Active"} /></td>
-                <td><button onClick={(e) => { e.stopPropagation(); toggle(c); }} style={smallBtn(c.blocked ? "ghost" : "red")}>{c.blocked ? "Unblock" : "Block"}</button></td>
+                <td><span style={{ display: "flex", gap: 8 }}>
+                  <button onClick={(e) => { e.stopPropagation(); toggle(c); }} style={smallBtn(c.blocked ? "ghost" : "red")}>{c.blocked ? "Unblock" : "Block"}</button>
+                  <button onClick={(e) => { e.stopPropagation(); setOpen(c.id); setConfirmDel(true); }} style={smallBtn("red")}>Delete</button>
+                </span></td>
               </tr>); })}
           </tbody>
         </table>
         {list.length === 0 && <p style={{ textAlign: "center", color: "var(--ink-soft)", padding: 24 }}>No customers yet.</p>}
       </div>
       {sel && (() => { const s = stats(sel.id); return (
-        <Drawer title={sel.name || "Customer"} onClose={() => setOpen(null)}>
+        <Drawer title={sel.name || "Customer"} onClose={() => { setOpen(null); setConfirmDel(false); }}>
           <div style={{ ...card, padding: 14 }}>
             {kv("Phone", sel.phone ? `+${sel.phone}` : "—")}{kv("Email", sel.email ?? "—")}{kv("Joined", when(sel.created_at))}
             {kv("Completed rides", s.rides)}{kv("Total paid (net of refunds)", inr(s.spent))}{kv("Rating from drivers", sel.rating ? `★ ${sel.rating}` : "—")}
@@ -558,6 +564,15 @@ function CustomersSection({ d, act }: { d: Data; act: Act }) {
             {s.list.map((r) => <div key={r.id}>{kv(`#${r.code} · ${when(r.created_at)}`, <>{inr(r.total)} <StatusBadge status={r.status} /></>)}</div>)}
           </Panel>
           <PrimaryButton tone={sel.blocked ? "blue" : "red"} onClick={() => toggle(sel)}>{sel.blocked ? "Unblock account" : "Block account"}</PrimaryButton>
+          {!confirmDel
+              ? <button style={{ ...smallBtn("red"), padding: "11px 12px", fontSize: 13.5 }} onClick={() => setConfirmDel(true)}>Delete customer</button>
+              : <div style={{ ...card, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>Delete {sel.name || "this customer"} permanently? Their login, personal details and support tickets are removed{s.list.length > 0 ? "; past rides stay in your records as \u201cDeleted customer\u201d" : ""}. This can&apos;t be undone.</p>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <PrimaryButton tone="ghost" onClick={() => setConfirmDel(false)}>Cancel</PrimaryButton>
+                    <PrimaryButton tone="red" onClick={() => void remove(sel)}>Delete</PrimaryButton>
+                  </div>
+                </div>}
         </Drawer>); })()}
     </Panel>
   );
@@ -572,17 +587,29 @@ function DriversSection({ d, act }: { d: Data; act: Act }) {
   const [filter, setFilter] = useState("All");
   const [open, setOpen] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const [doc, setDoc] = useState<{ title: string; url: string; pdf: boolean } | null>(null);
+  const [confirmDel, setConfirmDel] = useState(false);
   const state = (x: Drv) => (x.suspended ? "Suspended" : x.kyc !== "Approved" ? x.kyc : x.online ? "Online" : "Offline");
   const list = d.drivers.filter((x) =>
     (filter === "All" || (filter === "Pending KYC" ? x.kyc === "Pending" : filter === "Online" ? x.online && !x.suspended : filter === "Suspended" ? x.suspended : true)) &&
     `${x.name} ${x.profiles?.phone ?? ""} ${x.plate}`.toLowerCase().includes(q.toLowerCase()));
   const sel = d.drivers.find((x) => x.id === open);
-  const viewDoc = async (path: string) => {
-    const { data, error } = await supabase().storage.from("driver-docs").createSignedUrl(path, 60);
+  const viewDoc = async (title: string, path: string) => {
+    const { data, error } = await supabase().storage.from("driver-docs").createSignedUrl(path, 300);
     if (error || !data) { alert(friendly(error ?? "Couldn't open the file")); return; }
-    window.open(data.signedUrl, "_blank", "noopener");
+    setDoc({ title, url: data.signedUrl, pdf: path.toLowerCase().endsWith(".pdf") });
   };
   const setKyc = (x: Drv, kyc: string, n: string | null) => void act("admin_set_kyc", { p_driver: x.id, p_kyc: kyc, p_note: n }, `${x.name} ${kyc === "Approved" ? "approved" : kyc === "Rejected" ? "rejected" : "moved back to review"}`);
+  const remove = async (x: Drv) => {
+    if (await act("admin_delete_driver", { p_driver: x.id }, `${x.name} deleted`)) {
+      setOpen(null);
+      // Best-effort: KYC files are no longer needed once the rider is gone.
+      const bucket = supabase().storage.from("driver-docs");
+      const { data: files } = await bucket.list(x.id);
+      if (files?.length) await bucket.remove(files.map((f) => `${x.id}/${f.name}`));
+    }
+    setConfirmDel(false);
+  };
   const suspend = (x: Drv) => void act("admin_set_suspended", { p_driver: x.id, p_suspended: !x.suspended }, `${x.name} ${x.suspended ? "reactivated" : "suspended"}`);
   return (
     <Panel>
@@ -599,11 +626,12 @@ function DriversSection({ d, act }: { d: Data; act: Act }) {
                 <td><span style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar initials={initials(x.name)} size={30} />{x.name}</span></td>
                 <td>{vehicleById(x.vehicle).name}{x.ac ? " · AC" : ""}</td><td style={{ fontWeight: 600 }}>{x.plate}</td><td>{x.city}</td><td>{x.trips}</td>
                 <td>{x.rating ? `★ ${x.rating}` : "—"}</td><td><StatusBadge status={state(x)} /></td>
-                <td onClick={(e) => e.stopPropagation()}>
+                <td onClick={(e) => e.stopPropagation()}><span style={{ display: "flex", gap: 8 }}>
                   {x.kyc === "Pending" ? <button style={smallBtn("ghost")} onClick={() => { setOpen(x.id); setNote(x.kyc_note ?? ""); }}>Review documents →</button>
                     : x.kyc === "Approved" ? <button style={smallBtn(x.suspended ? "ghost" : "red")} onClick={() => suspend(x)}>{x.suspended ? "Reactivate" : "Suspend"}</button>
                     : <button style={smallBtn("ghost")} onClick={() => setKyc(x, "Pending", null)}>Re-review</button>}
-                </td>
+                  <button style={smallBtn("red")} onClick={() => { setOpen(x.id); setNote(x.kyc_note ?? ""); setConfirmDel(true); }}>Delete</button>
+                </span></td>
               </tr>
             ))}
           </tbody>
@@ -611,7 +639,7 @@ function DriversSection({ d, act }: { d: Data; act: Act }) {
         {list.length === 0 && <p style={{ textAlign: "center", color: "var(--ink-soft)", padding: 24 }}>No drivers match.</p>}
       </div>
       {sel && (
-        <Drawer title={sel.name} onClose={() => setOpen(null)}>
+        <Drawer title={sel.name} onClose={() => { setOpen(null); setConfirmDel(false); }}>
           <div style={{ ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 }}>
             <Avatar initials={initials(sel.name)} size={52} />
             <div style={{ flex: 1 }}><p style={{ margin: 0, fontWeight: 700 }}>{sel.name}</p><p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>{sel.profiles?.phone ? `+${sel.profiles.phone}` : ""} · {sel.city}</p></div>
@@ -625,7 +653,7 @@ function DriversSection({ d, act }: { d: Data; act: Act }) {
             {Object.keys(DOC_LABELS).map((k) => (
               <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
                 <DocIcon s={18} c="var(--ink-soft)" /><span style={{ flex: 1, fontSize: 13.5 }}>{DOC_LABELS[k]}</span>
-                {sel.docs?.[k] ? <button style={smallBtn("ghost")} onClick={() => void viewDoc(sel.docs[k])}>View</button> : <span style={{ fontSize: 12, color: "var(--error-text)" }}>Missing</span>}
+                {sel.docs?.[k] ? <button style={smallBtn("ghost")} onClick={() => void viewDoc(DOC_LABELS[k], sel.docs[k])}>View</button> : <span style={{ fontSize: 12, color: "var(--error-text)" }}>Missing</span>}
               </div>
             ))}
           </Panel>
@@ -644,7 +672,33 @@ function DriversSection({ d, act }: { d: Data; act: Act }) {
             </>
           )}
           {sel.kyc === "Approved" && <PrimaryButton tone={sel.suspended ? "blue" : "red"} onClick={() => suspend(sel)}>{sel.suspended ? "Reactivate driver" : "Suspend driver"}</PrimaryButton>}
+          {!confirmDel
+            ? <button style={{ ...smallBtn("red"), padding: "11px 12px", fontSize: 13.5 }} onClick={() => setConfirmDel(true)}>Delete driver</button>
+            : <div style={{ ...card, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                <p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>Delete {sel.name} permanently? Their login, personal details, KYC documents and support tickets are removed{d.rides.some((r) => r.driver_id === sel.id || r.customer_id === sel.id) ? "; past rides stay in your records as \u201cDeleted rider\u201d" : ""}. This can&apos;t be undone.</p>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <PrimaryButton tone="ghost" onClick={() => setConfirmDel(false)}>Cancel</PrimaryButton>
+                  <PrimaryButton tone="red" onClick={() => void remove(sel)}>Delete</PrimaryButton>
+                </div>
+              </div>}
         </Drawer>
+      )}
+      {doc && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={() => setDoc(null)} className="fade-up" style={{ position: "absolute", inset: 0, background: "rgba(15,23,41,0.7)" }} />
+          <div className="fade-up" style={{ position: "relative", width: "min(900px, 100%)", height: "min(90vh, 100%)", ...onLight, background: "var(--sheet-bg)", borderRadius: 16, boxShadow: "var(--shadow-xl)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--line)" }}>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{doc.title}</h2>
+              <button onClick={() => setDoc(null)} aria-label="Close" style={{ border: "none", background: "var(--surface)", width: 36, height: 36, borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><XIcon s={18} c="var(--ink)" /></button>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface)" }}>
+              {doc.pdf
+                ? <iframe src={doc.url} title={doc.title} style={{ width: "100%", height: "100%", border: "none" }} />
+                // eslint-disable-next-line @next/next/no-img-element
+                : <img src={doc.url} alt={doc.title} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />}
+            </div>
+          </div>
+        </div>
       )}
     </Panel>
   );
@@ -657,16 +711,19 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
   const [s, setS] = useState<Settings>(d.settings);
   const [busy, setBusy] = useState(false);
   useEffect(() => { setRows(d.vehicles); setS(d.settings); }, [d.vehicles, d.settings]);
-  type NumKey = "base" | "per_km" | "per_min" | "min_fare" | "cancel_fee";
-  const cols: [NumKey, string][] = [["base", "Base ₹"], ["per_km", "₹ / km"], ["per_min", "₹ / min"], ["min_fare", "Min fare ₹"], ["cancel_fee", "Cancel fee ₹"]];
+  type NumKey = "base" | "per_km" | "per_min" | "min_fare" | "cancel_fee" | "commission_pct" | "commission_pct_non_ac";
+  const cols: [NumKey, string][] = [["base", "Base ₹"], ["per_km", "₹ / km"], ["per_min", "₹ / min"], ["min_fare", "Min fare ₹"], ["cancel_fee", "Cancel fee ₹"],
+    ["commission_pct", "AC commission %"], ["commission_pct_non_ac", "Non-AC commission %"]];
+  const isPct = (k: NumKey) => k === "commission_pct" || k === "commission_pct_non_ac";
+  const valid = (k: NumKey, n: number) => Number.isFinite(n) && n >= 0 && (!isPct(k) || n <= 50);
   const upd = (id: string, p: Partial<Vehicle>) => setRows((r) => r.map((x) => (x.id === id ? { ...x, ...p } : x)));
-  const invalid = rows.some((v) => cols.some(([k]) => !(Number.isFinite(Number(v[k])) && Number(v[k]) >= 0)));
+  const invalid = rows.some((v) => cols.some(([k]) => !valid(k, Number(v[k]))));
   const save = async () => {
     setBusy(true);
     try {
       for (const v of rows) {
         const orig = d.vehicles.find((x) => x.id === v.id)!;
-        const changed = Object.fromEntries((["base", "per_km", "per_min", "min_fare", "cancel_fee", "ac", "enabled"] as const).filter((k) => String(v[k]) !== String(orig[k])).map((k) => [k, v[k]]));
+        const changed = Object.fromEntries((["base", "per_km", "per_min", "min_fare", "cancel_fee", "commission_pct", "commission_pct_non_ac", "ac", "enabled"] as const).filter((k) => String(v[k]) !== String(orig[k])).map((k) => [k, v[k]]));
         if (Object.keys(changed).length) await rpc("admin_update_vehicle", { p_id: v.id, p: changed });
       }
       if (s.commission_pct !== d.settings.commission_pct || s.surge_on !== d.settings.surge_on || s.surge_mult !== d.settings.surge_mult) {
@@ -679,7 +736,7 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Panel title={`Vehicle categories & fares · Non-AC is ${Math.round((1 - d.settings.non_ac_factor) * 100)}% cheaper`} right={<PrimaryButton onClick={() => void save()} disabled={busy || invalid} style={{ width: "auto", padding: "10px 18px", fontSize: 13.5 }}>{busy ? "Saving…" : "Save changes"}</PrimaryButton>}>
-        {invalid && <ErrorText msg="Fares can't be negative or empty." />}
+        {invalid && <ErrorText msg="Fares can't be negative or empty, and commissions must be 0–50%." />}
         <div className="adm-table-wrap">
           <table className="adm-table">
             <thead><tr><th>Category</th>{cols.map(([, l]) => <th key={l}>{l}</th>)}<th>AC option</th><th>Enabled</th></tr></thead>
@@ -687,9 +744,11 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
               {rows.map((v) => (
                 <tr key={v.id} style={{ cursor: "default" }}>
                   <td><span style={{ display: "flex", alignItems: "center", gap: 8 }}><VehicleArt kind={v.id} size={40} /><b>{v.name}</b></span></td>
-                  {cols.map(([k]) => (
-                    <td key={k}><input type="number" min={0} step={k === "per_min" || k === "per_km" ? 0.5 : 1} value={v[k]} aria-label={`${v.name} ${k}`}
-                      onChange={(e) => upd(v.id, { [k]: e.target.value === "" ? NaN : Number(e.target.value) } as Partial<Vehicle>)} style={{ ...num, borderColor: Number(v[k]) >= 0 ? undefined : "var(--red)" }} /></td>
+                  {cols.map(([k]) => k === "commission_pct" && !v.ac ? (
+                    <td key={k} style={{ color: "var(--ink-mute)", fontSize: 12 }} title="Turn on the AC option to set an AC commission">No AC</td>
+                  ) : (
+                    <td key={k}><input type="number" min={0} max={isPct(k) ? 50 : undefined} step={k === "per_min" || k === "per_km" || isPct(k) ? 0.5 : 1} value={v[k]} aria-label={`${v.name} ${k}`}
+                      onChange={(e) => upd(v.id, { [k]: e.target.value === "" ? NaN : Number(e.target.value) } as Partial<Vehicle>)} style={{ ...num, borderColor: valid(k, Number(v[k])) ? undefined : "var(--red)" }} /></td>
                   ))}
                   <td><Toggle on={v.ac} onChange={(on) => upd(v.id, { ac: on })} label={`${v.name} offers AC`} /></td>
                   <td><Toggle on={v.enabled} onChange={(on) => upd(v.id, { enabled: on })} label={`${v.name} enabled`} /></td>
@@ -700,12 +759,12 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
         </div>
       </Panel>
       <div className="adm-grid-2">
-        <Panel title="Platform commission">
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <input type="range" min={0} max={50} value={s.commission_pct} onChange={(e) => setS({ ...s, commission_pct: Number(e.target.value) })} style={{ flex: 1, accentColor: "var(--blue)" }} aria-label="Commission percent" />
-            <span style={{ fontSize: 24, fontWeight: 800, width: 64, textAlign: "right" }}>{s.commission_pct}%</span>
-          </div>
-          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>On a ₹200 fare the driver earns {inr(200 * (1 - s.commission_pct / 100))}. Coupon discounts are paid by DriveWay, not the driver.</p>
+        <Panel title="Platform commission by vehicle">
+          {rows.flatMap((v) => (v.ac ? [["AC", "commission_pct"], ["Non-AC", "commission_pct_non_ac"]] as const : [["Non-AC", "commission_pct_non_ac"]] as const).map(([lbl, k]) => {
+            const pct = Number(v[k]); const ok = valid(k, pct);
+            return <div key={v.id + k}>{kv(`${v.name} ${lbl} · ${ok ? pct : "—"}%`, ok ? `driver earns ${inr(200 * (1 - pct / 100))} of ₹200` : "—")}</div>;
+          }))}
+          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>Set the AC and non-AC commission for each category in the table above (0–50%). A ride is charged by what the customer booked: an AC ride uses the AC rate, a non-AC ride the non-AC rate. A new rate applies to rides completed after you save; finished rides keep the rate they were charged. Coupon discounts are paid by DriveWay, not the driver.</p>
         </Panel>
         <Panel title="Surge pricing" right={<Toggle on={s.surge_on} onChange={(on) => setS({ ...s, surge_on: on })} label="Surge pricing" />}>
           <div style={{ display: "flex", alignItems: "center", gap: 14, opacity: s.surge_on ? 1 : 0.45 }}>

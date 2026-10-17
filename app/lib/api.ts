@@ -231,6 +231,8 @@ export const driverCancelRide = (id: string, reason: string) => rpc<void>("drive
 export const myDriverTrips = () => rpc<RideView[]>("my_driver_trips");
 export const requestPayout = (idem: string) => rpc<{ paid_out?: number; fee?: number; duplicate?: boolean }>("request_payout", { p_idem: idem });
 export const payDues = (idem: string) => rpc<{ cleared: number }>("pay_dues", { p_idem: idem });
+export const rechargeWallet = (amount: number, idem: string) => rpc<{ balance: number }>("recharge_wallet", { p_amount: amount, p_idem: idem });
+export const confirmDirectPayment = (id: string) => rpc<RideView>("confirm_direct_payment", { p_ride: id });
 export const updateMyUpi = (upi: string) => rpc<void>("update_my_upi", { p_upi: upi });
 
 /* ───────────── Live updates ───────────── */

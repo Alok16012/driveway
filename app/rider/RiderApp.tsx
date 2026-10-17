@@ -14,8 +14,8 @@ import { HOME_BG, LoadState, Toast } from "../components/ui";
 import { CITIES, inr } from "../lib/data";
 import { NATIVE_APP } from "../lib/native";
 import {
-  acceptRide, completeRide, confirmCash, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, isRecoveryLink, myDriver, myDriverTrips, myProfile,
-  myTrip, newKey, onAuthChange, recoveryLinkError, payDues, rateCustomer, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides,
+  acceptRide, completeRide, confirmCash, confirmDirectPayment, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, isRecoveryLink, myDriver, myDriverTrips, myProfile,
+  myTrip, newKey, onAuthChange, recoveryLinkError, payDues, rateCustomer, rechargeWallet, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides,
   type DriverMe, type RideView,
 } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
@@ -192,6 +192,11 @@ export default function RiderApp() {
     try { const r = await requestPayout(newKey()); await refreshMe(); flash(r.paid_out ? `${inr(r.paid_out)} is on its way to ${me?.upi}` : "Payout requested"); }
     catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
+  const recharge = async (amount: number) => {
+    setBusy(true); setErr(null);
+    try { await rechargeWallet(amount, newKey()); await refreshMe(); flash(`${inr(amount)} added to your wallet`); }
+    catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
   const clearDues = async () => {
     setBusy(true); setErr(null);
     try { await payDues(newKey()); await refreshMe(); flash("Cash dues cleared — thank you!"); }
@@ -273,11 +278,12 @@ export default function RiderApp() {
                 onStart={(otp) => void startTrip(otp)}
                 onEnd={() => void act(() => completeRide(trip.id))}
                 onCollected={() => void act(() => confirmCash(trip.id), "Cash collection recorded")}
+                onPaidDirect={() => void act(() => confirmDirectPayment(trip.id), "Direct payment recorded — commission deducted from your wallet")}
                 onRated={(n) => void finishTrip(n)} />
             ) : detail ? (
               <>
                 {detail.k === "alerts" && <AlertsScreen txns={me.txns} onBack={back} />}
-                {detail.k === "wallet" && <WalletPage me={me} busy={busy} err={err} onWithdraw={() => void withdraw()} onPayDues={() => void clearDues()} onBack={back} />}
+                {detail.k === "wallet" && <WalletPage me={me} busy={busy} err={err} onWithdraw={() => void withdraw()} onPayDues={() => void clearDues()} onRecharge={(n) => void recharge(n)} onBack={back} />}
                 {detail.k === "performance" && <PerformancePage me={me} trips={trips ?? []} onBack={back} />}
                 {detail.k === "documents" && <DocumentsPage me={me} onBack={back} />}
                 {detail.k === "vehicle" && <VehiclePage me={me} onBack={back} />}

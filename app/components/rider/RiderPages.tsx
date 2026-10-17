@@ -18,12 +18,15 @@ const iconTile = (bg: string): React.CSSProperties => ({ width: 42, height: 42, 
 
 /* ───────────────────────── Wallet ───────────────────────── */
 
-/** One balance from the ledger: positive = withdrawable, negative = dues owed (cash trips). */
-export function WalletPage({ me, busy, err, onWithdraw, onPayDues, onBack }: {
-  me: DriverMe; busy: boolean; err: string | null; onWithdraw: () => void; onPayDues: () => void; onBack: () => void;
+/** One balance from the ledger: positive = withdrawable, negative = dues owed (cash / directly-paid trips). */
+export function WalletPage({ me, busy, err, onWithdraw, onPayDues, onRecharge, onBack }: {
+  me: DriverMe; busy: boolean; err: string | null; onWithdraw: () => void; onPayDues: () => void; onRecharge: (amount: number) => void; onBack: () => void;
 }) {
   const dues = Math.max(0, -me.balance);
   const withdrawable = Math.max(0, me.balance);
+  const [amount, setAmount] = useState("");
+  const amt = Number(amount);
+  const amtOk = Number.isInteger(amt) && amt >= 10 && amt <= 50000;
   return (
     <InfoPage title="Rider Wallet" onBack={onBack}>
       <div style={{ borderRadius: 22, padding: 18, background: "linear-gradient(150deg,var(--blue-dark),var(--blue))", color: "white", boxShadow: "0 10px 28px rgba(11,92,255,0.28)" }}>
@@ -37,6 +40,20 @@ export function WalletPage({ me, busy, err, onWithdraw, onPayDues, onBack }: {
       <div style={{ display: "flex", gap: 10 }}>
         <PrimaryButton tone="gold" onClick={onWithdraw} disabled={busy || withdrawable < me.min_payout || !me.upi} style={{ flex: 1 }}>Instant Payout</PrimaryButton>
         <PrimaryButton tone="ghost" onClick={onPayDues} disabled={busy || dues <= 0} style={{ flex: 1 }}>Clear Dues</PrimaryButton>
+      </div>
+      <div style={{ ...card, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+        <p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Recharge wallet</p>
+        <p style={{ ...small, margin: 0 }}>Took a fare in cash or on your own UPI? DriveWay&apos;s {me.commission_pct}% commission on that trip is deducted from this wallet. Keep it topped up so it doesn&apos;t go into dues.</p>
+        <div style={{ display: "flex", gap: 8 }}>
+          {[100, 200, 500, 1000].map((v) => (
+            <button key={v} type="button" onClick={() => setAmount(String(v))} disabled={busy}
+              style={{ flex: 1, padding: "8px 0", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", border: amount === String(v) ? "1.5px solid var(--blue)" : "1.5px solid var(--line)", background: amount === String(v) ? "var(--blue-tint)" : "var(--surface)", color: "var(--ink)" }}>
+              {inr(v)}
+            </button>
+          ))}
+        </div>
+        <input aria-label="Recharge amount" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, "").slice(0, 5))} placeholder={dues > 0 ? `Enter amount · ${inr(dues)} clears your dues` : "Enter amount (₹10 – ₹50,000)"} style={field} />
+        <PrimaryButton onClick={() => { onRecharge(amt); setAmount(""); }} disabled={busy || !amtOk}>{busy ? "Processing…" : amtOk ? `Recharge ${inr(amt)} via UPI` : "Recharge via UPI"}</PrimaryButton>
       </div>
       <ErrorText msg={err} />
       <p style={{ ...onCanvas, margin: 0, textAlign: "center" }}>

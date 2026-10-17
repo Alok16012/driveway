@@ -219,9 +219,9 @@ function useSince(iso: string | null) {
   return iso ? Math.max(0, (now - new Date(iso).getTime()) / 1000) : 0;
 }
 
-export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollected, onRated, onBack, onCall, onCancel, onSos, onNavigate }: {
+export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollected, onPaidDirect, onRated, onBack, onCall, onCancel, onSos, onNavigate }: {
   trip: RideView; busy: boolean; err: string | null;
-  onArrived: () => void; onStart: (otp: string) => void; onEnd: () => void; onCollected: () => void; onRated: (stars: number) => void;
+  onArrived: () => void; onStart: (otp: string) => void; onEnd: () => void; onCollected: () => void; onPaidDirect: () => void; onRated: (stars: number) => void;
   onBack: () => void; onCall: () => void; onCancel: () => void; onSos: () => void; onNavigate: () => void;
 }) {
   const [otp, setOtp] = useState("");
@@ -237,6 +237,7 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
     const gross = trip.fare + trip.wait_fee;
     const earn = Math.round(gross * (1 - commission));
     const cashDue = trip.pay === "Cash" && trip.payment_status === "pending";
+    const onlineDue = trip.pay !== "Cash" && trip.payment_status === "pending" && trip.total > 0;
     return (
       <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", padding: "34px 16px 20px" }}>
         <div style={{ textAlign: "center" }}>
@@ -256,6 +257,7 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700, padding: "4px 0" }}><span>You earn</span><span style={{ color: "var(--success-text)" }}>{inr(earn)}</span></div>
           {trip.discount > 0 && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--ink-mute)", lineHeight: 1.45 }}>The customer used coupon {trip.coupon} (−{inr(trip.discount)}). DriveWay covers it — your earning is unchanged.</p>}
           {trip.pay === "Cash" && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--ink-mute)", lineHeight: 1.45 }}>You keep the cash; it's deducted from your wallet, so a negative balance is dues owed.</p>}
+          {onlineDue && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--ink-mute)", lineHeight: 1.45 }}>If the customer paid you on your own UPI or account instead of in the app, tap &quot;Customer paid me directly&quot;. You keep the fare and the commission is deducted from your wallet.</p>}
         </div>
         {!cashDue && (
           <div className="fade-up" style={{ ...card, padding: 16, marginTop: 12, textAlign: "center" }}>
@@ -267,7 +269,10 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
         <div style={{ marginTop: "auto", paddingTop: 20 }}>
           {cashDue
             ? <PrimaryButton disabled={busy} onClick={onCollected}>{busy ? "Saving…" : `Cash Collected · ${inr(trip.total)}`}</PrimaryButton>
-            : <PrimaryButton disabled={busy} onClick={() => onRated(stars)}>{busy ? "Saving…" : stars ? "Submit & Go Online" : "Skip & Go Online"}</PrimaryButton>}
+            : <>
+                {onlineDue && <PrimaryButton tone="ghost" disabled={busy} onClick={onPaidDirect} style={{ marginBottom: 10 }}>{`Customer paid me directly · ${inr(trip.total)}`}</PrimaryButton>}
+                <PrimaryButton disabled={busy} onClick={() => onRated(stars)}>{busy ? "Saving…" : stars ? "Submit & Go Online" : "Skip & Go Online"}</PrimaryButton>
+              </>}
         </div>
       </div>
     );
@@ -401,7 +406,7 @@ export function TripsScreen({ trips, commissionPct, onOpen }: { trips: RideView[
             <RouteLines from={r.from.name} to={r.to.name} />
             <div style={{ borderTop: "1px solid var(--line)", marginTop: 10, paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>{r.customer?.name ?? "Customer"} · {r.km} km · {r.pay}</span>
-              <span style={{ fontSize: 15, fontWeight: 800, color: r.status === "Completed" ? "var(--ink)" : "var(--ink-mute)" }}>{r.status === "Completed" ? inr(Math.round((r.fare + r.wait_fee) * (1 - commissionPct / 100))) : "—"}</span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: r.status === "Completed" ? "var(--ink)" : "var(--ink-mute)" }}>{r.status === "Completed" ? inr(Math.round((r.fare + r.wait_fee) * (1 - (r.commission_pct ?? commissionPct) / 100))) : "—"}</span>
             </div>
           </button>
         ))}
