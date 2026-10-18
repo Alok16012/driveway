@@ -15,10 +15,11 @@ import { CITIES, inr } from "../lib/data";
 import { NATIVE_APP } from "../lib/native";
 import {
   acceptRide, completeRide, confirmCash, confirmDirectPayment, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, isRecoveryLink, myDriver, myDriverTrips, myProfile,
-  myTrip, newKey, onAuthChange, recoveryLinkError, payDues, rateCustomer, rechargeWallet, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides,
+  myTrip, newKey, onAuthChange, recoveryLinkError, payDues, rateCustomer, reportLocation, rechargeWallet, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides,
   type DriverMe, type RideView,
 } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
+import { distanceM, useDeviceLocation, type LatLng } from "../lib/location";
 
 const SHELL_MAX_W = 430;
 const PREFS_KEY = "driveway:rider-prefs";
@@ -114,6 +115,18 @@ export default function RiderApp() {
     const unResume = watchResume(() => { void refreshTrip(); void refreshMe(); });
     return () => { stop(); clearInterval(t); unResume(); };
   }, [stage, refreshMe, refreshTrip]);
+
+  /* While a trip is live, share this phone's GPS with the customer: every 4 s, or sooner after 25 m. */
+  const liveTrip = stage === "app" && !!trip && ["Arriving", "Arrived", "Started"].includes(trip.status);
+  const gps = useDeviceLocation(liveTrip);
+  const sent = useRef<{ pos: LatLng; at: number } | null>(null);
+  useEffect(() => {
+    if (!liveTrip || gps.status !== "ok") return;
+    const last = sent.current;
+    if (last && Date.now() - last.at < 4000 && distanceM(last.pos, gps.pos) < 25) return;
+    sent.current = { pos: gps.pos, at: Date.now() };
+    reportLocation({ lat: gps.pos.lat, lng: gps.pos.lng, accuracy: gps.accuracy }).catch(() => { sent.current = null; });
+  }, [liveTrip, gps]);
 
   // A customer cancellation removes the trip: tell the driver.
   const lastTrip = useRef<RideView | null>(null);

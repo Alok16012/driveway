@@ -493,11 +493,12 @@ function LiveRides({ d, act }: { d: Data; act: Act }) {
   const live = d.rides.filter((r) => LIVE.includes(r.status));
   const [open, setOpen] = useState<string | null>(null);
   const sel = d.rides.find((r) => r.id === open);
+  const focus = sel ?? live[0];
   return (
     <div className="adm-grid-2">
       <Panel title="Map" right={<span style={{ fontSize: 12.5, color: "var(--success-text)", fontWeight: 600 }}>● {live.length} live</span>}>
-        <MapView mode="trip" progress={0.45} height={420} radius={14} nearby />
-        <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--ink-mute)" }}>Illustrative map — live GPS positions arrive with the maps integration.</p>
+        <MapView mode={focus ? "route" : "idle"} from={focus?.from_place} to={focus?.to_place} height={420} radius={14} />
+        <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--ink-mute)" }}>{focus ? `Route of ${focus.code} — tap a ride to show its route.` : "No live ride to show."}</p>
       </Panel>
       <Panel title="Live rides">
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

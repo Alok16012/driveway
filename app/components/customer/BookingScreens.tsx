@@ -10,10 +10,11 @@ import VehicleArt, { AnyArt, ParcelArt, RentalArt } from "../VehicleArt";
 import { Avatar, ErrorText, Footer, LoadState, PageHeader, PrimaryButton, Stars, StatusBadge, card, field, iconBtn, onLight } from "../ui";
 import { PARCEL_TYPES, RIDE_STEPS, inr, vehicleById, type PayMethod, type VehicleKind } from "../../lib/data";
 import {
-  activeCoupons, bookRide, cancelRide, closeRide, customerEndRide, isIndianMobile, newKey, payRide, quote as fetchQuote, rateRide, rideLabel,
-  type CouponRow, type FareLine, type Place, type Quote, type QuoteOption, type RideView,
+  activeCoupons, bookRide, cancelRide, closeRide, customerEndRide, isIndianMobile, newKey, payRide, quote as fetchQuote, rateRide, rideLabel, watchDriverPosition,
+  type CouponRow, type DriverPos, type FareLine, type Place, type Quote, type QuoteOption, type RideView,
 } from "../../lib/api";
 import type { RideOption } from "./types";
+import { distanceM, placeCoords } from "../../lib/location";
 
 const dot = (color: string, square = false): React.CSSProperties => ({
   width: 10, height: 10, borderRadius: square ? 2 : "50%", background: color, flexShrink: 0,
@@ -210,7 +211,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", background: "var(--app-bg)" }}>
       {/* ── map ── */}
       <div style={{ position: "relative" }}>
-        <MapView mode="route" height={bigMap ? 520 : 290} radius={0} />
+        <MapView mode="route" from={from.id} to={to.id} height={bigMap ? 520 : 290} radius={0} />
         <button onClick={onBack} aria-label="Back" className="press" style={{ ...iconBtn, position: "absolute", top: 16, left: 16, width: 46, height: 46, borderRadius: "50%", background: "white", justifyContent: "center", boxShadow: "var(--shadow-lg)" }}>
           <BackIcon c="var(--ink)" />
         </button>
@@ -628,7 +629,19 @@ export function LiveRidePage({ ride, onBack, onCancelled, onEnded, onChat, onSha
   const motion = ride.status === "Started" && ride.started_at ? { since: ride.started_at, seconds: SIM_TRIP_SEC, max: 0.97 }
     : ride.status === "Arriving" && ride.assigned_at ? { since: ride.assigned_at, seconds: SIM_APPROACH_SEC, max: 0.95 } : undefined;
   const mode = searching || none ? "route" : ride.status === "Started" || ride.status === "Completed" ? "trip" : "approach";
-  const eta = Math.max(1, Math.round((ride.status === "Started" ? ride.mins : approachMins) * (1 - progress)));
+  const tracking = ride.status === "Arriving" || ride.status === "Arrived" || ride.status === "Started";
+  const [driverPos, setDriverPos] = useState<DriverPos | null>(null);
+  useEffect(() => {
+    setDriverPos(null);
+    if (!tracking) return;
+    return watchDriverPosition(ride.id, setDriverPos);
+  }, [ride.id, tracking]);
+  // The driver's real position, while their phone keeps reporting it; otherwise the car is simulated.
+  const car = tracking && driverPos && Date.now() - new Date(driverPos.at).getTime() < 120_000 ? { lat: driverPos.lat, lng: driverPos.lng } : undefined;
+  const headingTo = placeCoords(ride.status === "Started" ? ride.to.id : ride.from.id);
+  // Real ETA: straight-line distance × 1.3 for roads, at ~22 km/h city traffic.
+  const eta = car && headingTo ? Math.max(1, Math.round((distanceM(car, headingTo) * 1.3) / 1000 / 22 * 60))
+    : Math.max(1, Math.round((ride.status === "Started" ? ride.mins : approachMins) * (1 - progress)));
 
   const cancel = async (reason: string) => {
     if (busy) return;
@@ -644,7 +657,7 @@ export function LiveRidePage({ ride, onBack, onCancelled, onEnded, onChat, onSha
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ position: "relative" }}>
-        <MapView mode={mode} progress={progress} motion={motion} height={searching ? 330 : 300} radius={0} nearby={searching}>
+        <MapView mode={mode} progress={progress} motion={motion} from={ride.from.id} to={ride.to.id} car={car} height={searching ? 330 : 300} radius={0}>
           {searching && (
             <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: 1, height: 1 }}>
               {[0, 0.6, 1.2].map((d) => <span key={d} className="ripple" style={{ position: "absolute", left: -60, top: -60, width: 120, height: 120, borderRadius: "50%", background: "rgba(11,92,255,0.22)", animationDelay: `${d}s` }} />)}

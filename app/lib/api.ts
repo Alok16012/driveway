@@ -245,6 +245,27 @@ export function watchRides(onChange: () => void): () => void {
   return () => { void supabase().removeChannel(ch); };
 }
 
+/* Live driver position (supabase/migrations/…_driver_live_location.sql). */
+export interface DriverPos { lat: number; lng: number; heading: number | null; at: string }
+
+/** Driver app: report this phone's position. Ignored by the server unless the driver has a live trip. */
+export const reportLocation = (p: { lat: number; lng: number; heading?: number | null; accuracy?: number | null }) =>
+  rpc<void>("report_location", { p_lat: p.lat, p_lng: p.lng, p_heading: p.heading ?? null, p_accuracy: p.accuracy ?? null });
+
+/** Customer app: the driver's last reported position on a live ride, then every update after it. */
+export function watchDriverPosition(rideId: string, onPos: (p: DriverPos) => void): () => void {
+  let dead = false;
+  void supabase().from("ride_tracks").select("lat,lng,heading,at").eq("ride_id", rideId).maybeSingle()
+    .then(({ data }) => { if (!dead && data) onPos(data as DriverPos); });
+  const ch: RealtimeChannel = supabase().channel(`track-${rideId}-${newKey()}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "ride_tracks", filter: `ride_id=eq.${rideId}` }, (e) => {
+      const n = e.new as Partial<DriverPos> | undefined;
+      if (!dead && n && typeof n.lat === "number" && typeof n.lng === "number") onPos({ lat: n.lat, lng: n.lng, heading: n.heading ?? null, at: n.at ?? new Date().toISOString() });
+    })
+    .subscribe();
+  return () => { dead = true; void supabase().removeChannel(ch); };
+}
+
 /** Calls `onResume` when the app comes back to the foreground. Phones pause background tabs and apps
  *  (timers and the realtime socket included), so without this a returning user sees stale state until the next poll. */
 export function watchResume(onResume: () => void): () => void {

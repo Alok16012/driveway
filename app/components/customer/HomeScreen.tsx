@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, BellIcon, BriefcaseIcon, ChevronRight, ClockIcon, HomeIcon, SearchIcon, ShieldIcon, TargetIcon } from "../icons";
+import { ArrowRight, BellIcon, BriefcaseIcon, ChevronRight, ClockIcon, HomeIcon, SearchIcon, ShieldIcon } from "../icons";
 import { BrandMark, Wordmark } from "../Brand";
 import MapView from "../MapView";
+import { retryLocation, useCurrentAddress } from "../../lib/location";
 import VehicleArt, { AnyArt, ParcelArt, RentalArt } from "../VehicleArt";
 import { HOME_BG, iconBtn } from "../ui";
 import { vehicleById } from "../../lib/data";
@@ -46,7 +47,8 @@ const SERVICES: RideOption[] = ["bike", "mini", "sedan", "suv", "any", "rental",
 
 export default function HomeScreen(p: HomeProps) {
   const quick = p.places.filter((x) => x.kind && x.kind !== "current");
-  const here = p.places.find((x) => x.kind === "current");
+  const { loc, address } = useCurrentAddress();
+  const off = loc.status === "denied" || loc.status === "unavailable" || loc.status === "insecure";
   return (
     <div style={{ paddingBottom: 24 }}>
       {/* ── Top bar ── */}
@@ -69,13 +71,12 @@ export default function HomeScreen(p: HomeProps) {
       {/* ── Map + where-to card ── */}
       <div style={{ padding: "0 16px" }}>
         <MapView height={190} radius={22}>
-          <div style={{ position: "absolute", top: 12, left: 12, display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.95)", borderRadius: 999, padding: "6px 12px 6px 8px", boxShadow: "var(--shadow-md)" }}>
-            <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 0 3px rgba(47,158,118,0.2)" }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>{here?.address ?? "Locating…"}</span>
+          <div onClick={off ? retryLocation : undefined} title={off ? loc.message : undefined} style={{ position: "absolute", top: 12, left: 12, right: 56, width: "fit-content", cursor: off ? "pointer" : undefined, display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.95)", borderRadius: 999, padding: "6px 12px 6px 8px", boxShadow: "var(--shadow-md)" }}>
+            <span style={{ flexShrink: 0, width: 9, height: 9, borderRadius: "50%", background: off ? "var(--red)" : "var(--green)", boxShadow: off ? "0 0 0 3px rgba(224,49,49,0.2)" : "0 0 0 3px rgba(47,158,118,0.2)" }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {off ? "Location off · tap to retry" : address ?? (loc.status === "ok" ? "Finding your address…" : "Locating…")}
+            </span>
           </div>
-          <span style={{ position: "absolute", right: 12, bottom: 12, width: 36, height: 36, borderRadius: "50%", background: "white", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow-md)" }}>
-            <TargetIcon s={19} c="var(--blue)" />
-          </span>
         </MapView>
 
         <div style={{ margin: "-26px 10px 0", position: "relative", background: "var(--surface)", borderRadius: 20, padding: 12, boxShadow: "var(--shadow-xl)" }}>

@@ -581,3 +581,30 @@ describe("Editing your own profile", () => {
     await rejects(t.rpc(await t.user(), "update_my_driver_profile", "Not A Driver", "Kolkata"), /driver account not found/);
   });
 });
+
+describe("Live driver location (report_location / ride_tracks)", () => {
+  it("only the driver of a live trip can report; only that ride's customer sees it, and it's gone after the trip", async () => {
+    const c = await t.user(); const stranger = await t.user();
+    const d = await t.driver("bike");
+    await t.rpc(d, "report_location", 22.55, 88.35, null, null);   // no live trip: ignored
+    expect(await t.admin(`select * from public.ride_tracks where driver_id = $1`, [d])).toHaveLength(0);
+
+    const b = await t.book(c, { option: "bike" });
+    await t.rpc(d, "accept_ride", b.id);
+    await t.rpc(d, "report_location", 22.5601, 88.3602, 90, 12);
+    await t.rpc(d, "report_location", 22.5612, 88.3615, 45, 8);   // overwrites, one row per ride
+    const seen = await t.as<{ lat: number; lng: number; heading: number }>(c, `select lat, lng, heading from public.ride_tracks where ride_id = '${b.id}'`);
+    expect(seen).toEqual([{ lat: 22.5612, lng: 88.3615, heading: 45 }]);
+    expect(await t.as(stranger, `select * from public.ride_tracks`)).toHaveLength(0);
+
+    await rejects(t.as(d, `update public.ride_tracks set lat = 0`), /permission denied/);
+    await rejects(t.as(c, `insert into public.ride_tracks (ride_id, driver_id, lat, lng) values ('${b.id}', '${d}', 1, 1)`), /permission denied/);
+    await rejects(t.rpc(d, "report_location", 120, 88, null, null), /invalid position/);
+    await rejects(t.rpc(null, "report_location", 22.5, 88.3, null, null), /permission denied/);
+
+    await t.rpc(d, "driver_arrived", b.id);
+    await t.rpc(d, "start_ride", b.id, await t.otpOf(b.id));
+    await t.rpc(d, "complete_ride", b.id);
+    expect(await t.admin(`select * from public.ride_tracks where ride_id = $1`, [b.id])).toHaveLength(0);
+  });
+});
