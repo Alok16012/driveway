@@ -123,6 +123,7 @@ describe("Coupons (BUG-10, BUG-13, I)", () => {
     (await t.rpc(u, "quote", "cur", to, true, code)).options.find((o: any) => o.id === vehicle).coupon;
   it("AUTO20 only on Auto and only at or above the minimum fare", async () => {
     const u = await t.user();
+    await t.admin(`update public.coupons set starts_at = now() - interval '1 day', expires_at = now() + interval '1 day' where code = 'AUTO20'`);
     expect((await disc(u, "AUTO20", "mini")).reason).toMatch(/vehicle/);
     await t.admin(`update public.coupons set min_fare = 100000 where code = 'AUTO20'`);
     expect((await disc(u, "AUTO20", "auto")).reason).toMatch(/fares of/);
@@ -134,7 +135,7 @@ describe("Coupons (BUG-10, BUG-13, I)", () => {
     expect((await disc(u, "AUTO20", "auto")).ok).toBe(false);
     expect((await disc(u, "AIRPORT99", "sedan")).reason).toMatch(/no longer active/);
     const today = (await t.admin(`select extract(dow from now() at time zone 'Asia/Kolkata')::int d`))[0].d;
-    await t.admin(`update public.coupons set days = $1 where code = 'WEEKEND'`, [[(today + 1) % 7]]);
+    await t.admin(`update public.coupons set days = $1, starts_at = now() - interval '1 day', expires_at = now() + interval '1 day' where code = 'WEEKEND'`, [[(today + 1) % 7]]);
     expect((await disc(u, "WEEKEND", "mini")).reason).toMatch(/Not valid today/);
   });
   it("booking with an ineligible coupon is refused server-side", async () => {
@@ -142,6 +143,7 @@ describe("Coupons (BUG-10, BUG-13, I)", () => {
   });
   it("first-ride coupon stops after the first completed ride; per-user limit enforced", async () => {
     const c = await t.user();
+    await t.admin(`update public.coupons set starts_at = now() - interval '1 day', expires_at = now() + interval '1 day' where code = 'FIRST50'`);
     const first = await fullTrip({ customer: c, coupon: "FIRST50" });
     expect((await t.ride(first.id)).discount).toBeGreaterThan(0);
     await t.rpc(c, "pay_ride", first.id, "UPI");
@@ -200,7 +202,7 @@ describe("Booking and dispatch (BUG-07, J2, J3, J5, J10, J11, E)", () => {
     await t.rpc(adm, "admin_set_blocked", blocked, true);
     await rejects(t.rpc(blocked, "set_online", true), /blocked/);
     await rejects(t.rpc(blocked, "update_my_upi", "rider@okaxis"), /blocked/);
-    await rejects(t.rpc(blocked, "update_my_driver_profile", "Other Name", "Delhi"), /blocked/);
+    await rejects(t.rpc(blocked, "update_my_driver_profile", "Other Name", "Kolkata"), /blocked/);
     await rejects(t.rpc(blocked, "update_my_phone", "9876543210"), /blocked/);
     // even if still marked online, a blocked rider cannot take a ride
     await t.admin(`select set_config('request.jwt.claim.sub', '', false)`);  // setup runs as no one, not as the rider
@@ -211,7 +213,7 @@ describe("Booking and dispatch (BUG-07, J2, J3, J5, J10, J11, E)", () => {
     const sus = await t.driver("bike");
     await t.rpc(adm, "admin_set_suspended", sus, true);
     await rejects(t.rpc(sus, "update_my_upi", "rider@okaxis"), /blocked/);
-    await rejects(t.rpc(sus, "update_my_driver_profile", "Other Name", "Delhi"), /blocked/);
+    await rejects(t.rpc(sus, "update_my_driver_profile", "Other Name", "Kolkata"), /blocked/);
     await t.rpc(sus, "set_online", false);                     // going offline is always allowed
     expect((await t.book(sus, { option: "auto" })).status).toBe("Searching");
   });
@@ -342,6 +344,7 @@ describe("Money: completion, payment, cash, earnings (BUG-04, BUG-06, BUG-11, BU
     expect(l.filter((x: any) => x.kind === "commission")).toHaveLength(1);
   });
   it("driver earning ignores the customer's coupon — the platform funds discounts", async () => {
+    await t.admin(`update public.coupons set starts_at = now() - interval '1 day', expires_at = now() + interval '1 day' where code = 'FIRST50'`);
     const plain = await fullTrip({ vehicle: "bike" });
     const withCoupon = await fullTrip({ vehicle: "bike", coupon: "FIRST50" });
     const earn = async (id: string) => (await t.ledger(id)).find((x: any) => x.kind === "driver_earning").amount;
@@ -465,7 +468,7 @@ describe("Ratings, drivers and support (K, B)", () => {
   it("driver registration validates documents, plate uniqueness and AC eligibility", async () => {
     const a = await t.user(); const b = await t.user();
     const docs = (uid: string) => Object.fromEntries(["photo", "licence", "rc", "insurance", "aadhaar"].map((k) => [k, `${uid}/${k}.jpg`]));
-    const base = { name: "Asha Rao", vehicle: "mini", model: "i10", plate: "UP16 ZZ 0001", city: "Noida", docs: docs(a) };
+    const base = { name: "Asha Rao", vehicle: "mini", model: "i10", plate: "UP16 ZZ 0001", city: "Kolkata", docs: docs(a) };
     await rejects(t.rpc(a, "register_driver", { ...base, docs: { licence: `${a}/l.jpg` } }), /five documents/);
     await rejects(t.rpc(a, "register_driver", { ...base, docs: docs(b) }), /five documents/);   // someone else's files
     await rejects(t.rpc(a, "register_driver", { ...base, vehicle: "auto", ac: true }), /cannot be AC/);
@@ -523,7 +526,7 @@ describe("Phone verification required (email-only accounts)", () => {
   it("an email-only account cannot book or apply as a driver", async () => {
     const e = await t.user({ email: "someone@example.test" });
     await rejects(t.book(e, { option: "bike" }), /mobile number/);
-    await rejects(t.rpc(e, "register_driver", { name: "X Y", vehicle: "bike", model: "Shine", plate: "UP16AB1234", city: "Noida", docs: {} }), /mobile number/);
+    await rejects(t.rpc(e, "register_driver", { name: "X Y", vehicle: "bike", model: "Shine", plate: "UP16AB1234", city: "Kolkata", docs: {} }), /mobile number/);
   });
 });
 
@@ -570,11 +573,11 @@ describe("Editing your own profile", () => {
   });
   it("a rider can change name and city; only their own record, only supported cities", async () => {
     const d = await t.driver("bike");
-    await t.rpc(d, "update_my_driver_profile", "Amar Singh", "Delhi");
+    await t.rpc(d, "update_my_driver_profile", "Amar Singh", "Kolkata");
     const row = (await t.admin(`select name, city from public.drivers where id = $1`, [d]))[0];
-    expect(row).toEqual({ name: "Amar Singh", city: "Delhi" });
-    await rejects(t.rpc(d, "update_my_driver_profile", "A", "Delhi"), /2–80 characters/);
-    await rejects(t.rpc(d, "update_my_driver_profile", "Amar", "Mumbai"), /city/);
-    await rejects(t.rpc(await t.user(), "update_my_driver_profile", "Not A Driver", "Noida"), /driver account not found/);
+    expect(row).toEqual({ name: "Amar Singh", city: "Kolkata" });
+    await rejects(t.rpc(d, "update_my_driver_profile", "A", "Kolkata"), /2–80 characters/);
+    await rejects(t.rpc(d, "update_my_driver_profile", "Amar", "Noida"), /city/);
+    await rejects(t.rpc(await t.user(), "update_my_driver_profile", "Not A Driver", "Kolkata"), /driver account not found/);
   });
 });

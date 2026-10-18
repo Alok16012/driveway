@@ -28,7 +28,7 @@ export const RIDE_STEPS: RideStatus[] = ["Searching", "Arriving", "Arrived", "St
 
 export type PayMethod = "UPI" | "Cash" | "Card" | "Wallet";
 
-export const CITIES = ["Noida", "Delhi", "Gurugram", "Lucknow"] as const;
+export const CITIES = ["Kolkata"] as const;
 
 export const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 

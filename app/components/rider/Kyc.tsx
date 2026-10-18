@@ -27,7 +27,7 @@ const STEPS = ["Personal", "Vehicle", "Documents", "Payout"];
 /** Four-step driver application. Documents go to a private storage bucket; an admin reviews them. */
 export function KycFlow({ onSubmitted }: { onSubmitted: () => void }) {
   const [step, setStep] = useState(0);
-  const [k, setK] = useState({ name: "", city: "Noida", vehicle: "sedan" as VehicleKind, model: "", plate: "", ac: true, upi: "" });
+  const [k, setK] = useState({ name: "", city: "Kolkata", vehicle: "sedan" as VehicleKind, model: "", plate: "", ac: true, upi: "" });
   const [docs, setDocs] = useState<Partial<Record<DocKey, string>>>({});
   const [uploading, setUploading] = useState<DocKey | null>(null);
   const [busy, setBusy] = useState(false);
@@ -134,8 +134,8 @@ export function KycFlow({ onSubmitted }: { onSubmitted: () => void }) {
             <div><label style={label} htmlFor="km">Make, model & colour</label><input id="km" value={k.model} maxLength={60} onChange={(e) => set({ model: e.target.value })} placeholder="Maruti Dzire · White" style={field} /></div>
             <div>
               <label style={label} htmlFor="kp">Registration number</label>
-              <input id="kp" value={k.plate} maxLength={15} onChange={(e) => set({ plate: e.target.value.toUpperCase() })} placeholder="UP16 AB 1234" style={field} />
-              {k.plate.length >= 6 && !PLATE_RE.test(k.plate.trim()) && <ErrorText msg="Use the format on your RC, e.g. UP16 AB 1234." />}
+              <input id="kp" value={k.plate} maxLength={15} onChange={(e) => set({ plate: e.target.value.toUpperCase() })} placeholder="WB 02 AB 1234" style={field} />
+              {k.plate.length >= 6 && !PLATE_RE.test(k.plate.trim()) && <ErrorText msg="Use the format on your RC, e.g. WB 02 AB 1234." />}
             </div>
           </>
         )}
