@@ -3,5 +3,6 @@
   "appName": "DriveWay Rider",
   "webDir": "www",
   "server": { "androidScheme": "https", "appStartPath": "/rider" },
-  "android": { "allowMixedContent": false }
+  "includePlugins": ["@capacitor-community/background-geolocation"],
+  "android": { "allowMixedContent": false, "useLegacyBridge": true }
 }

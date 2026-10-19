@@ -3,7 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>DriveWay uses your location to set your pickup point.</string>
+	<string>DriveWay Rider shares your location with the customer while a trip is live.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>DriveWay Rider keeps sharing your location with the customer during a trip, even while you navigate in another app.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
     <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>

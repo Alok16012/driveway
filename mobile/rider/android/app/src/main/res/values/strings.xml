@@ -4,4 +4,8 @@
     <string name="title_activity_main">DriveWay Rider</string>
     <string name="package_name">com.driveway.rider</string>
     <string name="custom_url_scheme">com.driveway.rider</string>
+    <!-- Trip location sharing (@capacitor-community/background-geolocation) -->
+    <string name="capacitor_background_geolocation_notification_channel_name">Trip location sharing</string>
+    <string name="capacitor_background_geolocation_notification_icon">drawable/ic_trip_tracking</string>
+    <string name="capacitor_background_geolocation_notification_color">#2F9E76</string>
 </resources>
