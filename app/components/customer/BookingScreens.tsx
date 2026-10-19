@@ -14,17 +14,33 @@ import {
   type CouponRow, type DriverPos, type FareLine, type Place, type Quote, type QuoteOption, type RideView,
 } from "../../lib/api";
 import type { RideOption } from "./types";
-import { distanceM, placeCoords } from "../../lib/location";
+import { distanceM, placePos, useCurrentAddress } from "../../lib/location";
 
 const dot = (color: string, square = false): React.CSSProperties => ({
   width: 10, height: 10, borderRadius: square ? 2 : "50%", background: color, flexShrink: 0,
   boxShadow: `0 0 0 3px ${color === "var(--green)" ? "rgba(47,158,118,0.18)" : "rgba(224,49,49,0.18)"}`,
 });
 
+/* "Current location" is a stand-in place on the server; the phone's GPS fix is the real pickup, sent with the booking.
+ * `waiting` says why booking from it has to wait (no fix yet, or location off). */
+function useGpsPickup(from: Place) {
+  const isCur = from.kind === "current";
+  const { loc, address } = useCurrentAddress(isCur);
+  if (!isCur) return { pos: null, pickup: undefined, address: from.address, waiting: null };
+  const pos = loc.status === "ok" ? loc.pos : null;
+  return {
+    pos,
+    pickup: pos ? { lat: pos.lat, lng: pos.lng, address } : undefined,
+    address: address ?? (pos ? "Finding your address…" : "Locating…"),
+    waiting: loc.status === "ok" ? null : loc.status === "locating" ? "Finding your location…" : `${loc.message} Or pick a pickup point instead.`,
+  };
+}
+
 /* ───────────────────────── 1. Set location ───────────────────────── */
 
 export function SearchPage({ places, initialTo, onBack, onDone }: { places: Place[]; initialTo?: Place; onBack: () => void; onDone: (from: Place, to: Place) => void }) {
   const current = places.find((p) => p.kind === "current") ?? places[0];
+  const here = useGpsPickup(current);
   const [from, setFrom] = useState<Place>(current);
   const [to, setTo] = useState<Place | null>(initialTo ?? null);
   const [focus, setFocus] = useState<"from" | "to">("to");
@@ -101,7 +117,7 @@ export function SearchPage({ places, initialTo, onBack, onDone }: { places: Plac
                 </span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{p.name}</span>
-                  <span style={{ display: "block", fontSize: 12, color: "var(--ink-soft)" }}>{p.address}</span>
+                  <span style={{ display: "block", fontSize: 12, color: "var(--ink-soft)" }}>{p.kind === "current" ? here.address : p.address}</span>
                 </span>
               </button>
             );
@@ -159,6 +175,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
   const [bookErr, setBookErr] = useState<string | null>(null);
   const idem = useRef(newKey());                         // one key per booking attempt → retries never double-book
   const [reload, setReload] = useState(0);
+  const gps = useGpsPickup(from);
 
   useEffect(() => {
     let live = true;
@@ -190,7 +207,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
     setBusy(true); setBookErr(null);
     try {
       await bookRide({
-        option: sel, from: from.id, to: to.id, ac, pay, coupon, when: when?.[1] ?? null, passenger,
+        option: sel, from: from.id, to: to.id, pickup: gps.pickup, ac, pay, coupon, when: when?.[1] ?? null, passenger,
         rental: sel === "rental" ? rental : undefined, add_on: extra, idem: idem.current,
       });
       onBooked(!!when);
@@ -211,7 +228,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", background: "var(--app-bg)" }}>
       {/* ── map ── */}
       <div style={{ position: "relative" }}>
-        <MapView mode="route" from={from.id} to={to.id} height={bigMap ? 520 : 290} radius={0} />
+        <MapView mode="route" from={from.id} pickupAt={gps.pos} to={to.id} height={bigMap ? 520 : 290} radius={0} />
         <button onClick={onBack} aria-label="Back" className="press" style={{ ...iconBtn, position: "absolute", top: 16, left: 16, width: 46, height: 46, borderRadius: "50%", background: "white", justifyContent: "center", boxShadow: "var(--shadow-lg)" }}>
           <BackIcon c="var(--ink)" />
         </button>
@@ -230,7 +247,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
             <span style={{ width: 11, height: 11, borderRadius: "50%", background: "var(--red)" }} />
           </span>
           <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: "block", fontSize: 15, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", padding: "2px 0 12px", borderBottom: "1px solid var(--line)" }}>{from.name}, {from.address}</span>
+            <span style={{ display: "block", fontSize: 15, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", padding: "2px 0 12px", borderBottom: "1px solid var(--line)" }}>{from.name}, {gps.address}</span>
             <span style={{ display: "block", fontSize: 15, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingTop: 12 }}>{to.name}, {to.address}</span>
           </span>
         </button>
@@ -330,8 +347,8 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
             ))}
           </div>
         )}
-        <ErrorText msg={bookErr} />
-        <PrimaryButton onClick={() => void book()} disabled={busy || !cur.available || (!!couponState && !couponState.ok)}>
+        <ErrorText msg={bookErr ?? (isParcel ? null : gps.waiting)} />
+        <PrimaryButton onClick={() => void book()} disabled={busy || !cur.available || (!!couponState && !couponState.ok) || (!isParcel && !!gps.waiting)}>
           {busy ? "Booking…" : isParcel ? "Continue to Parcel details" : `${when ? "Schedule" : "Book"} ${sel === "any" ? "Any" : sel === "rental" ? "Rental" : nameOf(sel)} · ${inr(cur.fare - cur.discount + extra)}`}
         </PrimaryButton>
       </div>
@@ -497,12 +514,13 @@ export function ParcelPage({ from, to, quote: q, pay: initialPay, coupon, onBack
   const [err, setErr] = useState<string | null>(null);
   const idem = useRef(newKey());
   const w = q.parcels.find((x) => x.id === weight)!;
-  const ok = receiver.name.trim() && isIndianMobile(receiver.phone) && agree && w.available > 0;
+  const gps = useGpsPickup(from);
+  const ok = receiver.name.trim() && isIndianMobile(receiver.phone) && agree && w.available > 0 && !gps.waiting;
   const confirm = async () => {
     if (!ok || busy) return;
     setBusy(true); setErr(null);
     try {
-      await bookRide({ option: "parcel", from: from.id, to: to.id, ac: false, pay, coupon, when: null,
+      await bookRide({ option: "parcel", from: from.id, to: to.id, pickup: gps.pickup, ac: false, pay, coupon, when: null,
         parcel: { type, weight, receiver: { name: receiver.name.trim(), phone: receiver.phone }, note: note.trim() }, idem: idem.current });
       onBooked();
     } catch (e) { setErr((e as Error).message); idem.current = newKey(); } finally { setBusy(false); }
@@ -518,7 +536,7 @@ export function ParcelPage({ from, to, quote: q, pay: initialPay, coupon, onBack
             <span style={dot("var(--red)", true)} />
           </div>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-            <div><p style={capLabel}>PICK UP FROM</p><p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>{from.name}, {from.address}</p></div>
+            <div><p style={capLabel}>PICK UP FROM</p><p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>{from.name}, {gps.address}</p></div>
             <div><p style={capLabel}>DELIVER TO</p><p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>{to.name}, {to.address}</p></div>
           </div>
         </div>
@@ -574,7 +592,7 @@ export function ParcelPage({ from, to, quote: q, pay: initialPay, coupon, onBack
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} style={{ marginTop: 3, width: 18, height: 18, accentColor: "var(--blue)" }} />
           <span>The package doesn&apos;t contain prohibited items — alcohol, drugs, cash, jewellery, weapons or hazardous goods — and is packed safely.</span>
         </label>
-        <ErrorText msg={err} />
+        <ErrorText msg={err ?? gps.waiting} />
       </div>
       <Footer>
         <PrimaryButton disabled={!ok || busy} onClick={() => void confirm()}>{busy ? "Booking…" : `Book Parcel · ${inr(w.fare - w.discount)}`}</PrimaryButton>
@@ -638,7 +656,7 @@ export function LiveRidePage({ ride, onBack, onCancelled, onEnded, onChat, onSha
   }, [ride.id, tracking]);
   // The driver's real position, while their phone keeps reporting it; otherwise the car is simulated.
   const car = tracking && driverPos && Date.now() - new Date(driverPos.at).getTime() < 120_000 ? { lat: driverPos.lat, lng: driverPos.lng } : undefined;
-  const headingTo = placeCoords(ride.status === "Started" ? ride.to.id : ride.from.id);
+  const headingTo = placePos(ride.status === "Started" ? ride.to : ride.from);
   // Real ETA: straight-line distance × 1.3 for roads, at ~22 km/h city traffic.
   const eta = car && headingTo ? Math.max(1, Math.round((distanceM(car, headingTo) * 1.3) / 1000 / 22 * 60))
     : Math.max(1, Math.round((ride.status === "Started" ? ride.mins : approachMins) * (1 - progress)));
@@ -657,7 +675,7 @@ export function LiveRidePage({ ride, onBack, onCancelled, onEnded, onChat, onSha
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ position: "relative" }}>
-        <MapView mode={mode} progress={progress} motion={motion} from={ride.from.id} to={ride.to.id} car={car} height={searching ? 330 : 300} radius={0}>
+        <MapView mode={mode} progress={progress} motion={motion} from={ride.from.id} pickupAt={placePos(ride.from)} to={ride.to.id} car={car} height={searching ? 330 : 300} radius={0}>
           {searching && (
             <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: 1, height: 1 }}>
               {[0, 0.6, 1.2].map((d) => <span key={d} className="ripple" style={{ position: "absolute", left: -60, top: -60, width: 120, height: 120, borderRadius: "50%", background: "rgba(11,92,255,0.22)", animationDelay: `${d}s` }} />)}

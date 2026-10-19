@@ -11,7 +11,8 @@ import type { PayMethod, RideStatus, VehicleKind } from "./data";
 
 /* ───────────── Types returned by the server ───────────── */
 
-export interface PlaceRef { id: string; name: string; address: string }
+/** `lat`/`lng` are set on a ride's pickup when it was the customer's GPS position ("Current location"). */
+export interface PlaceRef { id: string; name: string; address: string; lat?: number; lng?: number }
 export interface Place extends PlaceRef { kind: "home" | "work" | "recent" | "current" | null }
 export interface FareLine { label: string; amount: number }
 export interface CouponResult { ok: boolean; reason?: string; discount?: number; code?: string; title?: string }
@@ -192,6 +193,7 @@ export interface BookRequest {
   parcel?: { type: string; weight: string; receiver: { name: string; phone: string }; note: string };
   rental?: { pkg: string; car: VehicleKind };
   add_on?: number;                                      // ₹10 / ₹20 / ₹30 on top of the fare
+  pickup?: { lat: number; lng: number; address: string | null };   // GPS fix when `from` is Current location
   idem: string;
 }
 export const bookRide = (p: BookRequest) => rpc<{ id: string; code: string; status: RideStatus; duplicate: boolean }>("book_ride", { p });

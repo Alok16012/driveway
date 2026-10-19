@@ -24,7 +24,7 @@ interface Drv {
 }
 interface RideRow {
   id: string; code: string; customer_id: string; driver_id: string | null; service: string; vehicle: VehicleKind | null; requested_vehicles: VehicleKind[];
-  ac: boolean; from_place: string; to_place: string; km: number; mins: number; fare: number; discount: number; coupon_code: string | null; wait_fee: number;
+  ac: boolean; from_place: string; to_place: string; pickup_lat: number | null; pickup_lng: number | null; pickup_address: string | null; km: number; mins: number; fare: number; discount: number; coupon_code: string | null; wait_fee: number;
   cancel_fee: number; total: number; pay_method: string; payment_status: string; refunded: number; status: string; cancel_reason: string | null;
   cancelled_by: string | null; rating: number | null; created_at: string; completed_at: string | null; scheduled_for: string | null;
 }
@@ -497,7 +497,7 @@ function LiveRides({ d, act }: { d: Data; act: Act }) {
   return (
     <div className="adm-grid-2">
       <Panel title="Map" right={<span style={{ fontSize: 12.5, color: "var(--success-text)", fontWeight: 600 }}>● {live.length} live</span>}>
-        <MapView mode={focus ? "route" : "idle"} from={focus?.from_place} to={focus?.to_place} height={420} radius={14} />
+        <MapView mode={focus ? "route" : "idle"} from={focus?.from_place} pickupAt={focus?.pickup_lat != null && focus.pickup_lng != null ? { lat: focus.pickup_lat, lng: focus.pickup_lng } : null} to={focus?.to_place} height={420} radius={14} />
         <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--ink-mute)" }}>{focus ? `Route of ${focus.code} — tap a ride to show its route.` : "No live ride to show."}</p>
       </Panel>
       <Panel title="Live rides">

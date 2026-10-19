@@ -194,9 +194,12 @@ export default function RiderApp() {
     await refreshMe();
   }, "Trip closed — looking for your next ride");
 
-  const navigate = (to: string) => {
-    if (prefs.nav === "Google Maps") window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(to)}`, "_blank", "noopener");
-    else flash(`Head to ${to}`);
+  // A GPS pickup goes to Maps as coordinates, so the driver is sent to the exact spot, not the nearest address match.
+  const navigate = (p: RideView["from"]) => {
+    const label = `${p.name}, ${p.address}`;
+    const dest = typeof p.lat === "number" && typeof p.lng === "number" ? `${p.lat},${p.lng}` : label;
+    if (prefs.nav === "Google Maps") window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`, "_blank", "noopener");
+    else flash(`Head to ${label}`);
   };
 
   /* ── wallet ── */
@@ -284,7 +287,7 @@ export default function RiderApp() {
               <TripPage trip={trip} busy={busy} err={err}
                 onBack={() => flash("Finish or cancel this trip first")}
                 onCall={() => { if (trip.customer?.phone) window.location.href = "tel:+" + trip.customer.phone.replace(/\D/g, ""); }}
-                onNavigate={() => navigate(trip.status === "Started" ? `${trip.to.name}, ${trip.to.address}` : `${trip.from.name}, ${trip.from.address}`)}
+                onNavigate={() => navigate(trip.status === "Started" ? trip.to : trip.from)}
                 onCancel={() => { setErr(null); setSheet("cancel"); }}
                 onSos={() => setSheet("sos")}
                 onArrived={() => void act(() => driverArrived(trip.id), "Customer notified that you've arrived")}

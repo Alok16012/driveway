@@ -56,10 +56,12 @@ function along(line: LatLng[], t: number): { pos: LatLng; angle: number } {
 }
 const bearing = (a: LatLng, b: LatLng) => (Math.atan2(-(b.lat - a.lat), (b.lng - a.lng) * Math.cos((a.lat * Math.PI) / 180)) * 180) / Math.PI;
 
-export default function MapView({ mode = "idle", progress = 0, motion, from, to, live = false, car, height = 220, radius = 20, style, children }: {
+export default function MapView({ mode = "idle", progress = 0, motion, from, to, pickupAt, live = false, car, height = 220, radius = 20, style, children }: {
   mode?: MapMode; progress?: number; motion?: MapMotion;
   /** Place ids (`public.places`) for the pickup and drop. */
   from?: string; to?: string;
+  /** The pickup's real position when it isn't the fixed place (a GPS "Current location" pickup). */
+  pickupAt?: LatLng | null;
   /** This device is the car (rider app): draw it at the real GPS position instead of simulating it. */
   live?: boolean;
   /** Where the driver's phone last reported being; omitted while unknown, and the car is simulated. */
@@ -82,6 +84,7 @@ export default function MapView({ mode = "idle", progress = 0, motion, from, to,
       const m = mod.map(boxRef.current, { zoomControl: false, attributionControl: false }).setView(toLL(KOLKATA), 13);
       mod.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(m);
       mod.control.attribution({ position: "topright", prefix: false }).addTo(m);
+      m.on("dragstart zoomstart", (e) => { if ((e as Leaflet.LeafletEvent & { originalEvent?: Event }).originalEvent) userMoved.current = true; });
       map.current = m;
       setReady(true);
     });
@@ -93,7 +96,8 @@ export default function MapView({ mode = "idle", progress = 0, motion, from, to,
 
   /* ── device dot (hidden when this device is the car) ── */
   const meLayer = useRef<{ dot: Leaflet.Marker; ring: Leaflet.Circle } | null>(null);
-  const centred = useRef(false);
+  const centredAcc = useRef(Infinity);   // accuracy of the fix the map last centred on
+  const userMoved = useRef(false);
   const showMe = !!me && !(live && mode !== "idle");
   useEffect(() => {
     const m = map.current, lf = L.current;
@@ -108,11 +112,16 @@ export default function MapView({ mode = "idle", progress = 0, motion, from, to,
       meLayer.current.dot.setLatLng(toLL(me));
       meLayer.current.ring.setLatLng(toLL(me)).setRadius(loc.accuracy);
     }
-    if (mode === "idle" && !centred.current) { m.setView(toLL(me), 16); centred.current = true; }
+    // The first fix is often coarse (Wi-Fi / cell); follow it until a sharp one lands or the person moves the map.
+    if (mode === "idle" && !userMoved.current && loc.accuracy < centredAcc.current / 2) {
+      m.setView(toLL(me), loc.accuracy > 1000 ? 14 : 16);
+      centredAcc.current = loc.accuracy;
+    }
   }, [ready, showMe, me?.lat, me?.lng, loc, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── route legs ── */
-  const pickup = placeCoords(from), drop = placeCoords(to);
+  const pickup = pickupAt ?? placeCoords(from), drop = placeCoords(to);
+  const pickupKey = pickup ? `${pickup.lat.toFixed(4)},${pickup.lng.toFixed(4)}` : "";
   const [tripLine, setTripLine] = useState<LatLng[] | null>(null);
   const [apprLine, setApprLine] = useState<LatLng[] | null>(null);
   useEffect(() => {
@@ -121,7 +130,7 @@ export default function MapView({ mode = "idle", progress = 0, motion, from, to,
     let alive = true;
     void roadRoute(pickup, drop).then((l) => { if (alive) setTripLine(l); });
     return () => { alive = false; };
-  }, [mode, from, to]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, pickupKey, to]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The driver's leg to pickup: from this device when it's the driver, else from a simulated start ~1.5 km away.
   const realCar = live ? me : car ?? null;
@@ -133,7 +142,7 @@ export default function MapView({ mode = "idle", progress = 0, motion, from, to,
     let alive = true;
     void roadRoute(apprStart, pickup).then((l) => { if (alive) setApprLine(l); });
     return () => { alive = false; };
-  }, [mode, from, apprKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, pickupKey, apprKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Pins and lines, redrawn when the route changes; the map frames the whole route. */
   useEffect(() => {

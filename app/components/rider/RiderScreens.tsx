@@ -7,7 +7,7 @@ import {
 } from "../icons";
 import { BrandMark, Wordmark } from "../Brand";
 import MapView, { SIM_APPROACH_SEC, SIM_TRIP_SEC } from "../MapView";
-import { useCurrentAddress } from "../../lib/location";
+import { placePos, useCurrentAddress } from "../../lib/location";
 import VehicleArt from "../VehicleArt";
 import { Avatar, ErrorText, OtpInput, PageHeader, PrimaryButton, Stars, StatusBadge, Tabs, Toggle, card, iconBtn, onLight } from "../ui";
 import { inr, vehicleById } from "../../lib/data";
@@ -185,7 +185,7 @@ export function RequestPopup({ offer, autoAccept, busy, err, onAccept, onDecline
             <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800 }}>{left}</span>
           </span>
         </div>
-        <MapView mode="route" from={offer.from.id} to={offer.to.id} height={120} radius={16} style={{ margin: "12px 0" }} />
+        <MapView mode="route" from={offer.from.id} pickupAt={placePos(offer.from)} to={offer.to.id} height={120} radius={16} style={{ margin: "12px 0" }} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8, marginBottom: 12 }}>
           {[[inr(offer.fare), `${offer.pay} · you get ${inr(offer.earn ?? 0)}`], [`${offer.km} km`, `~${offer.mins} min trip`]].map(([v, l]) => (
             <div key={l} style={{ ...card, padding: "10px 8px", textAlign: "center" }}>
@@ -295,7 +295,7 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ position: "relative" }}>
-        <MapView mode={phase === "Started" ? "trip" : "approach"} progress={progress} motion={motion} from={trip.from.id} to={trip.to.id} live height={320} radius={0} />
+        <MapView mode={phase === "Started" ? "trip" : "approach"} progress={progress} motion={motion} from={trip.from.id} pickupAt={placePos(trip.from)} to={trip.to.id} live height={320} radius={0} />
         <button onClick={onBack} aria-label="Back" className="press" style={{ ...iconBtn, position: "absolute", top: 16, left: 16, width: 40, height: 40, borderRadius: "50%", background: "white", justifyContent: "center", boxShadow: "var(--shadow-md)" }}><BackIcon c="var(--ink)" /></button>
         <div style={{ position: "absolute", top: 16, left: 66, right: 16, background: "var(--blue-dark)", color: "white", borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, boxShadow: "var(--shadow-md)" }}>
           <NavIcon s={22} c="var(--gold)" />

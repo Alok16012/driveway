@@ -608,3 +608,32 @@ describe("Live driver location (report_location / ride_tracks)", () => {
     expect(await t.admin(`select * from public.ride_tracks where ride_id = $1`, [b.id])).toHaveLength(0);
   });
 });
+
+describe("GPS pickup for Current location", () => {
+  it("driver and customer see the customer's real pickup, not the stand-in place", async () => {
+    const c = await t.user(); const d = await t.driver("bike");
+    const b = await t.book(c, { option: "bike", pickup: { lat: 22.5867, lng: 88.4171, address: "Bidhannagar Road, Salt Lake" } });
+    const offer = (await t.rpc(d, "driver_offers")).find((o: any) => o.id === b.id);
+    expect(offer.from).toMatchObject({ id: "cur", name: "Pickup point", lat: 22.5867, lng: 88.4171, address: "Bidhannagar Road, Salt Lake" });
+    await t.rpc(d, "accept_ride", b.id);
+    expect((await t.rpc(c, "my_active_ride")).from).toMatchObject({ lat: 22.5867, lng: 88.4171 });
+    await t.rpc(c, "cancel_ride", b.id, "Changed my mind");
+  });
+
+  it("older clients without a pickup keep the stand-in place", async () => {
+    const c = await t.user(); await t.driver("bike");
+    const b = await t.book(c, { option: "bike" });
+    const r = await t.rpc(c, "my_active_ride");
+    expect(r.id).toBe(b.id);
+    expect(r.from.lat).toBeUndefined();
+    expect(r.from.address).toBe("Park Street, Kolkata");
+    await t.rpc(c, "cancel_ride", b.id, "Changed my mind");
+  });
+
+  it("rejects a malformed pickup", async () => {
+    const c = await t.user();
+    await rejects(t.book(c, { option: "bike", pickup: { lat: "22.5", lng: 88.4 } }), /invalid pickup position/);
+    await rejects(t.book(c, { option: "bike", pickup: { lat: 120, lng: 88.4 } }), /invalid pickup position/);
+    await rejects(t.book(c, { option: "bike", pickup: { lat: 22.5, lng: 88.4, address: "x".repeat(201) } }), /invalid pickup position/);
+  });
+});

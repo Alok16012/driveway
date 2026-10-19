@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /* The device's real position, shared by every map on screen. One `watchPosition` runs while anything is
  * subscribed. Works in the browser (HTTPS or localhost only) and in the Capacitor apps, whose WebView asks
@@ -29,6 +29,10 @@ export const PLACE_COORDS: Record<string, LatLng> = {
 };
 
 export const placeCoords = (id: string | undefined | null): LatLng | null => (id && PLACE_COORDS[id]) || null;
+
+/** Where a ride's place really is: its GPS pickup when it has one, else the fixed place. */
+export const placePos = (p: { id: string; lat?: number; lng?: number } | undefined | null): LatLng | null =>
+  p && typeof p.lat === "number" && typeof p.lng === "number" ? { lat: p.lat, lng: p.lng } : placeCoords(p?.id);
 
 let current: DeviceLocation = { status: "locating" };
 const listeners = new Set<(l: DeviceLocation) => void>();
@@ -126,10 +130,13 @@ export function useCurrentAddress(enabled = true): { loc: DeviceLocation; addres
   const pos = loc.status === "ok" ? loc.pos : null;
   const lat = pos ? Math.round(pos.lat * 1000) / 1000 : null;   // ~100 m buckets, so walking doesn't refetch every fix
   const lng = pos ? Math.round(pos.lng * 1000) / 1000 : null;
+  const exact = useRef<LatLng | null>(null);
+  exact.current = pos;
   useEffect(() => {
-    if (lat === null || lng === null) return;
+    if (lat === null || lng === null || !exact.current) return;
     let live = true;
-    void reverseGeocode({ lat, lng }).then((a) => { if (live && a) setAddress(a); });
+    // Look up the fix itself, not the bucket's corner, which can sit on the next street.
+    void reverseGeocode(exact.current).then((a) => { if (live && a) setAddress(a); });
     return () => { live = false; };
   }, [lat, lng]);
   return { loc, address };
