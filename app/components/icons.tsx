@@ -63,6 +63,8 @@ export const SwapIcon = (p: P) => <Svg {...p}><path d="M7 4v16M3.5 7.5L7 4l3.5 3
 export const BoltIcon = (p: P) => <Svg {...p}><path d="M13 2.5L4.5 13.5H12l-1 8 8.5-11H12z" /></Svg>;
 export const GiftIcon = (p: P) => <Svg {...p}><rect x="3.5" y="8" width="17" height="4" rx="1" /><path d="M5 12v8h14v-8M12 8v12M12 8S10.5 3.5 8 4.5 9 8 12 8zM12 8s1.5-4.5 4-3.5S15 8 12 8z" /></Svg>;
 export const LockIcon = (p: P) => <Svg {...p}><rect x="4.5" y="10.5" width="15" height="10" rx="2" /><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" /></Svg>;
+export const EyeIcon = (p: P) => <Svg {...p}><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></Svg>;
+export const EyeOffIcon = (p: P) => <Svg {...p}><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.4M6.6 6.6C3.7 8.5 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18" /></Svg>;
 export const AlertIcon = (p: P) => <Svg {...p}><path d="M12 3.5L2.5 20h19z" /><path d="M12 10v4.5M12 17.5h.01" /></Svg>;
 export const CarIcon = (p: P) => <Svg {...p}><path d="M5 11l1.7-4.5A2 2 0 0 1 8.6 5h6.8a2 2 0 0 1 1.9 1.5L19 11" /><rect x="3" y="11" width="18" height="6.5" rx="2" /><path d="M5.5 17.5V19.5M18.5 17.5V19.5" /><circle cx="7.5" cy="14.2" r="1" /><circle cx="16.5" cy="14.2" r="1" /></Svg>;
 export const AlarmIcon = (p: P) => <Svg {...p}><circle cx="12" cy="13" r="7.5" /><path d="M12 9.5V13l2.5 1.5M4.5 4.5l3 -2M19.5 4.5l-3 -2" /></Svg>;

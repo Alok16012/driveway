@@ -27,6 +27,8 @@ export function WalletPage({ me, busy, err, onWithdraw, onPayDues, onRecharge, o
   const [amount, setAmount] = useState("");
   const amt = Number(amount);
   const amtOk = Number.isInteger(amt) && amt >= 10 && amt <= 50000;
+  const feeMin = Math.min(me.platform_fee, me.platform_fee_non_ac);
+  const feeText = me.platform_fee === me.platform_fee_non_ac ? inr(me.platform_fee) : `${inr(me.platform_fee)} (AC) / ${inr(me.platform_fee_non_ac)} (non-AC)`;
   return (
     <InfoPage title="Rider Wallet" onBack={onBack}>
       <div style={{ borderRadius: 22, padding: 18, background: "linear-gradient(150deg,var(--blue-dark),var(--blue))", color: "white", boxShadow: "0 10px 28px rgba(11,92,255,0.28)" }}>
@@ -41,11 +43,17 @@ export function WalletPage({ me, busy, err, onWithdraw, onPayDues, onRecharge, o
         <PrimaryButton tone="gold" onClick={onWithdraw} disabled={busy || withdrawable < me.min_payout || !me.upi} style={{ flex: 1 }}>Instant Payout</PrimaryButton>
         <PrimaryButton tone="ghost" onClick={onPayDues} disabled={busy || dues <= 0} style={{ flex: 1 }}>Clear Dues</PrimaryButton>
       </div>
+      {me.needs_recharge && (
+        <div role="alert" style={{ ...card, padding: 14, background: "var(--error)", color: "var(--error-text)" }}>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Recharge to get rides</p>
+          <p style={{ margin: "4px 0 0", fontSize: 12.5, lineHeight: 1.45 }}>Your balance doesn&apos;t cover the {inr(feeMin)} platform fee, so new rides are paused. They start again as soon as you recharge. Start with {inr(50)}.</p>
+        </div>
+      )}
       <div style={{ ...card, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
         <p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Recharge wallet</p>
-        <p style={{ ...small, margin: 0 }}>Took a fare in cash or on your own UPI? DriveWay&apos;s {me.commission_pct}% commission on that trip is deducted from this wallet. Keep it topped up so it doesn&apos;t go into dues.</p>
+        <p style={{ ...small, margin: 0 }}>DriveWay takes a flat platform fee of {feeText} per completed ride from this wallet. Rides stop when your balance is below the fee and start again after a recharge.</p>
         <div style={{ display: "flex", gap: 8 }}>
-          {[100, 200, 500, 1000].map((v) => (
+          {[50, 100, 200, 500].map((v) => (
             <button key={v} type="button" onClick={() => setAmount(String(v))} disabled={busy}
               style={{ flex: 1, padding: "8px 0", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", border: amount === String(v) ? "1.5px solid var(--blue)" : "1.5px solid var(--line)", background: amount === String(v) ? "var(--blue-tint)" : "var(--surface)", color: "var(--ink)" }}>
               {inr(v)}
@@ -246,7 +254,7 @@ export function PreferencesPage({ prefs, onChange, onBack }: { prefs: RiderPrefs
 export function TripDetailPage({ ride, onHelp, onBack }: { ride: RideView; onHelp: () => void; onBack: () => void }) {
   const done = ride.status === "Completed";
   const gross = ride.fare + ride.wait_fee;
-  const earn = Math.round(gross * (1 - ride.commission_pct / 100));
+  const earn = gross - ride.platform_fee;
   return (
     <InfoPage title={`Trip #${ride.code}`} onBack={onBack}>
       <div style={{ ...card, padding: 14 }}>
@@ -258,7 +266,7 @@ export function TripDetailPage({ ride, onHelp, onBack }: { ride: RideView; onHel
       </div>
       <div style={{ ...card, padding: "12px 16px" }}>
         {[["Customer", ride.customer?.name ?? "—"], ["Distance · time", `${ride.km} km · ${ride.mins} min`], ["Payment", `${ride.pay} · ${ride.payment_status}`],
-          ...(done ? [["Trip fare", inr(ride.fare - (ride.add_on ?? 0))], ...(ride.add_on ? [["Add-on for faster pickup", inr(ride.add_on)]] : []), ...(ride.wait_fee ? [["Waiting charge", inr(ride.wait_fee)]] : []), [`Commission (${ride.commission_pct}%)`, "− " + inr(gross - earn)]] : [])].map(([l, v]) => (
+          ...(done ? [["Trip fare", inr(ride.fare - (ride.add_on ?? 0))], ...(ride.add_on ? [["Add-on for faster pickup", inr(ride.add_on)]] : []), ...(ride.wait_fee ? [["Waiting charge", inr(ride.wait_fee)]] : []), ["Platform fee", "− " + inr(ride.platform_fee)], ...(ride.booking_fee ? [["Customer booking charge (DriveWay's)", inr(ride.booking_fee)]] : [])] : [])].map(([l, v]) => (
           <div key={l} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "5px 0" }}><span style={{ color: "var(--ink-soft)" }}>{l}</span><span style={{ fontWeight: 600 }}>{v}</span></div>
         ))}
         {done && (

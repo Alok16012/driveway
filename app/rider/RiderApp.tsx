@@ -286,7 +286,7 @@ export default function RiderApp() {
                 onStart={(otp) => void startTrip(otp)}
                 onEnd={() => void act(() => completeRide(trip.id))}
                 onCollected={() => void act(() => confirmCash(trip.id), "Cash collection recorded")}
-                onPaidDirect={() => void act(() => confirmDirectPayment(trip.id), "Direct payment recorded — commission deducted from your wallet")}
+                onPaidDirect={() => void act(() => confirmDirectPayment(trip.id), "Direct payment recorded — platform fee deducted from your wallet")}
                 onRated={(n) => void finishTrip(n)} />
             ) : detail ? (
               <>
@@ -320,7 +320,7 @@ export default function RiderApp() {
                     onQuick={(k: QuickKey) => { if (k === "incentives") goTab("incentives"); else { if (k === "performance") void refreshTrips(); setErr(null); push({ k }); } }} />
                 )}
                 {tab === "earnings" && <EarningsScreen me={me} />}
-                {tab === "trips" && <TripsScreen trips={trips} commissionPct={me.commission_pct} onOpen={(r) => push({ k: "trip", id: r.id })} />}
+                {tab === "trips" && <TripsScreen trips={trips} onOpen={(r) => push({ k: "trip", id: r.id })} />}
                 {tab === "incentives" && <IncentivesScreen me={me} />}
                 {tab === "account" && <RiderAccount me={me} locked={blocked} onMenu={(k) => { if (blocked && (k === "edit" || k === "bank")) { flash(BLOCKED_MSG); return; } if (k === "performance") void refreshTrips(); push(k === "help" ? { k: "support" } : { k }); }} onLogout={() => void logout()} />}
               </>

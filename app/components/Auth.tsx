@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, BackIcon, BellIcon, PinIcon, CheckIcon, LockIcon, LogoutIcon } from "./icons";
-import { ErrorText, PrimaryButton, card, field, iconBtn, label } from "./ui";
+import { ErrorText, PasswordInput, PrimaryButton, card, field, iconBtn, label } from "./ui";
 import { emailDomainExists, emailSignIn, emailSignUp, isIndianMobile, sendPasswordReset, signOut, updatePassword } from "../lib/api";
 import KolkataSkyline, { LANDMARKS } from "./KolkataSkyline";
 
@@ -96,7 +96,7 @@ export function VideoSplash({ src, cta = "Get Started", onStart, onDone, footer,
 
   return (
     <div onClick={ended ? undefined : finish} style={{ position: "absolute", inset: 0, zIndex: 300, background: "#ea580c", overflow: "hidden" }}>
-      <video ref={ref} src={src} autoPlay muted playsInline preload="auto" onEnded={() => setEnded(true)} onError={() => setEnded(true)}
+      <video ref={ref} src={src} poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" autoPlay muted playsInline preload="auto" onEnded={() => setEnded(true)} onError={() => setEnded(true)}
         style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       {ended && onStart && (
         <div className="fade-up" style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "18px 20px calc(22px + env(safe-area-inset-bottom))" }}>
@@ -162,7 +162,7 @@ export function EmailLogin({ title, accent, onSignedIn, onSignUp, onForgot, noti
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ padding: "28px 24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
         <div><label style={label} htmlFor="le">Email</label><input id="le" type="email" value={email} maxLength={254} onChange={(e) => { setEmail(e.target.value); setErr(null); }} placeholder="you@example.com" style={field} autoComplete="email" /></div>
         <div>
-          <label style={label} htmlFor="lp">Password</label><input id="lp" type="password" value={password} onChange={(e) => { setPassword(e.target.value); setErr(null); }} placeholder="Your password" style={field} autoComplete="current-password" />
+          <label style={label} htmlFor="lp">Password</label><PasswordInput id="lp" value={password} onChange={(e) => { setPassword(e.target.value); setErr(null); }} placeholder="Your password" autoComplete="current-password" />
           <div style={{ textAlign: "right", marginTop: 8 }}>
             <button type="button" onClick={onForgot} style={{ background: "none", border: "none", padding: 0, color: "var(--on-bg-accent)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Forgot password?</button>
           </div>
@@ -230,12 +230,12 @@ export function ResetPassword({ onDone }: { onDone: () => void }) {
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ padding: "28px 24px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
         <div>
           <label style={label} htmlFor="rp">New Password</label>
-          <input id="rp" type="password" value={password} onChange={(e) => { setPassword(e.target.value); setErr(null); }} placeholder={`At least ${MIN_PASSWORD} characters`} style={field} autoComplete="new-password" />
+          <PasswordInput id="rp" value={password} onChange={(e) => { setPassword(e.target.value); setErr(null); }} placeholder={`At least ${MIN_PASSWORD} characters`} autoComplete="new-password" />
           {password.length > 0 && password.length < MIN_PASSWORD && <ErrorText msg={`Use at least ${MIN_PASSWORD} characters.`} />}
         </div>
         <div>
           <label style={label} htmlFor="rc">Confirm Password</label>
-          <input id="rc" type="password" value={confirm} onChange={(e) => { setConfirm(e.target.value); setErr(null); }} placeholder="Type it again" style={field} autoComplete="new-password" />
+          <PasswordInput id="rc" value={confirm} onChange={(e) => { setConfirm(e.target.value); setErr(null); }} placeholder="Type it again" autoComplete="new-password" />
           {confirm.length > 0 && confirm !== password && <ErrorText msg="Passwords don't match." />}
         </div>
         <ErrorText msg={err} />
@@ -281,7 +281,7 @@ export function SignUp({ onSignedUp, onLogin }: { onSignedUp: (hasSession: boole
         </div>
         <div>
           <label style={label} htmlFor="spw">Password</label>
-          <input id="spw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={`At least ${MIN_PASSWORD} characters`} style={field} autoComplete="new-password" />
+          <PasswordInput id="spw" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={`At least ${MIN_PASSWORD} characters`} autoComplete="new-password" />
           {password.length > 0 && password.length < MIN_PASSWORD && <ErrorText msg={`Use at least ${MIN_PASSWORD} characters.`} />}
         </div>
         <ErrorText msg={err} />

@@ -1,6 +1,7 @@
 "use client";
 
-import { BackIcon } from "./icons";
+import { useState } from "react";
+import { BackIcon, EyeIcon, EyeOffIcon } from "./icons";
 import type { RideStatus } from "../lib/data";
 
 /** Detail-page header: back arrow + title on the canvas, optional actions right. */
@@ -121,6 +122,21 @@ export const field: React.CSSProperties = {
   width: "100%", background: "var(--surface)", border: "1.5px solid var(--line)",
   borderRadius: 14, padding: "13px 14px", fontSize: 14, color: "var(--ink)", outline: "none",
 };
+
+/** Password field with a show/hide eye toggle. */
+export function PasswordInput({ style, ...props }: Omit<React.InputHTMLAttributes<HTMLInputElement>, "type">) {
+  const [shown, setShown] = useState(false);
+  const { marginBottom, ...rest } = { ...field, ...style };
+  return (
+    <div style={{ position: "relative", marginBottom }}>
+      <input {...props} type={shown ? "text" : "password"} autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{ ...rest, paddingRight: 46 }} />
+      <button type="button" onClick={() => setShown((v) => !v)} aria-label={shown ? "Hide password" : "Show password"} aria-pressed={shown}
+        style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+        {shown ? <EyeOffIcon s={20} c="var(--ink-soft)" /> : <EyeIcon s={20} c="var(--ink-soft)" />}
+      </button>
+    </div>
+  );
+}
 
 /** Sticky footer bar for detail pages with a main action. */
 export function Footer({ children }: { children: React.ReactNode }) {

@@ -13,7 +13,9 @@ import { supabase } from "./supabase/client";
  * the fix callback, not through React state, because a backgrounded WebView can hold renders back.
  * In a browser it is the page's own GPS watch, which pauses while the tab is hidden. */
 
-const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>("BackgroundGeolocation");
+// Kept on globalThis so a dev hot reload doesn't register the plugin twice.
+const g = globalThis as { __drivewayBgGeo?: BackgroundGeolocationPlugin };
+const BackgroundGeolocation = (g.__drivewayBgGeo ??= registerPlugin<BackgroundGeolocationPlugin>("BackgroundGeolocation"));
 const nativeTracking = () => Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("BackgroundGeolocation");
 
 type Fix = { pos: LatLng; accuracy: number; heading: number | null };

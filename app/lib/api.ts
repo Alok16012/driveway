@@ -11,7 +11,7 @@ import type { PayMethod, RideStatus, VehicleKind } from "./data";
 
 /* ───────────── Types returned by the server ───────────── */
 
-/** `lat`/`lng` are set on a ride's pickup when it was the customer's GPS position ("Current location"). */
+/** `lat`/`lng` are set when the place isn't a fixed one: a GPS "Current location" pickup, or a place searched on Google Maps. */
 export interface PlaceRef { id: string; name: string; address: string; lat?: number; lng?: number }
 export interface Place extends PlaceRef { kind: "home" | "work" | "recent" | "current" | null }
 export interface FareLine { label: string; amount: number }
@@ -20,23 +20,24 @@ export interface CouponResult { ok: boolean; reason?: string; discount?: number;
 export interface QuoteOption {
   id: VehicleKind; name: string; tagline: string; seats: number; ac: boolean; eta: number; cancel_fee: number;
   fare: number; alt_fare: number; lines: FareLine[]; available: number; discount: number; coupon: CouponResult | null;
+  booking_fee: number;   // customer booking charge on this option (0 when the fare is ₹50 or less)
 }
-export interface RentalQuote { pkg: string; hours: number; km: number; extra_km: number; extra_hour: number; car: VehicleKind; fare: number; discount: number; coupon: CouponResult | null; available: number }
-export interface ParcelQuote { id: "light" | "medium" | "heavy"; label: string; sub: string; vehicle: VehicleKind; fee: number; fare: number; discount: number; coupon: CouponResult | null; available: number }
-export interface Quote { km: number; mins: number; options: QuoteOption[]; any: QuoteOption | null; any_available: number; rentals: RentalQuote[]; parcels: ParcelQuote[] }
+export interface RentalQuote { pkg: string; hours: number; km: number; extra_km: number; extra_hour: number; car: VehicleKind; fare: number; discount: number; coupon: CouponResult | null; booking_fee: number; available: number }
+export interface ParcelQuote { id: "light" | "medium" | "heavy"; label: string; sub: string; vehicle: VehicleKind; fee: number; fare: number; discount: number; coupon: CouponResult | null; booking_fee: number; available: number }
+export interface Quote { km: number; mins: number; options: QuoteOption[]; any: QuoteOption | null; any_available: number; rentals: RentalQuote[]; parcels: ParcelQuote[]; booking_fee: number; booking_fee_above: number }
 
 export type PaymentStatus = "unpaid" | "pending" | "paid" | "refunded" | "partially_refunded";
 export interface RideView {
   id: string; code: string; status: RideStatus; service: "ride" | "any" | "rental" | "parcel";
   vehicle: VehicleKind; requested: VehicleKind[]; ac: boolean; from: PlaceRef; to: PlaceRef; km: number; mins: number;
-  fare: number; discount: number; coupon: string | null; wait_fee: number; add_on: number; cancel_fee: number; total: number;
+  fare: number; discount: number; coupon: string | null; wait_fee: number; add_on: number; cancel_fee: number; booking_fee: number; total: number;
   pay: PayMethod; payment_status: PaymentStatus; refunded: number; scheduled_for: string | null;
   passenger: { name: string; phone: string } | null;
   parcel: { type: string; weight: string; weight_label: string; receiver: { name: string; phone: string }; note: string; sender: { name: string; phone: string } } | null;
   rental: { pkg: string; hours: number; km: number; extra_km: number; extra_hour: number } | null;
   cancel_reason: string | null; cancelled_by: string | null; rating: number | null;
   created_at: string; assigned_at: string | null; arrived_at: string | null; started_at: string | null; completed_at: string | null;
-  search_timeout_sec: number; free_wait_sec: number; wait_fee_per_min: number; commission_pct: number; cancel_fee_now: number;
+  search_timeout_sec: number; free_wait_sec: number; wait_fee_per_min: number; platform_fee: number; cancel_fee_now: number;
   otp?: string | null;
   driver: { name: string; vehicle: VehicleKind; model: string; plate: string; rating: number | null; trips: number; phone: string | null } | null;
   customer: { name: string; rating: number | null; phone: string | null } | null;
@@ -53,7 +54,8 @@ export interface DriverMe {
   id: string; name: string; vehicle: VehicleKind; model: string; plate: string; ac: boolean; city: string;
   kyc: "Pending" | "Approved" | "Rejected"; kyc_note: string | null; upi: string | null; suspended: boolean; online: boolean;
   rating: number | null; trips: number; offers_accepted: number; offers_declined: number; cancellations: number;
-  phone: string | null; balance: number; commission_pct: number; free_wait_sec: number; wait_fee_per_min: number;
+  phone: string | null; balance: number; platform_fee: number; platform_fee_non_ac: number; needs_recharge: boolean;
+  free_wait_sec: number; wait_fee_per_min: number;
   min_payout: number; payout_fee: number; today: { trips: number; earnings: number }; week_trips: number;
   earnings: { week: number; month: number; incentives_week: number }; incentives: Incentive[]; txns: Txn[];
 }
@@ -167,7 +169,7 @@ export async function updatePassword(password: string) {
 /* ───────────── Reference data ───────────── */
 
 export async function places(): Promise<Place[]> {
-  const { data, error } = await supabase().from("places").select("id,name,address,kind").order("kind", { nullsFirst: false });
+  const { data, error } = await supabase().from("places").select("id,name,address,kind").neq("id", "pin").order("kind", { nullsFirst: false });
   if (error) throw new Error(friendly(error));
   return data as Place[];
 }
@@ -184,8 +186,9 @@ export const updateMyProfile = (name: string, email: string) => rpc<void>("updat
 /** 10-digit Indian mobile; stored as 91XXXXXXXXXX like sign-up. */
 export const updateMyPhone = (phone: string) => rpc<void>("update_my_phone", { p_phone: phone });
 export const updateMyDriverProfile = (name: string, city: string) => rpc<void>("update_my_driver_profile", { p_name: name, p_city: city });
-export const quote = (from: string, to: string, ac: boolean, coupon: string | null) =>
-  rpc<Quote>("quote", { p_from: from, p_to: to, p_ac: ac, p_coupon: coupon });
+/** Positions go with the stand-in ids: `fromPos` with "cur" (GPS or searched pickup), `toPos` with "pin" (searched drop). */
+export const quote = (from: string, to: string, ac: boolean, coupon: string | null, fromPos?: { lat: number; lng: number } | null, toPos?: { lat: number; lng: number } | null) =>
+  rpc<Quote>("quote", { p_from: from, p_to: to, p_ac: ac, p_coupon: coupon, p_from_pos: fromPos ?? null, p_to_pos: toPos ?? null });
 
 export interface BookRequest {
   option: string; from: string; to: string; ac: boolean; pay: PayMethod; coupon: string | null; when: string | null;
@@ -193,7 +196,8 @@ export interface BookRequest {
   parcel?: { type: string; weight: string; receiver: { name: string; phone: string }; note: string };
   rental?: { pkg: string; car: VehicleKind };
   add_on?: number;                                      // ₹10 / ₹20 / ₹30 on top of the fare
-  pickup?: { lat: number; lng: number; address: string | null };   // GPS fix when `from` is Current location
+  pickup?: { lat: number; lng: number; name?: string; address: string | null };   // with `from` "cur": GPS fix or searched place
+  drop?: { lat: number; lng: number; name: string; address: string };            // with `to` "pin": searched place
   idem: string;
 }
 export const bookRide = (p: BookRequest) => rpc<{ id: string; code: string; status: RideStatus; duplicate: boolean }>("book_ride", { p });

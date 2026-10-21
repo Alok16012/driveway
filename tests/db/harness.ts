@@ -47,13 +47,14 @@ export async function createDb() {
     await admin(`update public.profiles set name = $2, is_admin = $3 where id = $1`, [id, opts.name ?? "Test User", !!opts.admin]);
     return id;
   }
-  /** An approved, online driver. */
-  async function driver(vehicle = "bike", extra: { ac?: boolean; approve?: boolean; online?: boolean } = {}) {
+  /** An approved, online driver who has made the ₹50 starting wallet recharge (pass wallet: 0 to skip it). */
+  async function driver(vehicle = "bike", extra: { ac?: boolean; approve?: boolean; online?: boolean; wallet?: number } = {}) {
     const id = await user({ name: "Test Driver" });
     await rpc(id, "register_driver", { name: "Test Driver", vehicle, model: "Test Model", plate: `TS${Math.floor(Math.random() * 1e8)}`, ac: !!extra.ac, city: "Kolkata",
       docs: Object.fromEntries(["photo", "licence", "rc", "insurance", "aadhaar"].map((k) => [k, `${id}/${k}.jpg`])) });
     if (extra.approve !== false) await admin(`update public.drivers set kyc = 'Approved' where id = $1`, [id]);
     if (extra.approve !== false && extra.online !== false) await rpc(id, "set_online", true);
+    if ((extra.wallet ?? 50) > 0) await rpc(id, "recharge_wallet", extra.wallet ?? 50, randomUUID());
     return id;
   }
   const idem = () => randomUUID();

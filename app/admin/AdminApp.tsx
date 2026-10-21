@@ -9,7 +9,7 @@ import {
   BellIcon, CarIcon, ChartIcon, CheckIcon, DocIcon, DownloadIcon, GearIcon, GridIcon, HelpIcon, LockIcon, LogoutIcon,
   MapIcon, MegaphoneIcon, RupeeIcon, SearchIcon, SteeringIcon, TagIcon, UsersIcon, XIcon,
 } from "../components/icons";
-import { Avatar, ErrorText, LoadState, PrimaryButton, StatusBadge, Toggle, card, field, label, onLight } from "../components/ui";
+import { Avatar, ErrorText, LoadState, PasswordInput, PrimaryButton, StatusBadge, Toggle, card, field, label, onLight } from "../components/ui";
 import { inr, vehicleById, type VehicleKind } from "../lib/data";
 import { adminSignIn, friendly, getSession, myProfile, newKey, onAuthChange, rpc, signOut } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
@@ -24,12 +24,13 @@ interface Drv {
 }
 interface RideRow {
   id: string; code: string; customer_id: string; driver_id: string | null; service: string; vehicle: VehicleKind | null; requested_vehicles: VehicleKind[];
-  ac: boolean; from_place: string; to_place: string; pickup_lat: number | null; pickup_lng: number | null; pickup_address: string | null; km: number; mins: number; fare: number; discount: number; coupon_code: string | null; wait_fee: number;
+  ac: boolean; from_place: string; to_place: string; pickup_lat: number | null; pickup_lng: number | null; pickup_address: string | null; pickup_name: string | null;
+  drop_lat: number | null; drop_lng: number | null; drop_name: string | null; drop_address: string | null; km: number; mins: number; fare: number; discount: number; coupon_code: string | null; wait_fee: number;
   cancel_fee: number; total: number; pay_method: string; payment_status: string; refunded: number; status: string; cancel_reason: string | null;
   cancelled_by: string | null; rating: number | null; created_at: string; completed_at: string | null; scheduled_for: string | null;
 }
-interface Vehicle { id: VehicleKind; name: string; base: number; per_km: number; per_min: number; min_fare: number; cancel_fee: number; commission_pct: number; commission_pct_non_ac: number; ac: boolean; enabled: boolean; sort: number }
-interface Settings { commission_pct: number; surge_on: boolean; surge_mult: number; non_ac_factor: number }
+interface Vehicle { id: VehicleKind; name: string; base: number; per_km: number; per_min: number; min_fare: number; cancel_fee: number; platform_fee: number; platform_fee_non_ac: number; ac: boolean; enabled: boolean; sort: number }
+interface Settings { surge_on: boolean; surge_mult: number; non_ac_factor: number; booking_fee: number; booking_fee_above: number }
 interface Coupon { code: string; title: string; body: string; off: number; pct: boolean; max_off: number | null; min_fare: number; expires_at: string; active: boolean; uses: number; total_limit: number | null; per_user_limit: number }
 interface Ledger { id: number; ride_id: string | null; user_id: string | null; party: string; kind: string; amount: number; method: string | null; note: string | null; created_at: string }
 interface Ticket { id: string; code: string; user_id: string; role: string; subject: string; ride_id: string | null; status: "Open" | "In Progress" | "Resolved"; notes: { from: string; body: string; at: string }[]; created_at: string }
@@ -107,7 +108,7 @@ export default function AdminApp() {
 
   const reload = useCallback(async () => {
     setLoadErr(null);
-    try { setData(await loadAll()); } catch (e) { setLoadErr((e as Error).message); }
+    try { setData(await loadAll()); return true; } catch (e) { setLoadErr((e as Error).message); return false; }
   }, []);
   useEffect(() => {
     if (!authed) return;
@@ -172,7 +173,7 @@ export default function AdminApp() {
       </aside>
 
       <main className="adm-main">
-        <TopBar title={NAV.find((n) => n.id === section)!.label} alerts={pending + open} loadErr={loadErr} onRefresh={() => void reload()} />
+        <TopBar title={NAV.find((n) => n.id === section)!.label} alerts={pending + open} loadErr={loadErr} onRefresh={async () => { if (await reload()) flash("Up to date"); }} />
         {section === "dashboard" && <Dashboard d={data} go={setSection} />}
         {section === "live" && <LiveRides d={data} act={act} />}
         {section === "rides" && <RidesSection d={data} act={act} />}
@@ -199,7 +200,8 @@ type Act = (fn: string, args: Record<string, unknown>, ok: string) => Promise<bo
 
 /* ───────────────────────── Shared bits ───────────────────────── */
 
-function TopBar({ title, alerts, loadErr, onRefresh }: { title: string; alerts: number; loadErr: string | null; onRefresh: () => void }) {
+function TopBar({ title, alerts, loadErr, onRefresh }: { title: string; alerts: number; loadErr: string | null; onRefresh: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
       <div style={{ flex: 1 }}>
@@ -207,7 +209,7 @@ function TopBar({ title, alerts, loadErr, onRefresh }: { title: string; alerts: 
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: "var(--on-bg)" }}>{title}</h1>
         {loadErr && <ErrorText msg={`Couldn't refresh: ${loadErr}`} />}
       </div>
-      <button onClick={onRefresh} style={{ ...smallBtn("ghost") }}>Refresh</button>
+      <button onClick={() => { setBusy(true); void onRefresh().finally(() => setBusy(false)); }} disabled={busy} style={{ ...smallBtn("ghost") }}>{busy ? "Refreshing…" : "Refresh"}</button>
       <span style={{ position: "relative", width: 42, height: 42, borderRadius: 12, background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow-card)" }}>
         <BellIcon s={20} c="var(--ink-soft)" />
         {alerts > 0 && <span style={{ position: "absolute", top: 8, right: 9, width: 8, height: 8, borderRadius: "50%", background: "var(--red)" }} />}
@@ -335,7 +337,7 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
         <label style={label} htmlFor="ae">Email</label>
         <input id="ae" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} style={{ ...field, marginBottom: 14 }} autoComplete="username" />
         <label style={label} htmlFor="ap">Password</label>
-        <input id="ap" type="password" required value={pw} onChange={(e) => setPw(e.target.value)} style={{ ...field, marginBottom: 12 }} autoComplete="current-password" />
+        <PasswordInput id="ap" required value={pw} onChange={(e) => setPw(e.target.value)} style={{ marginBottom: 12 }} autoComplete="current-password" />
         <ErrorText msg={err} />
         <div style={{ marginTop: 12 }}><PrimaryButton type="submit" disabled={!email || !pw || busy}><LockIcon s={17} c={email && pw ? "white" : "var(--ink-mute)"} /> {busy ? "Signing in…" : "Login"}</PrimaryButton></div>
       </form>
@@ -393,6 +395,9 @@ function Dashboard({ d, go }: { d: Data; go: (s: Section) => void }) {
 
 const nameOf = (d: Data, id: string | null) => (id ? d.profiles.find((p) => p.id === id)?.name || d.drivers.find((x) => x.id === id)?.name || "—" : "—");
 const placeName = (d: Data, id: string) => d.places.find((p) => p.id === id)?.name ?? id;
+/** A ride's pickup / drop name, using the searched or GPS place when it has one. */
+const fromName = (d: Data, r: RideRow): string => r.pickup_name ?? (r.pickup_lat != null ? r.pickup_address ?? "Pickup point" : placeName(d, r.from_place));
+const toName = (d: Data, r: RideRow): string => r.drop_name ?? placeName(d, r.to_place);
 
 function RidesTable({ d, rows, onOpen }: { d: Data; rows: RideRow[]; onOpen: (r: RideRow) => void }) {
   return (
@@ -404,7 +409,7 @@ function RidesTable({ d, rows, onOpen }: { d: Data; rows: RideRow[]; onOpen: (r:
             <tr key={r.id} onClick={() => onOpen(r)}>
               <td style={{ fontWeight: 700 }}>#{r.code}</td><td>{when(r.created_at)}</td><td>{nameOf(d, r.customer_id)}</td><td>{nameOf(d, r.driver_id)}</td>
               <td>{r.vehicle ? vehicleById(r.vehicle).name : r.service === "any" ? "Book Any" : "—"}</td>
-              <td style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", color: "var(--ink-soft)" }}>{placeName(d, r.from_place)} → {placeName(d, r.to_place)}</td>
+              <td style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", color: "var(--ink-soft)" }}>{fromName(d, r)} → {toName(d, r)}</td>
               <td><StatusBadge status={r.status} /></td>
               <td>{r.pay_method} · <span style={{ fontWeight: 600 }}>{r.payment_status}</span></td>
               <td style={{ textAlign: "right", fontWeight: 700 }}>{inr(r.total)}</td>
@@ -433,7 +438,7 @@ function RideDrawer({ d, r, act, onClose }: { d: Data; r: RideRow; act: Act; onC
         {kv("Customer", nameOf(d, r.customer_id))}
         {kv("Driver", nameOf(d, r.driver_id))}
         {kv("Vehicle", `${r.vehicle ? vehicleById(r.vehicle).name : "Book Any"} · ${r.ac ? "AC" : "Non-AC"} · ${r.km} km · ${r.mins} min`)}
-        {kv("Route", `${placeName(d, r.from_place)} → ${placeName(d, r.to_place)}`)}
+        {kv("Route", `${fromName(d, r)} → ${toName(d, r)}`)}
         {r.cancel_reason && kv("Cancelled", `${r.cancel_reason} (${r.cancelled_by})`)}
         {r.rating && kv("Rating", "★".repeat(r.rating))}
       </div>
@@ -475,7 +480,7 @@ function RidesSection({ d, act }: { d: Data; act: Act }) {
   const [open, setOpen] = useState<string | null>(null);
   const rows = d.rides.filter((r) =>
     (status === "All" || (status === "Live" ? LIVE.includes(r.status) : status === "Payment due" ? r.payment_status === "pending" : r.status === status)) &&
-    `${r.code} ${nameOf(d, r.customer_id)} ${nameOf(d, r.driver_id)} ${placeName(d, r.from_place)} ${placeName(d, r.to_place)}`.toLowerCase().includes(q.toLowerCase()));
+    `${r.code} ${nameOf(d, r.customer_id)} ${nameOf(d, r.driver_id)} ${fromName(d, r)} ${toName(d, r)}`.toLowerCase().includes(q.toLowerCase()));
   const sel = d.rides.find((r) => r.id === open);
   return (
     <Panel>
@@ -497,7 +502,7 @@ function LiveRides({ d, act }: { d: Data; act: Act }) {
   return (
     <div className="adm-grid-2">
       <Panel title="Map" right={<span style={{ fontSize: 12.5, color: "var(--success-text)", fontWeight: 600 }}>● {live.length} live</span>}>
-        <MapView mode={focus ? "route" : "idle"} from={focus?.from_place} pickupAt={focus?.pickup_lat != null && focus.pickup_lng != null ? { lat: focus.pickup_lat, lng: focus.pickup_lng } : null} to={focus?.to_place} height={420} radius={14} />
+        <MapView mode={focus ? "route" : "idle"} from={focus?.from_place} pickupAt={focus?.pickup_lat != null && focus.pickup_lng != null ? { lat: focus.pickup_lat, lng: focus.pickup_lng } : null} to={focus?.to_place} dropAt={focus?.drop_lat != null && focus.drop_lng != null ? { lat: focus.drop_lat, lng: focus.drop_lng } : null} height={420} radius={14} />
         <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--ink-mute)" }}>{focus ? `Route of ${focus.code} — tap a ride to show its route.` : "No live ride to show."}</p>
       </Panel>
       <Panel title="Live rides">
@@ -508,7 +513,7 @@ function LiveRides({ d, act }: { d: Data; act: Act }) {
               <VehicleArt kind={r.vehicle ?? r.requested_vehicles[0]} size={48} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700 }}>#{r.code} · {nameOf(d, r.driver_id)}</p>
-                <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{placeName(d, r.from_place)} → {placeName(d, r.to_place)}</p>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fromName(d, r)} → {toName(d, r)}</p>
               </div>
               <StatusBadge status={r.status} />
             </button>
@@ -711,25 +716,30 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
   const [rows, setRows] = useState<Vehicle[]>(d.vehicles);
   const [s, setS] = useState<Settings>(d.settings);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { setRows(d.vehicles); setS(d.settings); }, [d.vehicles, d.settings]);
-  type NumKey = "base" | "per_km" | "per_min" | "min_fare" | "cancel_fee" | "commission_pct" | "commission_pct_non_ac";
+  // The panel reloads every 15s; only take the fresh values while there are no unsaved edits.
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => { if (!dirty) { setRows(d.vehicles); setS(d.settings); } }, [d.vehicles, d.settings, dirty]);
+  type NumKey = "base" | "per_km" | "per_min" | "min_fare" | "cancel_fee" | "platform_fee" | "platform_fee_non_ac";
   const cols: [NumKey, string][] = [["base", "Base ₹"], ["per_km", "₹ / km"], ["per_min", "₹ / min"], ["min_fare", "Min fare ₹"], ["cancel_fee", "Cancel fee ₹"],
-    ["commission_pct", "AC commission %"], ["commission_pct_non_ac", "Non-AC commission %"]];
-  const isPct = (k: NumKey) => k === "commission_pct" || k === "commission_pct_non_ac";
-  const valid = (k: NumKey, n: number) => Number.isFinite(n) && n >= 0 && (!isPct(k) || n <= 50);
-  const upd = (id: string, p: Partial<Vehicle>) => setRows((r) => r.map((x) => (x.id === id ? { ...x, ...p } : x)));
-  const invalid = rows.some((v) => cols.some(([k]) => !valid(k, Number(v[k]))));
+    ["platform_fee", "AC platform fee ₹"], ["platform_fee_non_ac", "Non-AC platform fee ₹"]];
+  const isFee = (k: NumKey) => k === "platform_fee" || k === "platform_fee_non_ac";
+  const valid = (k: NumKey, n: number) => Number.isFinite(n) && n >= 0 && (!isFee(k) || (Number.isInteger(n) && n <= 100));
+  const validS = (n: number, max: number) => Number.isInteger(n) && n >= 0 && n <= max;
+  const upd = (id: string, p: Partial<Vehicle>) => { setDirty(true); setRows((r) => r.map((x) => (x.id === id ? { ...x, ...p } : x))); };
+  const updS = (p: Partial<Settings>) => { setDirty(true); setS((x) => ({ ...x, ...p })); };
+  const invalid = rows.some((v) => cols.some(([k]) => !valid(k, Number(v[k])))) || !validS(Number(s.booking_fee), 100) || !validS(Number(s.booking_fee_above), 10000);
   const save = async () => {
     setBusy(true);
     try {
       for (const v of rows) {
         const orig = d.vehicles.find((x) => x.id === v.id)!;
-        const changed = Object.fromEntries((["base", "per_km", "per_min", "min_fare", "cancel_fee", "commission_pct", "commission_pct_non_ac", "ac", "enabled"] as const).filter((k) => String(v[k]) !== String(orig[k])).map((k) => [k, v[k]]));
+        const changed = Object.fromEntries((["base", "per_km", "per_min", "min_fare", "cancel_fee", "platform_fee", "platform_fee_non_ac", "ac", "enabled"] as const).filter((k) => String(v[k]) !== String(orig[k])).map((k) => [k, v[k]]));
         if (Object.keys(changed).length) await rpc("admin_update_vehicle", { p_id: v.id, p: changed });
       }
-      if (s.commission_pct !== d.settings.commission_pct || s.surge_on !== d.settings.surge_on || s.surge_mult !== d.settings.surge_mult) {
-        await rpc("admin_update_settings", { p: { commission_pct: s.commission_pct, surge_on: s.surge_on, surge_mult: s.surge_mult } });
+      if (s.surge_on !== d.settings.surge_on || s.surge_mult !== d.settings.surge_mult || s.booking_fee !== d.settings.booking_fee || s.booking_fee_above !== d.settings.booking_fee_above) {
+        await rpc("admin_update_settings", { p: { surge_on: s.surge_on, surge_mult: s.surge_mult, booking_fee: s.booking_fee, booking_fee_above: s.booking_fee_above } });
       }
+      setDirty(false);
       await done("Pricing saved — applies to the next quote; booked rides keep their price");
     } catch (e) { await done((e as Error).message); } finally { setBusy(false); }
   };
@@ -737,7 +747,7 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Panel title={`Vehicle categories & fares · Non-AC is ${Math.round((1 - d.settings.non_ac_factor) * 100)}% cheaper`} right={<PrimaryButton onClick={() => void save()} disabled={busy || invalid} style={{ width: "auto", padding: "10px 18px", fontSize: 13.5 }}>{busy ? "Saving…" : "Save changes"}</PrimaryButton>}>
-        {invalid && <ErrorText msg="Fares can't be negative or empty, and commissions must be 0–50%." />}
+        {invalid && <ErrorText msg="Fares can't be negative or empty; platform fees and the booking charge must be whole rupees, ₹0–₹100." />}
         <div className="adm-table-wrap">
           <table className="adm-table">
             <thead><tr><th>Category</th>{cols.map(([, l]) => <th key={l}>{l}</th>)}<th>AC option</th><th>Enabled</th></tr></thead>
@@ -745,10 +755,10 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
               {rows.map((v) => (
                 <tr key={v.id} style={{ cursor: "default" }}>
                   <td><span style={{ display: "flex", alignItems: "center", gap: 8 }}><VehicleArt kind={v.id} size={40} /><b>{v.name}</b></span></td>
-                  {cols.map(([k]) => k === "commission_pct" && !v.ac ? (
-                    <td key={k} style={{ color: "var(--ink-mute)", fontSize: 12 }} title="Turn on the AC option to set an AC commission">No AC</td>
+                  {cols.map(([k]) => k === "platform_fee" && !v.ac ? (
+                    <td key={k} style={{ color: "var(--ink-mute)", fontSize: 12 }} title="Turn on the AC option to set an AC platform fee">No AC</td>
                   ) : (
-                    <td key={k}><input type="number" min={0} max={isPct(k) ? 50 : undefined} step={k === "per_min" || k === "per_km" || isPct(k) ? 0.5 : 1} value={v[k]} aria-label={`${v.name} ${k}`}
+                    <td key={k}><input type="number" min={0} max={isFee(k) ? 100 : undefined} step={k === "per_min" || k === "per_km" ? 0.5 : 1} value={v[k]} aria-label={`${v.name} ${k}`}
                       onChange={(e) => upd(v.id, { [k]: e.target.value === "" ? NaN : Number(e.target.value) } as Partial<Vehicle>)} style={{ ...num, borderColor: valid(k, Number(v[k])) ? undefined : "var(--red)" }} /></td>
                   ))}
                   <td><Toggle on={v.ac} onChange={(on) => upd(v.id, { ac: on })} label={`${v.name} offers AC`} /></td>
@@ -760,16 +770,25 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
         </div>
       </Panel>
       <div className="adm-grid-2">
-        <Panel title="Platform commission by vehicle">
-          {rows.flatMap((v) => (v.ac ? [["AC", "commission_pct"], ["Non-AC", "commission_pct_non_ac"]] as const : [["Non-AC", "commission_pct_non_ac"]] as const).map(([lbl, k]) => {
-            const pct = Number(v[k]); const ok = valid(k, pct);
-            return <div key={v.id + k}>{kv(`${v.name} ${lbl} · ${ok ? pct : "—"}%`, ok ? `driver earns ${inr(200 * (1 - pct / 100))} of ₹200` : "—")}</div>;
+        <Panel title="Platform fee per completed ride">
+          {rows.flatMap((v) => (v.ac ? [["AC", "platform_fee"], ["Non-AC", "platform_fee_non_ac"]] as const : [["Non-AC", "platform_fee_non_ac"]] as const).map(([lbl, k]) => {
+            const fee = Number(v[k]); const ok = valid(k, fee);
+            return <div key={v.id + k}>{kv(`${v.name} ${lbl} · ${ok ? inr(fee) : "—"}`, ok ? `${Math.floor(50 / Math.max(fee, 1))} rides from a ${inr(50)} wallet` : "—")}</div>;
           }))}
-          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>Set the AC and non-AC commission for each category in the table above (0–50%). A ride is charged by what the customer booked: an AC ride uses the AC rate, a non-AC ride the non-AC rate. A new rate applies to rides completed after you save; finished rides keep the rate they were charged. Coupon discounts are paid by DriveWay, not the driver.</p>
+          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>A flat fee in rupees, taken from the rider&apos;s wallet when a ride completes (never on cancellations). An AC ride uses the AC fee, a non-AC ride the non-AC fee. Riders whose wallet is below the fee get no new rides until they recharge. A new fee applies to rides completed after you save. Coupon discounts are paid by DriveWay, not the driver.</p>
         </Panel>
-        <Panel title="Surge pricing" right={<Toggle on={s.surge_on} onChange={(on) => setS({ ...s, surge_on: on })} label="Surge pricing" />}>
+        <Panel title="Customer booking charge">
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>Charge ₹
+              <input type="number" min={0} max={100} step={1} value={s.booking_fee} aria-label="Booking charge" onChange={(e) => updS({ booking_fee: e.target.value === "" ? NaN : Number(e.target.value) })} style={{ ...num, borderColor: validS(Number(s.booking_fee), 100) ? undefined : "var(--red)" }} /></label>
+            <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>when the fare is above ₹
+              <input type="number" min={0} max={10000} step={1} value={s.booking_fee_above} aria-label="Booking charge threshold" onChange={(e) => updS({ booking_fee_above: e.target.value === "" ? NaN : Number(e.target.value) })} style={{ ...num, borderColor: validS(Number(s.booking_fee_above), 10000) ? undefined : "var(--red)" }} /></label>
+          </div>
+          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>Paid by the customer and kept by DriveWay; the rider&apos;s earning is unchanged. Checked on the fare after any coupon and before the faster-pickup add-on, and shown as its own line on the fare. Applies to new bookings.</p>
+        </Panel>
+        <Panel title="Surge pricing" right={<Toggle on={s.surge_on} onChange={(on) => updS({ surge_on: on })} label="Surge pricing" />}>
           <div style={{ display: "flex", alignItems: "center", gap: 14, opacity: s.surge_on ? 1 : 0.45 }}>
-            <input type="range" min={1} max={3} step={0.1} disabled={!s.surge_on} value={s.surge_mult} onChange={(e) => setS({ ...s, surge_mult: Number(e.target.value) })} style={{ flex: 1, accentColor: "var(--blue)" }} aria-label="Surge multiplier" />
+            <input type="range" min={1} max={3} step={0.1} disabled={!s.surge_on} value={s.surge_mult} onChange={(e) => updS({ surge_mult: Number(e.target.value) })} style={{ flex: 1, accentColor: "var(--blue)" }} aria-label="Surge multiplier" />
             <span style={{ fontSize: 24, fontWeight: 800, width: 64, textAlign: "right" }}>{Number(s.surge_mult).toFixed(1)}×</span>
           </div>
           <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>When on, every new quote is multiplied and shows a &quot;High demand&quot; line to the customer.</p>
@@ -847,7 +866,7 @@ function CouponsSection({ d, act }: { d: Data; act: Act }) {
 
 function PaymentsSection({ d }: { d: Data }) {
   const [kind, setKind] = useState("All");
-  const KINDS = ["All", "payment", "driver_earning", "commission", "discount", "cash_collected", "payout", "refund", "wallet_credit", "incentive", "cancel_fee"];
+  const KINDS = ["All", "payment", "driver_earning", "commission", "booking_fee", "discount", "cash_collected", "payout", "refund", "wallet_credit", "incentive", "cancel_fee"];
   const rows = d.ledger.filter((t) => kind === "All" || t.kind === kind);
   const sum = (k: string) => d.ledger.filter((l) => l.kind === k).reduce((s, l) => s + l.amount, 0);
   const driverBal = d.ledger.filter((l) => l.party === "driver").reduce((s, l) => s + l.amount, 0);
@@ -855,9 +874,9 @@ function PaymentsSection({ d }: { d: Data }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div className="adm-grid-4">
         <Stat label="Payments collected" value={inr(sum("payment"))} sub="All time, from the ledger" tone="blue" />
-        <Stat label="Commission earned" value={inr(sum("commission"))} sub={`Discounts funded: ${inr(-sum("discount"))}`} />
+        <Stat label="Platform fees earned" value={inr(sum("commission") + sum("booking_fee"))} sub={`Booking charges: ${inr(sum("booking_fee"))} · Discounts funded: ${inr(-sum("discount"))}`} />
         <Stat label="Owed to drivers (net)" value={inr(driverBal)} sub="Positive = payable, negative = dues" tone="gold" />
-        <Stat label="Refunds issued" value={inr(sum("wallet_credit"))} tone="red" />
+        <Stat label="Refunds issued" value={inr(-sum("refund"))} tone="red" />
       </div>
       <Panel title="Ledger" right={<select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Filter by type" style={{ ...field, width: "auto", padding: "7px 10px", fontSize: 13 }}>{KINDS.map((k) => <option key={k}>{k}</option>)}</select>}>
         <div className="adm-table-wrap">
@@ -894,7 +913,7 @@ function ReportsSection({ d, flash }: { d: Data; flash: (m: string) => void }) {
   const inRange = d.rides.filter((r) => days.some((x) => x.key === istDay(r.created_at)));
   const exportCsv = () => {
     const head = ["Ride", "Created (IST)", "Customer", "Driver", "Vehicle", "From", "To", "Km", "Fare", "Discount", "Wait fee", "Cancel fee", "Owed", "Payment", "Payment status", "Refunded", "Status"];
-    const lines = inRange.map((r) => [r.code, when(r.created_at), nameOf(d, r.customer_id), nameOf(d, r.driver_id), r.vehicle ?? r.service, placeName(d, r.from_place), placeName(d, r.to_place),
+    const lines = inRange.map((r) => [r.code, when(r.created_at), nameOf(d, r.customer_id), nameOf(d, r.driver_id), r.vehicle ?? r.service, fromName(d, r), toName(d, r),
       r.km, r.fare, r.discount, r.wait_fee, r.cancel_fee, r.total, r.pay_method, r.payment_status, r.refunded, r.status].map(csvCell).join(","));
     const url = URL.createObjectURL(new Blob(["﻿" + [head.map(csvCell).join(","), ...lines].join("\r\n")], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a"); a.href = url; a.download = `driveway-rides-${days[0].key}-to-${days[6].key}.csv`; a.click(); URL.revokeObjectURL(url);

@@ -74,6 +74,12 @@ export function RiderHome({ me, online, toggling, toggleErr, onToggle, onOpenEar
           <Toggle on={online} onChange={(v) => { if (!toggling) onToggle(v); }} label="Go online" />
         </div>
         <ErrorText msg={toggleErr} />
+        {me.needs_recharge && !me.suspended && (
+          <button onClick={() => onQuick("wallet")} className="press" style={{ ...card, width: "100%", marginTop: 10, border: "none", cursor: "pointer", textAlign: "left", padding: "12px 14px", background: "var(--error)", color: "var(--error-text)" }}>
+            <span style={{ display: "block", fontSize: 14, fontWeight: 700 }}>Wallet low — rides paused</span>
+            <span style={{ display: "block", fontSize: 12.5, marginTop: 2 }}>Recharge {inr(50)} to start getting rides again. Tap to open Wallet.</span>
+          </button>
+        )}
       </div>
 
       <div style={{ padding: "14px 16px 0" }}>
@@ -185,7 +191,7 @@ export function RequestPopup({ offer, autoAccept, busy, err, onAccept, onDecline
             <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800 }}>{left}</span>
           </span>
         </div>
-        <MapView mode="route" from={offer.from.id} pickupAt={placePos(offer.from)} to={offer.to.id} height={120} radius={16} style={{ margin: "12px 0" }} />
+        <MapView mode="route" from={offer.from.id} pickupAt={placePos(offer.from)} to={offer.to.id} dropAt={placePos(offer.to)} height={120} radius={16} style={{ margin: "12px 0" }} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8, marginBottom: 12 }}>
           {[[inr(offer.fare), `${offer.pay} · you get ${inr(offer.earn ?? 0)}`], [`${offer.km} km`, `~${offer.mins} min trip`]].map(([v, l]) => (
             <div key={l} style={{ ...card, padding: "10px 8px", textAlign: "center" }}>
@@ -233,11 +239,10 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
   const sinceStart = useSince(trip.started_at);
   const parcel = trip.service === "parcel";
   const who = trip.customer?.name ?? "Customer";
-  const commission = trip.commission_pct / 100;
 
   if (trip.status === "Completed") {
     const gross = trip.fare + trip.wait_fee;
-    const earn = Math.round(gross * (1 - commission));
+    const earn = gross - trip.platform_fee;
     const cashDue = trip.pay === "Cash" && trip.payment_status === "pending";
     const onlineDue = trip.pay !== "Cash" && trip.payment_status === "pending" && trip.total > 0;
     return (
@@ -252,14 +257,15 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
           </p>
         </div>
         <div style={{ ...card, padding: "12px 16px", marginTop: 18 }}>
-          {([["Trip fare", inr(trip.fare - (trip.add_on ?? 0))], trip.add_on ? ["Add-on for faster pickup", inr(trip.add_on)] : null, trip.wait_fee ? ["Waiting charge", inr(trip.wait_fee)] : null, [`Platform commission (${trip.commission_pct}%)`, "− " + inr(gross - earn)]].filter(Boolean) as string[][]).map(([l, v]) => (
+          {([["Trip fare", inr(trip.fare - (trip.add_on ?? 0))], trip.add_on ? ["Add-on for faster pickup", inr(trip.add_on)] : null, trip.wait_fee ? ["Waiting charge", inr(trip.wait_fee)] : null, ["Platform fee", "− " + inr(trip.platform_fee)]].filter(Boolean) as string[][]).map(([l, v]) => (
             <div key={l} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "var(--ink-soft)", padding: "4px 0" }}><span>{l}</span><span>{v}</span></div>
           ))}
           <div style={{ borderTop: "1px dashed var(--line-strong)", margin: "6px 0" }} />
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700, padding: "4px 0" }}><span>You earn</span><span style={{ color: "var(--success-text)" }}>{inr(earn)}</span></div>
           {trip.discount > 0 && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--ink-mute)", lineHeight: 1.45 }}>The customer used coupon {trip.coupon} (−{inr(trip.discount)}). DriveWay covers it — your earning is unchanged.</p>}
+          {trip.booking_fee > 0 && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--ink-mute)", lineHeight: 1.45 }}>The total includes the customer&apos;s {inr(trip.booking_fee)} booking charge, which goes to DriveWay.</p>}
           {trip.pay === "Cash" && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--ink-mute)", lineHeight: 1.45 }}>You keep the cash; it's deducted from your wallet, so a negative balance is dues owed.</p>}
-          {onlineDue && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--ink-mute)", lineHeight: 1.45 }}>If the customer paid you on your own UPI or account instead of in the app, tap &quot;Customer paid me directly&quot;. You keep the fare and the commission is deducted from your wallet.</p>}
+          {onlineDue && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--ink-mute)", lineHeight: 1.45 }}>If the customer paid you on your own UPI or account instead of in the app, tap &quot;Customer paid me directly&quot;. You keep the fare and the platform fee is deducted from your wallet.</p>}
         </div>
         {!cashDue && (
           <div className="fade-up" style={{ ...card, padding: 16, marginTop: 12, textAlign: "center" }}>
@@ -295,7 +301,7 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ position: "relative" }}>
-        <MapView mode={phase === "Started" ? "trip" : "approach"} progress={progress} motion={motion} from={trip.from.id} pickupAt={placePos(trip.from)} to={trip.to.id} live height={320} radius={0} />
+        <MapView mode={phase === "Started" ? "trip" : "approach"} progress={progress} motion={motion} from={trip.from.id} pickupAt={placePos(trip.from)} to={trip.to.id} dropAt={placePos(trip.to)} live height={320} radius={0} />
         <button onClick={onBack} aria-label="Back" className="press" style={{ ...iconBtn, position: "absolute", top: 16, left: 16, width: 40, height: 40, borderRadius: "50%", background: "white", justifyContent: "center", boxShadow: "var(--shadow-md)" }}><BackIcon c="var(--ink)" /></button>
         <div style={{ position: "absolute", top: 16, left: 66, right: 16, background: "var(--blue-dark)", color: "white", borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, boxShadow: "var(--shadow-md)" }}>
           <NavIcon s={22} c="var(--gold)" />
@@ -368,7 +374,7 @@ export function EarningsScreen({ me, onBack }: { me: DriverMe; onBack?: () => vo
       <div style={{ padding: "0 16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
         <Tabs value={range} onChange={setRange} tabs={[{ id: "day", label: "Today" }, { id: "week", label: "This Week" }, { id: "month", label: "This Month" }]} />
         <div style={{ borderRadius: 22, padding: 18, background: "linear-gradient(150deg,var(--blue-dark),var(--blue))", color: "white", boxShadow: "0 10px 28px rgba(11,92,255,0.28)" }}>
-          <p style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.75)" }}>Net earnings (after {me.commission_pct}% commission, incl. bonuses)</p>
+          <p style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.75)" }}>Net earnings (after {inr(me.platform_fee)} platform fee per ride, incl. bonuses)</p>
           <p style={{ margin: "2px 0 0", fontSize: 32, fontWeight: 800 }}>{inr(net)}</p>
           {range === "week" && <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "rgba(255,255,255,0.8)" }}>{me.week_trips} trips · {inr(me.earnings.incentives_week)} in bonuses</p>}
           {range === "day" && <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "rgba(255,255,255,0.8)" }}>{me.today.trips} trips today</p>}
@@ -389,7 +395,7 @@ export function EarningsScreen({ me, onBack }: { me: DriverMe; onBack?: () => vo
 
 /* ───────────────────────── Trips history ───────────────────────── */
 
-export function TripsScreen({ trips, commissionPct, onOpen }: { trips: RideView[] | null; commissionPct: number; onOpen: (r: RideView) => void }) {
+export function TripsScreen({ trips, onOpen }: { trips: RideView[] | null; onOpen: (r: RideView) => void }) {
   const [filter, setFilter] = useState<"all" | "done" | "cancelled">("all");
   const list = trips ?? [];
   const shown = list.filter((r) => filter === "all" || (filter === "done" ? r.status === "Completed" : r.status === "Cancelled"));
@@ -408,7 +414,7 @@ export function TripsScreen({ trips, commissionPct, onOpen }: { trips: RideView[
             <RouteLines from={r.from.name} to={r.to.name} />
             <div style={{ borderTop: "1px solid var(--line)", marginTop: 10, paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>{r.customer?.name ?? "Customer"} · {r.km} km · {r.pay}</span>
-              <span style={{ fontSize: 15, fontWeight: 800, color: r.status === "Completed" ? "var(--ink)" : "var(--ink-mute)" }}>{r.status === "Completed" ? inr(Math.round((r.fare + r.wait_fee) * (1 - (r.commission_pct ?? commissionPct) / 100))) : "—"}</span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: r.status === "Completed" ? "var(--ink)" : "var(--ink-mute)" }}>{r.status === "Completed" ? inr(r.fare + r.wait_fee - r.platform_fee) : "—"}</span>
             </div>
           </button>
         ))}

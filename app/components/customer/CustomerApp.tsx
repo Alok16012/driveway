@@ -186,7 +186,7 @@ export default function CustomerApp() {
       onEnded={() => { void refreshActive(); void refreshRides(); void refreshMe(); }}
       onCancelled={() => { void refreshActive(); void refreshRides(); goTab("home"); flash(active.cancel_fee_now > 0 ? `Ride cancelled · ${inr(active.cancel_fee_now)} fee due` : "Ride cancelled — no charge"); }}
       onShare={() => flash("Trip sharing and SOS alerts need the notifications service — call 112 in an emergency")}
-      onRetry={() => { if (blocked) { flash(BLOCKED_MSG); return; } const to = active.to; const prefer = optionOf(active); void closeRide(active.id).then(refreshActive); setStack([{ k: "search", to: places.find((p) => p.id === to.id), prefer }]); }}
+      onRetry={() => { if (blocked) { flash(BLOCKED_MSG); return; } const to = active.to; const prefer = optionOf(active); void closeRide(active.id).then(refreshActive); setStack([{ k: "search", to: typeof to.lat === "number" ? { ...to, id: `g:retry-${active.id}`, kind: null } : places.find((p) => p.id === to.id), prefer }]); }}
       onDismiss={() => { void closeRide(active.id).then(refreshActive); goTab("home"); }} />;
   };
 
@@ -239,7 +239,7 @@ export default function CustomerApp() {
               <ChooseRidePage from={detail.from} to={detail.to} prefer={detail.prefer} initialCoupon={pendingCoupon}
                 initialAc={acPref} onAcChange={setAcPref} onBack={back} onEditRoute={back}
                 onBooked={(s) => void onBooked(s)}
-                onParcel={(x) => push({ k: "parcel", from: detail.from, to: detail.to, ...x })} />
+                onParcel={(x) => push({ k: "parcel", to: detail.to, ...x })} />
             )}
             {detail?.k === "parcel" && (
               <ParcelPage from={detail.from} to={detail.to} quote={detail.quote} pay={detail.pay} coupon={detail.coupon} onBack={back} onBooked={() => void onBooked(false)} />

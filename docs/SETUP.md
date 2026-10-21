@@ -75,17 +75,18 @@ See `.env.example`. `SUPABASE_SERVICE_ROLE_KEY` is server-only — never prefix 
 
 ## Mobile apps (Android APK, iOS)
 
-`npm run build:apk` builds two apps into `mobile/dist/`:
+`npm run build:apk` builds three apps into `mobile/dist/`:
 
 | File | App | Package |
 |---|---|---|
 | `driveway-customer.apk` | DriveWay (customer) | `com.driveway.customer` |
 | `driveway-rider.apk` | DriveWay Rider | `com.driveway.rider` |
+| `driveway-admin.apk` | DriveWay Admin | `com.driveway.admin` |
 
 Each bundles a static export of its page (`NEXT_PUBLIC_NATIVE_APP=1`) and talks to Supabase directly,
 using the URL and anon key from `.env.local` at build time. Build just one with `npm run build:apk -- rider`.
 Needs JDK 21 (`JAVA_HOME`, or `~/.local/jdk21`) and the Android SDK (`~/Library/Android/sdk`).
-The Android projects live in `mobile/customer/android` and `mobile/rider/android` (open them in Android Studio).
+The Android projects live in `mobile/customer/android`, `mobile/rider/android` and `mobile/admin/android` (open them in Android Studio).
 
 The APKs are debug-signed: fine for installing on test phones, not for the Play Store. A store release needs
 a signing key and `./gradlew bundleRelease`.

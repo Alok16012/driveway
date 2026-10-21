@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { googleReverseGeocode, hasGoogle } from "./google";
 
 /* The device's real position, shared by every map on screen. One `watchPosition` runs while anything is
  * subscribed. Works in the browser (HTTPS or localhost only) and in the Capacitor apps, whose WebView asks
@@ -102,22 +103,40 @@ export function distanceM(a: LatLng, b: LatLng): number {
   return 2 * 6371000 * Math.asin(Math.sqrt(s));
 }
 
-/* Street address for a point, from OpenStreetMap Nominatim. Its usage policy allows ~1 request a second,
- * so results are cached and only looked up again after moving 150 m. */
+/* Street address for a point: Google Geocoding when a Maps key is set, else (or if it fails) OpenStreetMap
+ * Nominatim, whose usage policy allows ~1 request a second. Cached; looked up again after moving 50 m. */
 const geoCache: { pos: LatLng; address: string }[] = [];
 
+type NominatimReverse = { category?: string; type?: string; name?: string; display_name?: string; address?: Record<string, string> };
+const PLACE_CATEGORIES = new Set(["amenity", "shop", "building", "tourism", "office", "leisure", "healthcare", "railway", "aeroway"]);
+
+/** Short pickup label from a Nominatim reverse result: "<place or street>, <locality>, <area>".
+ * Many Indian roads in OSM are unnamed, so the locality (neighbourhood / residential area) carries the name people
+ * know — e.g. "Peer Gate Area, Ibrahimpura, Bhopal" rather than just "Ibrahimpura, Bhopal". */
+export function formatAddress(j: NominatimReverse): string | null {
+  const a = j.address ?? {};
+  const place = j.name && j.category && PLACE_CATEGORIES.has(j.category) ? j.name : undefined;
+  const street = a.road ?? a.pedestrian ?? a.footway;
+  const locality = a.neighbourhood ?? a.residential ?? a.hamlet ?? a.quarter ?? a.isolated_dwelling;
+  const area = a.suburb ?? a.city_district ?? a.village;
+  const city = a.city ?? a.town ?? a.village ?? a.municipality ?? a.state_district;
+  const parts = [place ?? street, locality, area, city]
+    .filter((x, i, all): x is string => !!x && all.indexOf(x) === i)
+    .slice(0, 3);
+  if (parts.length >= 2) return parts.join(", ");
+  return j.display_name?.split(",").slice(0, 3).map((x) => x.trim()).join(", ") ?? parts[0] ?? null;
+}
+
 export async function reverseGeocode(pos: LatLng): Promise<string | null> {
-  const hit = geoCache.find((c) => distanceM(c.pos, pos) < 150);
+  const hit = geoCache.find((c) => distanceM(c.pos, pos) < 50);
   if (hit) return hit.address;
+  const g = hasGoogle() ? await googleReverseGeocode(pos) : null;
+  if (g) { geoCache.push({ pos, address: g }); return g; }
   try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=17&addressdetails=1&lat=${pos.lat}&lon=${pos.lng}`,
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=${pos.lat}&lon=${pos.lng}`,
       { headers: { "Accept-Language": "en" } });
     if (!res.ok) return null;
-    const j = await res.json();
-    const a = j.address ?? {};
-    const parts = [a.road ?? a.pedestrian ?? a.neighbourhood, a.suburb ?? a.quarter ?? a.city_district, a.city ?? a.town ?? a.village ?? a.state_district]
-      .filter((x, i, all): x is string => !!x && all.indexOf(x) === i);
-    const address = parts.length ? parts.join(", ") : (j.display_name as string | undefined)?.split(",").slice(0, 3).join(",") ?? null;
+    const address = formatAddress(await res.json());
     if (address) geoCache.push({ pos, address });
     return address;
   } catch { return null; }
@@ -128,16 +147,26 @@ export function useCurrentAddress(enabled = true): { loc: DeviceLocation; addres
   const loc = useDeviceLocation(enabled);
   const [address, setAddress] = useState<string | null>(null);
   const pos = loc.status === "ok" ? loc.pos : null;
-  const lat = pos ? Math.round(pos.lat * 1000) / 1000 : null;   // ~100 m buckets, so walking doesn't refetch every fix
-  const lng = pos ? Math.round(pos.lng * 1000) / 1000 : null;
+  const lat = pos ? Math.round(pos.lat * 2000) / 2000 : null;   // ~50 m buckets, so walking doesn't refetch every fix
+  const lng = pos ? Math.round(pos.lng * 2000) / 2000 : null;
   const exact = useRef<LatLng | null>(null);
   exact.current = pos;
   useEffect(() => {
     if (lat === null || lng === null || !exact.current) return;
     let live = true;
-    // Look up the fix itself, not the bucket's corner, which can sit on the next street.
-    void reverseGeocode(exact.current).then((a) => { if (live && a) setAddress(a); });
-    return () => { live = false; };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Look up the fix itself, not the bucket's corner, which can sit on the next street. A failed lookup
+    // (offline, or Nominatim's 1 req/s limit) is retried, so an earlier, rougher address doesn't stick.
+    const look = (tries: number) => {
+      if (!exact.current) return;
+      void reverseGeocode(exact.current).then((a) => {
+        if (!live) return;
+        if (a) setAddress(a);
+        else if (tries > 1) timer = setTimeout(() => look(tries - 1), 2500);
+      });
+    };
+    look(4);
+    return () => { live = false; clearTimeout(timer); };
   }, [lat, lng]);
   return { loc, address };
 }

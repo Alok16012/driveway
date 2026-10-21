@@ -14,7 +14,7 @@ import { activeCoupons, fmtWhen, isIndianMobile, rideLabel, type CouponRow, type
 /* ───────────────────────── My rides ───────────────────────── */
 
 const label = (r: RideView) => rideLabel(r, vehicleById(r.vehicle).name);
-const owed = (r: RideView) => (r.status === "Cancelled" || r.status === "NoDrivers" ? r.cancel_fee : r.status === "Completed" ? r.total : r.fare - r.discount);
+const owed = (r: RideView) => (r.status === "Cancelled" || r.status === "NoDrivers" ? r.cancel_fee : r.status === "Completed" ? r.total : r.fare - r.discount + r.booking_fee);
 
 export function RidesScreen({ rides, error, onRetry, onBack, onOpen, onBook, initialTab = "past" }: {
   rides: RideView[] | null; error?: string | null; onRetry?: () => void; onBack?: () => void; onOpen: (r: RideView) => void; onBook: () => void; initialTab?: "past" | "upcoming";
@@ -102,6 +102,7 @@ export function RideDetailPage({ ride, onBack, onHelp, onPay, onCancel }: {
               {ride.add_on > 0 && row("Add-on for faster pickup", inr(ride.add_on))}
               {ride.wait_fee > 0 && row("Waiting charge", inr(ride.wait_fee))}
               {ride.discount > 0 && row(`Coupon ${ride.coupon ?? ""}`, "− " + inr(ride.discount), false, "var(--success-text)")}
+              {ride.booking_fee > 0 && row("Booking charge", inr(ride.booking_fee))}
             </>
           )}
           <div style={{ borderTop: "1px dashed var(--line-strong)", margin: "6px 0" }} />

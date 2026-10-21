@@ -5,10 +5,11 @@ import { useEffect, useRef, useState } from "react";
 import type * as Leaflet from "leaflet";
 import { TargetIcon } from "./icons";
 import { KOLKATA, distanceM, placeCoords, useDeviceLocation, type LatLng } from "../lib/location";
+import { GOOGLE_LOGO, googleRoute, tileCopyright, tileSession, tileUrl } from "../lib/google";
 
-/* Real street map (OpenStreetMap tiles via Leaflet) centred on the device's GPS position.
- * The modes decide which route, pins and car are drawn on top. Roads come from the OSRM router; if it
- * can't be reached the route is drawn as a straight line. */
+/* Real street map (Leaflet) centred on the device's GPS position: Google Maps tiles and road routes when a Maps key
+ * is set, else OpenStreetMap tiles and the OSRM router. The modes decide which route, pins and car are drawn on top;
+ * if no router can be reached the route is drawn as a straight line. */
 
 export type MapMode = "idle" | "route" | "approach" | "trip";
 /* Simulated pace, in seconds to cover each leg on screen, for a car whose real position this device doesn't
@@ -33,6 +34,8 @@ async function roadRoute(a: LatLng, b: LatLng): Promise<LatLng[]> {
   const key = `${a.lat.toFixed(4)},${a.lng.toFixed(4)};${b.lat.toFixed(4)},${b.lng.toFixed(4)}`;
   const hit = routeCache.get(key);
   if (hit) return hit;
+  const g = await googleRoute(a, b);
+  if (g && g.length > 1) { routeCache.set(key, g); return g; }
   try {
     const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`);
     const j = await res.json();
@@ -56,12 +59,12 @@ function along(line: LatLng[], t: number): { pos: LatLng; angle: number } {
 }
 const bearing = (a: LatLng, b: LatLng) => (Math.atan2(-(b.lat - a.lat), (b.lng - a.lng) * Math.cos((a.lat * Math.PI) / 180)) * 180) / Math.PI;
 
-export default function MapView({ mode = "idle", progress = 0, motion, from, to, pickupAt, live = false, car, height = 220, radius = 20, style, children }: {
+export default function MapView({ mode = "idle", progress = 0, motion, from, to, pickupAt, dropAt, live = false, car, height = 220, radius = 20, style, children }: {
   mode?: MapMode; progress?: number; motion?: MapMotion;
   /** Place ids (`public.places`) for the pickup and drop. */
   from?: string; to?: string;
-  /** The pickup's real position when it isn't the fixed place (a GPS "Current location" pickup). */
-  pickupAt?: LatLng | null;
+  /** Real positions of the pickup and drop when they aren't fixed places (GPS or searched on Google Maps). */
+  pickupAt?: LatLng | null; dropAt?: LatLng | null;
   /** This device is the car (rider app): draw it at the real GPS position instead of simulating it. */
   live?: boolean;
   /** Where the driver's phone last reported being; omitted while unknown, and the car is simulated. */
@@ -82,8 +85,31 @@ export default function MapView({ mode = "idle", progress = 0, motion, from, to,
       if (dead || !boxRef.current) return;
       L.current = mod;
       const m = mod.map(boxRef.current, { zoomControl: false, attributionControl: false }).setView(toLL(KOLKATA), 13);
-      mod.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(m);
-      mod.control.attribution({ position: "topright", prefix: false }).addTo(m);
+      const credit = mod.control.attribution({ position: "topright", prefix: false }).addTo(m);
+      const osm = () => mod.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(m);
+      // Google tiles need the Google logo on the map and the copyright for the area on screen.
+      void tileSession().then((sess) => {
+        if (dead) return;
+        if (!sess) { osm(); return; }
+        mod.tileLayer(tileUrl(sess), { maxZoom: 21, maxNativeZoom: 21 }).addTo(m);
+        const logo = new (mod.Control.extend({ onAdd: () => Object.assign(document.createElement("img"), { src: GOOGLE_LOGO, alt: "Google", height: 18, style: "display:block;height:18px;margin:0 0 4px 6px;pointer-events:none" }) }))({ position: "bottomleft" });
+        logo.addTo(m);
+        let shown = "";
+        let t: ReturnType<typeof setTimeout> | undefined;
+        const refresh = () => {
+          clearTimeout(t);
+          t = setTimeout(() => {
+            const b = m.getBounds();
+            void tileCopyright(sess, m.getZoom(), { north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest() }).then((c) => {
+              if (dead || c === null || c === shown) return;
+              if (shown) credit.removeAttribution(shown);
+              credit.addAttribution(c); shown = c;
+            });
+          }, 400);
+        };
+        m.on("moveend", refresh);
+        refresh();
+      });
       m.on("dragstart zoomstart", (e) => { if ((e as Leaflet.LeafletEvent & { originalEvent?: Event }).originalEvent) userMoved.current = true; });
       map.current = m;
       setReady(true);
@@ -120,8 +146,9 @@ export default function MapView({ mode = "idle", progress = 0, motion, from, to,
   }, [ready, showMe, me?.lat, me?.lng, loc, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── route legs ── */
-  const pickup = pickupAt ?? placeCoords(from), drop = placeCoords(to);
+  const pickup = pickupAt ?? placeCoords(from), drop = dropAt ?? placeCoords(to);
   const pickupKey = pickup ? `${pickup.lat.toFixed(4)},${pickup.lng.toFixed(4)}` : "";
+  const dropKey = drop ? `${drop.lat.toFixed(4)},${drop.lng.toFixed(4)}` : "";
   const [tripLine, setTripLine] = useState<LatLng[] | null>(null);
   const [apprLine, setApprLine] = useState<LatLng[] | null>(null);
   useEffect(() => {
@@ -130,7 +157,7 @@ export default function MapView({ mode = "idle", progress = 0, motion, from, to,
     let alive = true;
     void roadRoute(pickup, drop).then((l) => { if (alive) setTripLine(l); });
     return () => { alive = false; };
-  }, [mode, pickupKey, to]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, pickupKey, dropKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The driver's leg to pickup: from this device when it's the driver, else from a simulated start ~1.5 km away.
   const realCar = live ? me : car ?? null;

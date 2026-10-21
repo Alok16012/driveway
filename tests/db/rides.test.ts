@@ -82,7 +82,7 @@ describe("Pricing on the server (BUG-17, BUG-18, BUG-22, D)", () => {
     const base = (await t.rpc(u, "quote", "cur", "dlf", true, null)).options.find((o: any) => o.id === "auto").fare;
     const b = await t.book(u, { option: "auto", add_on: 20 });
     const r = (await t.as(u, `select fare, total, add_on from public.rides where id = '${b.id}'`))[0];
-    expect(r).toEqual({ fare: base + 20, total: base + 20, add_on: 20 });
+    expect(r).toEqual({ fare: base + 20, total: base + 20 + 5, add_on: 20 });            // + ₹5 booking charge (fare above ₹50)
     expect((await t.rpc(u, "my_active_ride")).add_on).toBe(20);
     for (const bad of [5, 50, -10, "x"]) await rejects(t.book(await t.user(), { option: "auto", add_on: bad }), /add-on/);
   });
@@ -390,7 +390,7 @@ describe("Money: completion, payment, cash, earnings (BUG-04, BUG-06, BUG-11, BU
     const l = await t.ledger(id); const r = await t.ride(id);
     expect(l.filter((x: any) => x.kind === "cash_collected")).toHaveLength(1);
     const bal = (await t.rpc(d, "my_driver")).balance;
-    expect(bal).toBe(l.find((x: any) => x.kind === "driver_earning").amount - r.total);
+    expect(bal).toBe(50 + l.find((x: any) => x.kind === "driver_earning").amount - r.total);   // ₹50 starting recharge
   });
   it("daily target bonus is paid once, and progress is reported to the driver", async () => {
     const d = await t.driver("bike");
@@ -635,5 +635,112 @@ describe("GPS pickup for Current location", () => {
     await rejects(t.book(c, { option: "bike", pickup: { lat: "22.5", lng: 88.4 } }), /invalid pickup position/);
     await rejects(t.book(c, { option: "bike", pickup: { lat: 120, lng: 88.4 } }), /invalid pickup position/);
     await rejects(t.book(c, { option: "bike", pickup: { lat: 22.5, lng: 88.4, address: "x".repeat(201) } }), /invalid pickup position/);
+  });
+});
+
+describe("Searched pickup and drop (Google Maps)", () => {
+  const drop = { lat: 22.5958, lng: 88.2636, name: "Howrah Station", address: "Howrah, West Bengal" };
+  const gps = { lat: 22.5867, lng: 88.4171 };
+
+  it("prices a searched drop on real distance and keeps fixed-place fares unchanged", async () => {
+    const u = await t.user();
+    const fixed = await t.rpc(u, "quote", "cur", "dlf", true, null);
+    expect(await t.rpc(u, "quote", "cur", "dlf", true, null, null, null)).toEqual(fixed);
+    const q = await t.rpc(u, "quote", "cur", "pin", true, null, gps, { lat: drop.lat, lng: drop.lng });
+    // Salt Lake → Howrah is ~15.9 km straight; × 1.35 for roads.
+    expect(q.km).toBeGreaterThan(19); expect(q.km).toBeLessThan(23);
+    expect(q.mins).toBe(Math.round(q.km * 2.6 + 4));
+  });
+
+  it("books it, and driver and customer see the searched names and positions", async () => {
+    const c = await t.user(); const d = await t.driver("bike");
+    const q = await t.rpc(c, "quote", "cur", "pin", true, null, gps, { lat: drop.lat, lng: drop.lng });
+    const b = await t.book(c, { option: "bike", to: "pin", pickup: { ...gps, name: "City Centre", address: "Salt Lake" }, drop });
+    expect(Number((await t.ride(b.id)).km)).toBe(q.km);
+    const offer = (await t.rpc(d, "driver_offers")).find((o: any) => o.id === b.id);
+    expect(offer.from).toMatchObject({ id: "cur", name: "City Centre", address: "Salt Lake", ...gps });
+    expect(offer.to).toMatchObject({ id: "pin", name: "Howrah Station", address: "Howrah, West Bengal", lat: drop.lat, lng: drop.lng });
+    await t.rpc(c, "cancel_ride", b.id, "Changed my mind");
+  });
+
+  it("rejects a searched drop without a position, positions where they don't belong, and same-spot trips", async () => {
+    const u = await t.user();
+    await rejects(t.rpc(u, "quote", "cur", "pin", true, null, null, null), /choose a location/);
+    await rejects(t.book(u, { option: "bike", to: "pin" }), /choose a location/);
+    await rejects(t.book(u, { option: "bike", to: "pin", drop: { lat: drop.lat, lng: drop.lng } }), /invalid drop location/);
+    await rejects(t.rpc(u, "quote", "home", "dlf", true, null, gps, null), /invalid position/);
+    await rejects(t.rpc(u, "quote", "cur", "pin", true, null, gps, gps), /must be different/);
+  });
+});
+
+describe("Flat platform fee, booking charge and rider wallet", () => {
+  const kind = (l: any[], k: string) => l.filter((x) => x.kind === k).reduce((s, x) => s + x.amount, 0);
+  it("each completed ride takes a flat fee: Bike ₹5, Non-AC car ₹6, AC car ₹8", async () => {
+    for (const [vehicle, ac, fee] of [["bike", true, 5], ["taxi", false, 6], ["taxi", true, 8]] as const) {
+      const d = await t.driver(vehicle, { ac: vehicle === "taxi" }); const c = await t.user();
+      const b = await t.book(c, { option: vehicle, ac });
+      await t.rpc(d, "accept_ride", b.id); await t.rpc(d, "driver_arrived", b.id);
+      await t.rpc(d, "start_ride", b.id, await t.otpOf(b.id)); const v = await t.rpc(d, "complete_ride", b.id);
+      const l = await t.ledger(b.id); const r = await t.ride(b.id);
+      expect([vehicle, ac, kind(l, "commission")]).toEqual([vehicle, ac, fee]);
+      expect(kind(l, "driver_earning")).toBe(r.fare + r.wait_fee - fee);
+      expect(r.platform_fee).toBe(fee); expect(v.platform_fee).toBe(fee);
+    }
+  });
+  it("the customer pays a ₹5 booking charge only when the fare is above ₹50; it goes to DriveWay", async () => {
+    const adm = await t.user({ admin: true }); const u = await t.user();
+    const fare = (await t.rpc(u, "quote", "cur", "dlf", true, null)).options.find((o: any) => o.id === "bike").fare;
+    await t.rpc(adm, "admin_update_settings", { booking_fee_above: fare });          // fare == threshold → free
+    let q = (await t.rpc(u, "quote", "cur", "dlf", true, null)).options.find((o: any) => o.id === "bike");
+    expect(q.booking_fee).toBe(0);
+    const free = await fullTrip({ vehicle: "bike" });
+    expect((await t.ride(free.id)).total).toBe(fare); expect(kind(await t.ledger(free.id), "booking_fee")).toBe(0);
+    await t.rpc(adm, "admin_update_settings", { booking_fee_above: fare - 1 });      // ₹1 above → charged
+    q = (await t.rpc(u, "quote", "cur", "dlf", true, null)).options.find((o: any) => o.id === "bike");
+    expect(q.booking_fee).toBe(5);
+    const paid = await fullTrip({ vehicle: "bike" }); const r = await t.ride(paid.id); const l = await t.ledger(paid.id);
+    expect([r.booking_fee, r.total]).toEqual([5, fare + 5]);
+    expect(kind(l, "booking_fee")).toBe(5);
+    expect(kind(l, "driver_earning")).toBe(fare - 5);                               // the booking charge is not taken from the driver
+    await t.rpc(adm, "admin_update_settings", { booking_fee_above: 50 });
+  });
+  it("cash ride: the rider's wallet goes down by exactly the platform fee and the booking charge they collected", async () => {
+    const { d, id } = await fullTrip({ pay: "Cash", vehicle: "bike" });
+    await t.rpc(d, "confirm_cash", id);
+    const r = await t.ride(id);
+    expect((await t.rpc(d, "my_driver")).balance).toBe(50 - 5 - r.booking_fee);
+  });
+  it("no rides without enough wallet balance; a recharge brings them back", async () => {
+    const d = await t.driver("taxi", { ac: true, wallet: 0 }); const c = await t.user();
+    expect((await t.rpc(d, "my_driver")).needs_recharge).toBe(true);
+    const b = await t.book(c, { option: "taxi", ac: true });
+    expect(await t.rpc(d, "driver_offers")).toEqual([]);
+    await rejects(t.rpc(d, "accept_ride", b.id), /recharge your wallet.*₹8/);
+    await rejects(t.rpc(d, "recharge_wallet", 7, t.idem()), /₹10/);                  // below the recharge minimum
+    await t.rpc(d, "recharge_wallet", 50, t.idem());
+    const me = await t.rpc(d, "my_driver");
+    expect([me.balance, me.needs_recharge, me.platform_fee, me.platform_fee_non_ac]).toEqual([50, false, 8, 6]);
+    const offers = await t.rpc(d, "driver_offers");
+    expect(offers.map((o: any) => o.id)).toEqual([b.id]);
+    expect(offers[0].earn).toBe(offers[0].fare - 8);
+    await t.rpc(d, "accept_ride", b.id);
+  });
+  it("a customer cancellation fee goes to the rider in full", async () => {
+    const d = await t.driver("sedan", { ac: true }); const u = await t.user();
+    const r = await t.book(u, { option: "sedan" });
+    await t.rpc(d, "accept_ride", r.id);
+    await t.admin(`update public.rides set assigned_at = now() - interval '1 hour' where id = $1`, [r.id]);
+    const v = await t.rpc(u, "cancel_ride", r.id, "Changed my plans");
+    const l = await t.ledger(r.id);
+    expect([v.booking_fee, v.total]).toEqual([0, 40]);
+    expect(kind(l, "cancel_fee")).toBe(40); expect(kind(l, "commission")).toBe(0);
+  });
+  it("admin sets the fee per vehicle; out-of-range values are rejected", async () => {
+    const adm = await t.user({ admin: true });
+    await t.rpc(adm, "admin_update_vehicle", "auto", { platform_fee_non_ac: 7 });
+    expect((await t.admin(`select platform_fee_non_ac from public.vehicles where id = 'auto'`))[0].platform_fee_non_ac).toBe(7);
+    await rejects(t.rpc(adm, "admin_update_vehicle", "auto", { platform_fee_non_ac: -1 }), /check/);
+    await rejects(t.rpc(adm, "admin_update_settings", { booking_fee: 500 }), /check/);
+    await t.rpc(adm, "admin_update_vehicle", "auto", { platform_fee_non_ac: 6 });
   });
 });
