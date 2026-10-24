@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowRight, BellIcon, BriefcaseIcon, ChevronRight, ClockIcon, HomeIcon, SearchIcon, ShieldIcon } from "../icons";
 import { BrandMark, Wordmark } from "../Brand";
 import MapView from "../MapView";
-import { retryLocation, useCurrentAddress } from "../../lib/location";
+import { nearbyPlaces, retryLocation, useCurrentAddress } from "../../lib/location";
 import VehicleArt, { AnyArt, ParcelArt, RentalArt } from "../VehicleArt";
 import { HOME_BG, iconBtn } from "../ui";
 import { vehicleById } from "../../lib/data";
@@ -46,8 +46,8 @@ const ON_BG_SOFT = "rgba(255,255,255,0.85)";
 const SERVICES: RideOption[] = ["bike", "mini", "sedan", "suv", "any", "rental", "parcel", "auto", "erick"];
 
 export default function HomeScreen(p: HomeProps) {
-  const quick = p.places.filter((x) => x.kind && x.kind !== "current");
   const { loc, address } = useCurrentAddress();
+  const quick = nearbyPlaces(p.places, loc.status === "ok" ? loc.pos : null).filter((x) => x.kind && x.kind !== "current");
   const off = loc.status === "denied" || loc.status === "unavailable" || loc.status === "insecure";
   return (
     <div style={{ paddingBottom: 24 }}>

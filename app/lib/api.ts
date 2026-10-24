@@ -173,6 +173,13 @@ export async function places(): Promise<Place[]> {
   if (error) throw new Error(friendly(error));
   return data as Place[];
 }
+/** A city DriveWay runs in, set up by the admin. Users only ever get the enabled ones (RLS). */
+export interface City { id: number; name: string; state: string; lat: number; lng: number; radius_km: number; enabled: boolean }
+export async function serviceCities(): Promise<City[]> {
+  const { data, error } = await supabase().from("cities").select("*").eq("enabled", true).order("name");
+  if (error) throw new Error(friendly(error));
+  return data as City[];
+}
 export async function activeCoupons(): Promise<CouponRow[]> {
   const { data, error } = await supabase().from("coupons").select("*").eq("active", true).gt("expires_at", new Date().toISOString()).order("expires_at");
   if (error) throw new Error(friendly(error));

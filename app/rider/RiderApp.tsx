@@ -11,7 +11,7 @@ import {
 } from "../components/rider/RiderPages";
 import { ChatScreen, EditProfilePage, type ChatMessage } from "../components/customer/AccountScreens";
 import { HOME_BG, LoadState, Toast } from "../components/ui";
-import { CITIES, inr } from "../lib/data";
+import { inr } from "../lib/data";
 import { NATIVE_APP } from "../lib/native";
 import {
   acceptRide, completeRide, confirmCash, confirmDirectPayment, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, isRecoveryLink, myDriver, myDriverTrips, myProfile,
@@ -296,7 +296,7 @@ export default function RiderApp() {
                 {detail.k === "documents" && <DocumentsPage me={me} onBack={back} />}
                 {detail.k === "vehicle" && <VehiclePage me={me} onBack={back} />}
                 {detail.k === "edit" && !blocked && (
-                  <EditProfilePage initial={{ name: me.name, phone: (me.phone ?? "").replace(/^91/, ""), city: me.city }} cities={CITIES} onBack={back}
+                  <EditProfilePage initial={{ name: me.name, phone: (me.phone ?? "").replace(/^91/, ""), city: me.city }} withCity onBack={back}
                     note="Vehicle and documents need re-verification — change them through Help & Support."
                     onSave={async (v) => {
                       if (v.name !== me.name || v.city !== me.city) await updateMyDriverProfile(v.name, v.city ?? me.city);

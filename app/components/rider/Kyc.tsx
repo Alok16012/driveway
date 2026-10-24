@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BackIcon, CheckIcon, ClockIcon, DocIcon, UploadIcon } from "../icons";
 import VehicleArt from "../VehicleArt";
 import { ErrorText, Footer, PrimaryButton, StatusBadge, card, field, iconBtn, label } from "../ui";
-import { CITIES, VEHICLES, type VehicleKind } from "../../lib/data";
+import { VEHICLES, type VehicleKind } from "../../lib/data";
+import { CityPicker, useServiceCities } from "../CityPicker";
+import { distanceM, useDeviceLocation } from "../../lib/location";
 import { getSession, registerDriver, type DriverApplication } from "../../lib/api";
 import { supabase } from "../../lib/supabase/client";
 
@@ -27,12 +29,21 @@ const STEPS = ["Personal", "Vehicle", "Documents", "Payout"];
 /** Four-step driver application. Documents go to a private storage bucket; an admin reviews them. */
 export function KycFlow({ onSubmitted }: { onSubmitted: () => void }) {
   const [step, setStep] = useState(0);
-  const [k, setK] = useState({ name: "", city: "Kolkata", vehicle: "sedan" as VehicleKind, model: "", plate: "", ac: true, upi: "" });
+  const [k, setK] = useState({ name: "", city: "", vehicle: "sedan" as VehicleKind, model: "", plate: "", ac: true, upi: "" });
   const [docs, setDocs] = useState<Partial<Record<DocKey, string>>>({});
   const [uploading, setUploading] = useState<DocKey | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const set = (p: Partial<typeof k>) => { setK((x) => ({ ...x, ...p })); setErr(null); };
+  // Start on the service city nearest the phone (or the only one), until the rider picks one.
+  const { cities } = useServiceCities();
+  const here = useDeviceLocation(step === 0);
+  useEffect(() => {
+    if (!cities?.length || k.city) return;
+    const pos = here.status === "ok" ? here.pos : null;
+    const nearest = pos ? [...cities].sort((a, b) => distanceM(pos, a) - distanceM(pos, b))[0] : cities.length === 1 ? cities[0] : null;
+    if (nearest) setK((x) => (x.city ? x : { ...x, city: nearest.name }));
+  }, [cities, here, k.city]);
 
   const upload = async (id: DocKey, file: File | undefined) => {
     if (!file) return;
@@ -52,7 +63,7 @@ export function KycFlow({ onSubmitted }: { onSubmitted: () => void }) {
   };
 
   const ok = [
-    k.name.trim().length > 1,
+    k.name.trim().length > 1 && !!cities?.some((c) => c.name === k.city),
     k.model.trim().length >= 2 && PLATE_RE.test(k.plate.trim()),
     DOCS.every((d) => docs[d.id]),
     UPI_RE.test(k.upi),
@@ -91,13 +102,8 @@ export function KycFlow({ onSubmitted }: { onSubmitted: () => void }) {
           <>
             <div><label style={label} htmlFor="kn">Full name (as on licence)</label><input id="kn" value={k.name} maxLength={80} onChange={(e) => set({ name: e.target.value })} placeholder="Rohit Kumar" style={field} autoComplete="name" /></div>
             <div>
-              <span style={label}>City</span>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {CITIES.map((c) => {
-                  const on = c === k.city;
-                  return <button key={c} onClick={() => set({ city: c })} aria-pressed={on} style={{ padding: "9px 14px", borderRadius: 12, cursor: "pointer", fontSize: 13, fontWeight: 600, background: on ? "var(--blue-tint)" : "var(--surface)", color: on ? "var(--blue)" : "var(--text-secondary)", border: on ? "1.5px solid var(--blue)" : "1.5px solid var(--line)" }}>{c}</button>;
-                })}
-              </div>
+              <label style={label} htmlFor="kc">City</label>
+              <CityPicker id="kc" cities={cities} value={k.city} onChange={(city) => set({ city })} />
             </div>
           </>
         )}

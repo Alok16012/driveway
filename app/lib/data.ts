@@ -28,8 +28,6 @@ export const RIDE_STEPS: RideStatus[] = ["Searching", "Arriving", "Arrived", "St
 
 export type PayMethod = "UPI" | "Cash" | "Card" | "Wallet";
 
-export const CITIES = ["Kolkata"] as const;
-
 export const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
 export const nowTime = () => new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });

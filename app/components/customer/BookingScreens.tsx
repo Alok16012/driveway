@@ -14,7 +14,7 @@ import {
   type CouponRow, type DriverPos, type FareLine, type Place, type Quote, type QuoteOption, type RideView,
 } from "../../lib/api";
 import type { RideOption } from "./types";
-import { KOLKATA, distanceM, placePos, useCurrentAddress, useDeviceLocation, type LatLng } from "../../lib/location";
+import { INDIA_CENTER, distanceM, nearbyPlaces, placePos, reverseGeocode, useCurrentAddress, useDeviceLocation, type LatLng } from "../../lib/location";
 import { hasGoogle, newSearchSession, placeDetails, searchPlaces, type PlaceSuggestion } from "../../lib/google";
 
 const dot = (color: string, square = false): React.CSSProperties => ({
@@ -26,18 +26,29 @@ const dot = (color: string, square = false): React.CSSProperties => ({
 const isSearched = (p: Place | null | undefined) => !!p && p.id.startsWith("g:");
 
 /* What the server gets for each end of the trip. Fixed places go by id. "Current location" goes as the stand-in
- * "cur" with the phone's GPS fix — frozen once it is sharp (≤ 100 m), so the fare quoted is the fare booked — and a
- * place searched on Google Maps goes as "cur" (pickup) or "pin" (drop) with its position, name and address.
- * `waiting` says why a current-location trip can't be priced yet (no fix, or location off). */
+ * "cur" with the phone's GPS fix — refined while sharper fixes arrive and frozen once it is within PICKUP_ACC_M,
+ * so the fare quoted is the fare booked — and a place searched on Google Maps goes as "cur" (pickup) or "pin"
+ * (drop) with its position, name and address. `waiting` says why a current-location trip can't be priced yet. */
+const PICKUP_ACC_M = 30;          // a pickup this sharp is where the rider should come
+const STALE_FIX_MS = 30_000;      // older fixes are the phone's cached guess, often from somewhere else
+
 function useTripEnds(from: Place, to: Place | null) {
   const isCur = from.kind === "current";
   const preset = isCur && typeof from.lat === "number" && typeof from.lng === "number" ? { lat: from.lat, lng: from.lng } : null;
-  const { loc, address } = useCurrentAddress(isCur && !preset);
+  const loc = useDeviceLocation(isCur && !preset);
   const [fix, setFix] = useState<{ pos: LatLng; acc: number } | null>(null);
   useEffect(() => {
-    if (!isCur || preset || loc.status !== "ok") return;
-    if (!fix || (fix.acc > 100 && loc.accuracy < fix.acc)) setFix({ pos: loc.pos, acc: loc.accuracy });
+    if (!isCur || preset || loc.status !== "ok" || Date.now() - loc.at > STALE_FIX_MS) return;
+    if (!fix || (fix.acc > PICKUP_ACC_M && loc.accuracy < fix.acc)) setFix({ pos: loc.pos, acc: loc.accuracy });
   }, [isCur, preset, loc, fix]);
+  // The address of the pickup we send, not of wherever the phone has drifted since.
+  const [address, setAddress] = useState<string | null>(null);
+  useEffect(() => {
+    if (!fix) return;
+    let live = true;
+    void reverseGeocode(fix.pos).then((a) => { if (live && a) setAddress(a); });
+    return () => { live = false; };
+  }, [fix]);
   const curPos = preset ?? fix?.pos ?? null;
   const fromPos = isCur ? curPos : isSearched(from) ? { lat: from.lat!, lng: from.lng! } : null;
   const toPos = to && isSearched(to) ? { lat: to.lat!, lng: to.lng! } : null;
@@ -67,15 +78,16 @@ export function SearchPage({ places, initialTo, onBack, onDone }: { places: Plac
   const [q, setQ] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
-  const list = useMemo(() => {
-    const all = focus === "from" ? places : places.filter((p) => p.kind !== "current");
-    const t = q.trim().toLowerCase();
-    return t ? all.filter((p) => (p.name + p.address).toLowerCase().includes(t)) : all;
-  }, [q, focus, places]);
-
   // Google Maps search for anything that isn't a saved place, near where the phone is.
   const near = useDeviceLocation();
-  const nearPos = near.status === "ok" ? near.pos : KOLKATA;
+  const nearPos = near.status === "ok" ? near.pos : INDIA_CENTER;
+  const local = useMemo(() => nearbyPlaces(places, near.status === "ok" ? near.pos : null), [places, near]);
+
+  const list = useMemo(() => {
+    const all = focus === "from" ? local : local.filter((p) => p.kind !== "current");
+    const t = q.trim().toLowerCase();
+    return t ? all.filter((p) => (p.name + p.address).toLowerCase().includes(t)) : all;
+  }, [q, focus, local]);
   const token = useRef(newSearchSession());
   const [found, setFound] = useState<PlaceSuggestion[]>([]);
   const [searching, setSearching] = useState(false);

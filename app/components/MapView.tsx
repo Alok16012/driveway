@@ -4,7 +4,7 @@ import "leaflet/dist/leaflet.css";
 import { useEffect, useRef, useState } from "react";
 import type * as Leaflet from "leaflet";
 import { TargetIcon } from "./icons";
-import { KOLKATA, distanceM, placeCoords, useDeviceLocation, type LatLng } from "../lib/location";
+import { INDIA_CENTER, distanceM, placeCoords, useDeviceLocation, type LatLng } from "../lib/location";
 import { GOOGLE_LOGO, googleRoute, tileCopyright, tileSession, tileUrl } from "../lib/google";
 
 /* Real street map (Leaflet) centred on the device's GPS position: Google Maps tiles and road routes when a Maps key
@@ -84,7 +84,7 @@ export default function MapView({ mode = "idle", progress = 0, motion, from, to,
     void import("leaflet").then((mod) => {
       if (dead || !boxRef.current) return;
       L.current = mod;
-      const m = mod.map(boxRef.current, { zoomControl: false, attributionControl: false }).setView(toLL(KOLKATA), 13);
+      const m = mod.map(boxRef.current, { zoomControl: false, attributionControl: false }).setView(toLL(INDIA_CENTER), 5);
       const credit = mod.control.attribution({ position: "topright", prefix: false }).addTo(m);
       const osm = () => mod.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(m);
       // Google tiles need the Google logo on the map and the copyright for the area on screen.
@@ -200,7 +200,7 @@ export default function MapView({ mode = "idle", progress = 0, motion, from, to,
   useEffect(() => {
     const m = map.current, lf = L.current;
     if (!m || !lf || !moving) { carMk.current?.remove(); carMk.current = null; shown.current = null; return; }
-    if (!carMk.current) carMk.current = lf.marker(toLL(pickup ?? KOLKATA), { icon: lf.divIcon({ html: `<div>${CAR_SVG}</div>`, className: "", iconSize: [30, 20], iconAnchor: [15, 10] }), interactive: false, zIndexOffset: 1000 }).addTo(m);
+    if (!carMk.current) carMk.current = lf.marker(toLL(pickup ?? INDIA_CENTER), { icon: lf.divIcon({ html: `<div>${CAR_SVG}</div>`, className: "", iconSize: [30, 20], iconAnchor: [15, 10] }), interactive: false, zIndexOffset: 1000 }).addTo(m);
     const mk = carMk.current;
     const place = (pos: LatLng, angle: number) => {
       mk.setLatLng(toLL(pos));

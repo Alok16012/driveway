@@ -83,11 +83,33 @@ export function ImageSplash({ src, cta = "Get Started", onStart, onDone, footer,
   );
 }
 
+/** A generic city skyline — towers of different heights with lit windows — for the launch screen. */
+function CitySkyline() {
+  const towers: [number, number, number][] = [   // x, width, height
+    [0, 34, 70], [30, 26, 104], [52, 40, 58], [88, 22, 128], [106, 36, 86], [138, 30, 112], [164, 44, 64], [204, 24, 140],
+    [224, 38, 92], [258, 28, 118], [282, 42, 74], [320, 26, 100], [342, 34, 132], [372, 28, 80],
+  ];
+  return (
+    <svg viewBox="0 0 400 150" style={{ width: "100%", height: "auto", maxHeight: 140, display: "block" }} aria-hidden="true">
+      {towers.map(([x, w, h], i) => (
+        <g key={i} className="fade-up" style={{ animationDelay: `${0.1 + (i % 7) * 0.12}s` }}>
+          <rect x={x} y={150 - h} width={w} height={h} rx={2} fill="white" />
+          {Array.from({ length: Math.floor((h - 14) / 14) }, (_, r) =>
+            Array.from({ length: Math.max(1, Math.floor((w - 8) / 9)) }, (_, c) => (
+              <rect key={`${r}-${c}`} x={x + 5 + c * 9} y={150 - h + 8 + r * 14} width={4} height={6} rx={1}
+                fill={(r * 3 + c * 5 + i) % 4 === 0 ? "#fde68a" : "#ea580c"} opacity={(r * 3 + c * 5 + i) % 4 === 0 ? 1 : 0.35} />
+            )))}
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 type SplashVariant = "customer" | "rider" | "admin";
 
 const SPLASH_COPY: Record<SplashVariant, { headline: string; points: [string, string][] }> = {
   customer: {
-    headline: "Rides across Kolkata, in a tap",
+    headline: "Rides across your city, in a tap",
     points: [["🛡️", "Verified riders"], ["🔐", "OTP-secured trips"], ["📍", "Live GPS tracking"]],
   },
   rider: {
@@ -167,9 +189,9 @@ export function BrandSplash({ variant = "customer", cta = "Get Started", onStart
         </div>
       </div>
 
-      {/* Kolkata skyline, then the road with a car driving across */}
+      {/* City skyline, then the road with a car driving across */}
       <div aria-hidden="true" className="splash-skyline" style={{ position: "relative", zIndex: 0, padding: "0 6px", marginTop: 12, opacity: 0.55, flexShrink: 0 }}>
-        <KolkataSkyline style={{ maxHeight: 140 }} />
+        <CitySkyline />
       </div>
       <div aria-hidden="true" style={{ position: "relative", height: 54, flexShrink: 0 }}>
         <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 34, background: "#1f2937", boxShadow: "inset 0 3px 0 rgba(255,255,255,0.12)" }}>
@@ -191,7 +213,7 @@ export function BrandSplash({ variant = "customer", cta = "Get Started", onStart
               <div style={{ height: "100%", borderRadius: 4, background: "linear-gradient(90deg,#fde68a,#f97316)", animation: `splash-load ${holdMs}ms ease-out both` }} />
             </div>
             <p style={{ margin: "10px 0 0", textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.6)", letterSpacing: "0.06em" }}>
-              {variant === "admin" ? "Opening the admin console…" : "Now serving Kolkata · Tap to skip"}
+              {variant === "admin" ? "Opening the admin console…" : "Tap to skip"}
             </p>
           </div>
         )}

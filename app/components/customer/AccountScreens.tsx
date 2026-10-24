@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { CityField } from "../CityPicker";
 import {
   BackIcon, BellIcon, CardIcon, ChevronRight, DocIcon, GearIcon, HelpIcon, HistoryIcon, InfoIcon, AlertIcon,
   PinIcon, SendIcon, WalletIcon, ArrowRight, CalendarIcon, GiftIcon, UserIcon,
@@ -301,9 +302,9 @@ export function ProfileScreen({ user, stats, locked, onMenu, onLogout, onDelete 
 
 export interface ProfileEdit { name: string; phone: string; city?: string }
 
-/** Name + mobile for everyone; `cities` adds a city picker (riders). `email` is shown read-only — it's the login. */
-export function EditProfilePage({ initial, email, cities, note, onSave, onBack }: {
-  initial: ProfileEdit; email?: string | null; cities?: readonly string[]; note?: string;
+/** Name + mobile for everyone; `withCity` adds a picker of the service cities (riders). `email` is shown read-only — it's the login. */
+export function EditProfilePage({ initial, email, withCity, note, onSave, onBack }: {
+  initial: ProfileEdit; email?: string | null; withCity?: boolean; note?: string;
   onSave: (v: ProfileEdit) => Promise<void>; onBack: () => void;
 }) {
   const [v, setV] = useState<ProfileEdit>(initial);
@@ -335,15 +336,10 @@ export function EditProfilePage({ initial, email, cities, note, onSave, onBack }
           </div>
           {!phoneOk && v.phone.length > 0 && <ErrorText msg="Enter a valid 10-digit Indian mobile number." />}
         </div>
-        {cities && (
+        {withCity && (
           <div>
-            <span style={fieldLabel}>City</span>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {cities.map((c) => {
-                const on = c === v.city;
-                return <button key={c} type="button" onClick={() => set({ city: c })} aria-pressed={on} style={{ padding: "9px 14px", borderRadius: 12, cursor: "pointer", fontSize: 13, fontWeight: 600, background: on ? "var(--blue-tint)" : "var(--surface)", color: on ? "var(--blue)" : "var(--ink)", border: on ? "1.5px solid var(--blue)" : "1.5px solid var(--line)" }}>{c}</button>;
-              })}
-            </div>
+            <label style={fieldLabel} htmlFor="pe-city">City</label>
+            <CityField id="pe-city" value={v.city ?? ""} onChange={(city) => set({ city })} />
           </div>
         )}
         {email && (

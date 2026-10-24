@@ -70,10 +70,10 @@ describe("Pricing on the server (BUG-17, BUG-18, BUG-22, D)", () => {
     }
   });
   it("minimum fare shows as a top-up line", async () => {
-    await t.admin(`update public.vehicles set min_fare = 9999 where id = 'erick'`);
+    await t.admin(`update public.vehicles set min_fare = 1999 where id = 'erick'`);
     const q = await t.rpc(await t.user(), "quote", "cur", "dlf", true, null);
     const e = q.options.find((o: any) => o.id === "erick");
-    expect(e.fare).toBe(9999);
+    expect(e.fare).toBe(1999);
     expect(e.lines.some((l: any) => /Minimum fare/.test(l.label))).toBe(true);
     await t.admin(`update public.vehicles set min_fare = 30 where id = 'erick'`);
   });
@@ -742,5 +742,48 @@ describe("Flat platform fee, booking charge and rider wallet", () => {
     await rejects(t.rpc(adm, "admin_update_vehicle", "auto", { platform_fee_non_ac: -1 }), /check/);
     await rejects(t.rpc(adm, "admin_update_settings", { booking_fee: 500 }), /check/);
     await t.rpc(adm, "admin_update_vehicle", "auto", { platform_fee_non_ac: 6 });
+  });
+});
+
+describe("Service cities run from the admin panel", () => {
+  const patna = { lat: 25.5941, lng: 85.1376 };
+  const patnaDrop = { lat: 25.6100, lng: 85.1500 };
+  it("pickups outside every enabled city are refused; adding the city opens it", async () => {
+    const adm = await t.user({ admin: true }); const u = await t.user();
+    await rejects(t.rpc(u, "quote", "cur", "pin", true, null, patna, patnaDrop), /isn't available here yet/);
+    const id = await t.rpc(adm, "admin_upsert_city", { name: "Patna", state: "Bihar", ...patna, radius_km: 25 });
+    const q = await t.rpc(u, "quote", "cur", "pin", true, null, patna, patnaDrop);
+    expect(q.options.length).toBeGreaterThan(0);
+    await t.rpc(adm, "admin_upsert_city", { id, ...patna, radius_km: 25, enabled: false });
+    await rejects(t.rpc(u, "quote", "cur", "pin", true, null, patna, patnaDrop), /isn't available here yet/);
+    expect(await t.as(u, `select name from public.cities where name = 'Patna'`)).toHaveLength(0);   // disabled: hidden from users
+    expect(await t.as(adm, `select name from public.cities where name = 'Patna'`)).toHaveLength(1);
+  });
+  it("riders can only register in, or move to, an enabled city", async () => {
+    const adm = await t.user({ admin: true });
+    await t.rpc(adm, "admin_upsert_city", { name: "Bhubaneswar", state: "Odisha", lat: 20.2961, lng: 85.8245 });
+    const d = await t.driver("bike");
+    await t.rpc(d, "update_my_driver_profile", "Amar Singh", "Bhubaneswar");
+    expect((await t.admin(`select city from public.drivers where id = $1`, [d]))[0].city).toBe("Bhubaneswar");
+    await rejects(t.rpc(d, "update_my_driver_profile", "Amar Singh", "Atlantis"), /city we operate in/);
+    const id = (await t.admin(`select id from public.cities where name = 'Bhubaneswar'`))[0].id;
+    await rejects(t.rpc(adm, "admin_delete_city", id), /disable it instead/);
+  });
+  it("only admins manage cities, and only real Indian locations are accepted", async () => {
+    const adm = await t.user({ admin: true }); const u = await t.user();
+    await rejects(t.rpc(u, "admin_upsert_city", { name: "Pune", state: "Maharashtra", lat: 18.52, lng: 73.85 }), /admin only/);
+    await rejects(t.rpc(adm, "admin_upsert_city", { name: "London", state: "Maharashtra", lat: 51.5, lng: -0.12 }), /outside India/);
+    await rejects(t.rpc(adm, "admin_upsert_city", { name: "Pune", state: "Narnia", lat: 18.52, lng: 73.85 }), /state/);
+    await rejects(t.rpc(adm, "admin_upsert_city", { name: "kolkata", state: "West Bengal", lat: 22.57, lng: 88.36 }), /already/);
+  });
+});
+
+describe("Fare limits", () => {
+  it("absurd prices from a typo are refused with a clear message", async () => {
+    const adm = await t.user({ admin: true });
+    await rejects(t.rpc(adm, "admin_update_vehicle", "bike", { per_min: 30 }), /at most ₹10/);
+    await rejects(t.rpc(adm, "admin_update_vehicle", "bike", { per_km: 500 }), /at most ₹100/);
+    await rejects(t.rpc(adm, "admin_update_vehicle", "bike", { min_fare: 50000 }), /at most ₹2000/);
+    expect(Number((await t.admin(`select per_min from public.vehicles where id = 'bike'`))[0].per_min)).toBe(1);
   });
 });

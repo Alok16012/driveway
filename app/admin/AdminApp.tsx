@@ -7,11 +7,11 @@ import MapView from "../components/MapView";
 import VehicleArt from "../components/VehicleArt";
 import {
   BellIcon, CarIcon, ChartIcon, CheckIcon, DocIcon, DownloadIcon, GearIcon, GridIcon, HelpIcon, LockIcon, LogoutIcon,
-  MapIcon, MegaphoneIcon, RupeeIcon, SearchIcon, SteeringIcon, TagIcon, UsersIcon, XIcon,
+  MapIcon, MegaphoneIcon, PinIcon, RupeeIcon, SearchIcon, SteeringIcon, TagIcon, UsersIcon, XIcon,
 } from "../components/icons";
 import { Avatar, ErrorText, LoadState, PasswordInput, PrimaryButton, StatusBadge, Toggle, card, field, label, onLight } from "../components/ui";
 import { inr, vehicleById, type VehicleKind } from "../lib/data";
-import { adminSignIn, friendly, getSession, myProfile, newKey, onAuthChange, rpc, signOut } from "../lib/api";
+import { adminSignIn, friendly, getSession, myProfile, newKey, onAuthChange, rpc, signOut, type City } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
 
 /* ───────────────────────── Data shapes (rows the admin's RLS lets it read) ───────────────────────── */
@@ -39,13 +39,13 @@ interface Place { id: string; name: string }
 
 interface Data {
   profiles: Prof[]; drivers: Drv[]; rides: RideRow[]; vehicles: Vehicle[]; settings: Settings; coupons: Coupon[];
-  ledger: Ledger[]; tickets: Ticket[]; audit: Audit[]; places: Place[];
+  ledger: Ledger[]; tickets: Ticket[]; audit: Audit[]; places: Place[]; cities: City[];
 }
 
 async function loadAll(): Promise<Data> {
   const sb = supabase();
   const q = async <T,>(p: PromiseLike<{ data: T | null; error: { message: string } | null }>) => { const { data, error } = await p; if (error) throw new Error(friendly(error)); return data as T; };
-  const [profiles, drivers, rides, vehicles, settings, coupons, ledger, tickets, audit, places] = await Promise.all([
+  const [profiles, drivers, rides, vehicles, settings, coupons, ledger, tickets, audit, places, cities] = await Promise.all([
     q<Prof[]>(sb.from("profiles").select("*").order("created_at", { ascending: false }).limit(1000)),
     q<Drv[]>(sb.from("drivers").select("*, profiles(*)").order("created_at", { ascending: false }).limit(1000)),
     q<RideRow[]>(sb.from("rides").select("*").order("created_at", { ascending: false }).limit(1000)),
@@ -56,12 +56,13 @@ async function loadAll(): Promise<Data> {
     q<Ticket[]>(sb.from("tickets").select("*").order("updated_at", { ascending: false }).limit(500)),
     q<Audit[]>(sb.from("audit_log").select("*").order("at", { ascending: false }).limit(100)),
     q<Place[]>(sb.from("places").select("id,name")),
+    q<City[]>(sb.from("cities").select("*").order("state").order("name")),
   ]);
   // Deleted riders keep an anonymised row for ride history; nameOf still finds their name via profiles.
-  return { profiles, drivers: drivers.filter((x) => !x.profiles?.deleted_at), rides, vehicles, settings, coupons, ledger, tickets, audit, places };
+  return { profiles, drivers: drivers.filter((x) => !x.profiles?.deleted_at), rides, vehicles, settings, coupons, ledger, tickets, audit, places, cities };
 }
 
-type Section = "dashboard" | "live" | "rides" | "customers" | "drivers" | "pricing" | "coupons" | "payments" | "reports" | "support" | "notify" | "settings";
+type Section = "dashboard" | "live" | "rides" | "customers" | "drivers" | "cities" | "pricing" | "coupons" | "payments" | "reports" | "support" | "notify" | "settings";
 
 const NAV: { id: Section; label: string; Icon: (p: { s?: number; c?: string }) => React.ReactElement }[] = [
   { id: "dashboard", label: "Dashboard", Icon: GridIcon },
@@ -69,6 +70,7 @@ const NAV: { id: Section; label: string; Icon: (p: { s?: number; c?: string }) =
   { id: "rides", label: "Rides", Icon: CarIcon },
   { id: "customers", label: "Customers", Icon: UsersIcon },
   { id: "drivers", label: "Drivers", Icon: SteeringIcon },
+  { id: "cities", label: "Cities", Icon: PinIcon },
   { id: "pricing", label: "Pricing", Icon: RupeeIcon },
   { id: "coupons", label: "Coupons", Icon: TagIcon },
   { id: "payments", label: "Payments", Icon: DocIcon },
@@ -179,6 +181,7 @@ export default function AdminApp() {
         {section === "rides" && <RidesSection d={data} act={act} />}
         {section === "customers" && <CustomersSection d={data} act={act} />}
         {section === "drivers" && <DriversSection d={data} act={act} />}
+        {section === "cities" && <CitiesSection d={data} act={act} />}
         {section === "pricing" && <PricingSection d={data} done={async (m) => { flash(m); await reload(); }} />}
         {section === "coupons" && <CouponsSection d={data} act={act} />}
         {section === "payments" && <PaymentsSection d={data} />}
@@ -723,7 +726,9 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
   const cols: [NumKey, string][] = [["base", "Base ₹"], ["per_km", "₹ / km"], ["per_min", "₹ / min"], ["min_fare", "Min fare ₹"], ["cancel_fee", "Cancel fee ₹"],
     ["platform_fee", "AC platform fee ₹"], ["platform_fee_non_ac", "Non-AC platform fee ₹"]];
   const isFee = (k: NumKey) => k === "platform_fee" || k === "platform_fee_non_ac";
-  const valid = (k: NumKey, n: number) => Number.isFinite(n) && n >= 0 && (!isFee(k) || (Number.isInteger(n) && n <= 100));
+  // Same upper bounds as the server (vehicles_fare_limits), so a typo like ₹30/min can't be saved.
+  const MAX: Record<NumKey, number> = { base: 1000, per_km: 100, per_min: 10, min_fare: 2000, cancel_fee: 500, platform_fee: 100, platform_fee_non_ac: 100 };
+  const valid = (k: NumKey, n: number) => Number.isFinite(n) && n >= 0 && n <= MAX[k] && (!isFee(k) || Number.isInteger(n));
   const validS = (n: number, max: number) => Number.isInteger(n) && n >= 0 && n <= max;
   const upd = (id: string, p: Partial<Vehicle>) => { setDirty(true); setRows((r) => r.map((x) => (x.id === id ? { ...x, ...p } : x))); };
   const updS = (p: Partial<Settings>) => { setDirty(true); setS((x) => ({ ...x, ...p })); };
@@ -747,7 +752,7 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Panel title={`Vehicle categories & fares · Non-AC is ${Math.round((1 - d.settings.non_ac_factor) * 100)}% cheaper`} right={<PrimaryButton onClick={() => void save()} disabled={busy || invalid} style={{ width: "auto", padding: "10px 18px", fontSize: 13.5 }}>{busy ? "Saving…" : "Save changes"}</PrimaryButton>}>
-        {invalid && <ErrorText msg="Fares can't be negative or empty; platform fees and the booking charge must be whole rupees, ₹0–₹100." />}
+        {invalid && <ErrorText msg="Check the red boxes. Limits: base ≤ ₹1000, ₹/km ≤ 100, ₹/min ≤ 10, min fare ≤ ₹2000, cancel fee ≤ ₹500; platform fees and the booking charge are whole rupees, ₹0–₹100." />}
         <div className="adm-table-wrap">
           <table className="adm-table">
             <thead><tr><th>Category</th>{cols.map(([, l]) => <th key={l}>{l}</th>)}<th>AC option</th><th>Enabled</th></tr></thead>
@@ -758,7 +763,7 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
                   {cols.map(([k]) => k === "platform_fee" && !v.ac ? (
                     <td key={k} style={{ color: "var(--ink-mute)", fontSize: 12 }} title="Turn on the AC option to set an AC platform fee">No AC</td>
                   ) : (
-                    <td key={k}><input type="number" min={0} max={isFee(k) ? 100 : undefined} step={k === "per_min" || k === "per_km" ? 0.5 : 1} value={v[k]} aria-label={`${v.name} ${k}`}
+                    <td key={k}><input type="number" min={0} max={MAX[k]} step={k === "per_min" || k === "per_km" ? 0.5 : 1} value={v[k]} aria-label={`${v.name} ${k}`}
                       onChange={(e) => upd(v.id, { [k]: e.target.value === "" ? NaN : Number(e.target.value) } as Partial<Vehicle>)} style={{ ...num, borderColor: valid(k, Number(v[k])) ? undefined : "var(--red)" }} /></td>
                   ))}
                   <td><Toggle on={v.ac} onChange={(on) => upd(v.id, { ac: on })} label={`${v.name} offers AC`} /></td>
@@ -794,6 +799,160 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
           <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>When on, every new quote is multiplied and shows a &quot;High demand&quot; line to the customer.</p>
         </Panel>
       </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Service cities ───────────────────────── */
+
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand",
+  "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan",
+  "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry",
+];
+
+interface Found { name: string; label: string; lat: number; lng: number }
+
+/** City centres from OpenStreetMap search (free; ~1 request a second), limited to India and the chosen state. */
+async function findCity(name: string, state: string): Promise<Found[]> {
+  const u = new URL("https://nominatim.openstreetmap.org/search");
+  u.search = new URLSearchParams({ format: "jsonv2", countrycodes: "in", limit: "6", addressdetails: "1", q: `${name}, ${state}, India` }).toString();
+  const res = await fetch(u, { headers: { "Accept-Language": "en" } });
+  if (!res.ok) throw new Error("Location search failed — try again in a moment, or type the latitude and longitude.");
+  const rows = (await res.json()) as { name?: string; display_name: string; lat: string; lon: string }[];
+  return rows.map((r) => ({ name: r.name || name, label: r.display_name.split(",").slice(0, 4).join(","), lat: Number(r.lat), lng: Number(r.lon) }));
+}
+
+function CitiesSection({ d, act }: { d: Data; act: Act }) {
+  const [state, setState] = useState("");
+  const [name, setName] = useState("");
+  const [lat, setLat] = useState("");
+  const [lng, setLng] = useState("");
+  const [radius, setRadius] = useState("25");
+  const [found, setFound] = useState<Found[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchErr, setSearchErr] = useState<string | null>(null);
+  const [del, setDel] = useState<City | null>(null);
+  const [radiusEdit, setRadiusEdit] = useState<Record<number, string>>({});
+  const riders = (c: City) => d.drivers.filter((x) => x.city === c.name).length;
+  const online = (c: City) => d.drivers.filter((x) => x.city === c.name && x.online && !x.suspended).length;
+  const n = (s: string) => Number(s);
+  const errors = [
+    !state && "Pick a state or union territory",
+    name.trim().length < 2 && "Type the city name",
+    d.cities.some((c) => c.name.toLowerCase() === name.trim().toLowerCase()) && `${name.trim()} is already in the list`,
+    (lat === "" || lng === "" || !(n(lat) >= 6 && n(lat) <= 37.5 && n(lng) >= 68 && n(lng) <= 97.5)) && "Find the city on the map, or type a latitude and longitude inside India",
+    !(Number.isInteger(n(radius)) && n(radius) >= 2 && n(radius) <= 150) && "Service radius must be 2–150 km",
+  ].filter(Boolean) as string[];
+
+  const search = async () => {
+    setSearching(true); setSearchErr(null); setFound(null);
+    try {
+      const r = await findCity(name.trim(), state);
+      setFound(r);
+      if (r.length === 0) setSearchErr("No match — check the spelling, or type the latitude and longitude.");
+      if (r.length === 1) { setLat(r[0].lat.toFixed(5)); setLng(r[0].lng.toFixed(5)); }
+    } catch (e) { setSearchErr((e as Error).message); } finally { setSearching(false); }
+  };
+  const add = () => void act("admin_upsert_city", { p: { name: name.trim(), state, lat: n(lat), lng: n(lng), radius_km: n(radius), enabled: true } },
+    `${name.trim()} added — DriveWay now takes bookings there`).then((ok) => { if (ok) { setName(""); setLat(""); setLng(""); setFound(null); } });
+  const update = (c: City, p: Partial<City>, msg: string) => act("admin_upsert_city", { p: { id: c.id, lat: c.lat, lng: c.lng, radius_km: c.radius_km, enabled: c.enabled, ...p } }, msg);
+  const small: React.CSSProperties = { ...field, width: 80, padding: "7px 10px", fontSize: 13 };
+
+  return (
+    <div className="adm-grid-2">
+      <Panel title={`Service cities · ${d.cities.filter((c) => c.enabled).length} live`}>
+        <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "var(--ink-soft)" }}>
+          Customers can book only when their pickup is inside a live city&apos;s radius, and riders can only sign up in a live city. Switching a city off stops new bookings there straight away; rides already booked carry on.
+        </p>
+        <div className="adm-table-wrap">
+          <table className="adm-table">
+            <thead><tr><th>City</th><th>State</th><th>Radius (km)</th><th>Riders</th><th>Live</th><th></th></tr></thead>
+            <tbody>
+              {d.cities.length === 0 && <tr><td colSpan={6} style={{ color: "var(--ink-soft)" }}>No cities yet — add the first one.</td></tr>}
+              {d.cities.map((c) => {
+                const r = radiusEdit[c.id] ?? String(c.radius_km);
+                const rOk = Number.isInteger(n(r)) && n(r) >= 2 && n(r) <= 150;
+                return (
+                  <tr key={c.id} style={{ cursor: "default" }}>
+                    <td><b>{c.name}</b><br /><span style={{ fontSize: 11, color: "var(--ink-mute)" }}>{c.lat.toFixed(4)}, {c.lng.toFixed(4)}</span></td>
+                    <td>{c.state}</td>
+                    <td>
+                      <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <input type="number" min={2} max={150} step={1} value={r} aria-label={`${c.name} radius`} onChange={(e) => setRadiusEdit((x) => ({ ...x, [c.id]: e.target.value }))}
+                          style={{ ...small, borderColor: rOk ? undefined : "var(--red)" }} />
+                        {r !== String(c.radius_km) && (
+                          <button disabled={!rOk} onClick={() => void update(c, { radius_km: n(r) }, `${c.name}: radius set to ${r} km`).then((ok) => ok && setRadiusEdit((x) => { const y = { ...x }; delete y[c.id]; return y; }))}
+                            style={{ border: "none", background: "var(--blue)", color: "white", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 600, cursor: rOk ? "pointer" : "not-allowed", opacity: rOk ? 1 : 0.5 }}>Save</button>
+                        )}
+                      </span>
+                    </td>
+                    <td>{riders(c)}<span style={{ fontSize: 11, color: "var(--ink-mute)" }}> · {online(c)} online</span></td>
+                    <td><Toggle on={c.enabled} onChange={(on) => void update(c, { enabled: on }, on ? `${c.name} is live` : `${c.name} switched off — no new bookings there`)} label={`${c.name} live`} /></td>
+                    <td>
+                      <button onClick={() => setDel(c)} disabled={riders(c) > 0} title={riders(c) > 0 ? "Riders are registered here — switch it off instead" : `Remove ${c.name}`}
+                        style={{ border: "none", background: "none", color: riders(c) > 0 ? "var(--ink-mute)" : "var(--red)", fontWeight: 600, fontSize: 12.5, cursor: riders(c) > 0 ? "not-allowed" : "pointer" }}>Remove</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {del && (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "var(--error)", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ flex: 1, fontSize: 13, color: "var(--error-text)", fontWeight: 600 }}>Remove {del.name}? Customers there won&apos;t be able to book.</span>
+            <button onClick={() => setDel(null)} style={{ border: "1.5px solid var(--line)", background: "white", borderRadius: 8, padding: "6px 12px", fontWeight: 600, cursor: "pointer" }}>Keep</button>
+            <button onClick={() => void act("admin_delete_city", { p_id: del.id }, `${del.name} removed`).then(() => setDel(null))}
+              style={{ border: "none", background: "var(--red)", color: "white", borderRadius: 8, padding: "6px 12px", fontWeight: 600, cursor: "pointer" }}>Remove</button>
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Add a city">
+        <div style={{ marginBottom: 12 }}>
+          <label style={label} htmlFor="city-state">State / union territory</label>
+          <select id="city-state" value={state} onChange={(e) => { setState(e.target.value); setFound(null); }} style={{ ...field, appearance: "auto" }}>
+            <option value="" disabled>Choose…</option>
+            {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={label} htmlFor="city-name">City</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input id="city-name" value={name} maxLength={60} placeholder="e.g. Patna" onChange={(e) => { setName(e.target.value); setFound(null); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && state && name.trim().length >= 2) void search(); }} style={{ ...field, flex: 1 }} />
+            <button onClick={() => void search()} disabled={!state || name.trim().length < 2 || searching}
+              style={{ border: "none", background: "var(--blue)", color: "white", borderRadius: 12, padding: "0 14px", fontWeight: 600, fontSize: 13, cursor: "pointer", opacity: !state || name.trim().length < 2 ? 0.5 : 1, whiteSpace: "nowrap" }}>
+              {searching ? "Finding…" : "Find on map"}
+            </button>
+          </div>
+        </div>
+        {searchErr && <ErrorText msg={searchErr} />}
+        {found && found.length > 1 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+            <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Pick the right one:</span>
+            {found.map((f) => {
+              const on = lat === f.lat.toFixed(5) && lng === f.lng.toFixed(5);
+              return (
+                <button key={`${f.lat},${f.lng}`} onClick={() => { setLat(f.lat.toFixed(5)); setLng(f.lng.toFixed(5)); }} aria-pressed={on}
+                  style={{ textAlign: "left", padding: "8px 10px", borderRadius: 10, cursor: "pointer", fontSize: 12.5, background: on ? "var(--blue-tint)" : "var(--surface)", border: on ? "1.5px solid var(--blue)" : "1.5px solid var(--line)", color: "var(--ink)" }}>
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+          <div><label style={label} htmlFor="city-lat">Latitude</label><input id="city-lat" type="number" step="0.0001" value={lat} onChange={(e) => setLat(e.target.value)} style={field} /></div>
+          <div><label style={label} htmlFor="city-lng">Longitude</label><input id="city-lng" type="number" step="0.0001" value={lng} onChange={(e) => setLng(e.target.value)} style={field} /></div>
+          <div><label style={label} htmlFor="city-r">Radius km</label><input id="city-r" type="number" min={2} max={150} value={radius} onChange={(e) => setRadius(e.target.value)} style={field} /></div>
+        </div>
+        <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--ink-soft)" }}>The radius is measured from the city centre. 15–25 km covers most cities; use more for big metros and their suburbs.</p>
+        {errors.length > 0 && (name || lat || state) && <ErrorText msg={errors[0]} />}
+        <PrimaryButton onClick={add} disabled={errors.length > 0}>Add city</PrimaryButton>
+      </Panel>
     </div>
   );
 }

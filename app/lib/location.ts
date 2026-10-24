@@ -13,8 +13,8 @@ export type DeviceLocation =
   | { status: "ok"; pos: LatLng; accuracy: number; at: number }
   | { status: "denied" | "unavailable" | "insecure"; message: string };
 
-/** Kolkata city centre — where maps open before the first GPS fix. */
-export const KOLKATA: LatLng = { lat: 22.5726, lng: 88.3639 };
+/** Middle of India — where maps open, zoomed out, before the first GPS fix. */
+export const INDIA_CENTER: LatLng = { lat: 22.35, lng: 78.67 };
 
 /** Where each place in `public.places` really is. Ids are fixed (rides and coupons point at them). */
 export const PLACE_COORDS: Record<string, LatLng> = {
@@ -30,6 +30,13 @@ export const PLACE_COORDS: Record<string, LatLng> = {
 };
 
 export const placeCoords = (id: string | undefined | null): LatLng | null => (id && PLACE_COORDS[id]) || null;
+
+/** The fixed places within `km` of the phone (plus "Current location"). They are all in the first launch
+ *  city, so someone in another city shouldn't be offered them. Until there's a fix, everything is kept. */
+export function nearbyPlaces<T extends { id: string; kind?: string | null }>(places: T[], pos: LatLng | null, km = 60): T[] {
+  if (!pos) return places;
+  return places.filter((p) => { const c = placeCoords(p.id); return p.kind === "current" || !c || distanceM(pos, c) <= km * 1000; });
+}
 
 /** Where a ride's place really is: its GPS pickup when it has one, else the fixed place. */
 export const placePos = (p: { id: string; lat?: number; lng?: number } | undefined | null): LatLng | null =>
@@ -63,7 +70,7 @@ function start() {
         ? { status: "denied", message: "Location is off — allow it for DriveWay in your settings." }
         : { status: "unavailable", message: "Couldn't find your location. Check GPS is on." });
     },
-    { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },   // fresh fixes only: a cached one can be from another place
   );
 }
 
