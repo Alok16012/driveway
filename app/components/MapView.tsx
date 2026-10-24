@@ -21,6 +21,13 @@ export const SIM_TRIP_SEC = 90;
 export type MapMotion = { since: string; seconds: number; max: number };
 
 const CAR_SVG = `<svg width="30" height="20" viewBox="-12 -8 24 16" style="display:block"><rect x="-11" y="-6.5" width="22" height="13" rx="4.5" fill="#0f1729"/><rect x="-9.5" y="-5.2" width="19" height="10.4" rx="3.6" fill="#f5a623"/><rect x="1.5" y="-4.4" width="4.5" height="8.8" rx="1.4" fill="#0f1729" opacity="0.75"/><rect x="-7" y="-4.4" width="3.2" height="8.8" rx="1.2" fill="#0f1729" opacity="0.55"/></svg>`;
+// Seen from above, pointing east (0°) like CAR_SVG, so the same rotation applies.
+const BIKE_SVG = `<svg width="36" height="19" viewBox="-12 -6.5 24 13" style="display:block"><rect x="-11.5" y="-1.8" width="5.5" height="3.6" rx="1.8" fill="#0f1729"/><rect x="6" y="-1.8" width="5.5" height="3.6" rx="1.8" fill="#0f1729"/><rect x="-7.5" y="-2.4" width="14" height="4.8" rx="2.4" fill="#f5a623"/><rect x="3.6" y="-5.6" width="1.8" height="11.2" rx="0.9" fill="#0f1729"/><circle cx="-1.8" cy="0" r="3.4" fill="#0f1729"/><circle cx="-1.8" cy="0" r="2" fill="#ea580c"/></svg>`;
+const AUTO_SVG = `<svg width="30" height="20" viewBox="-12 -8 24 16" style="display:block"><path d="M-10 -6.5 H4 Q11 -6.5 11 0 Q11 6.5 4 6.5 H-10 Q-11 6.5 -11 5.5 V-5.5 Q-11 -6.5 -10 -6.5Z" fill="#0f1729"/><path d="M-9.4 -5.2 H3.6 Q9.6 -5.2 9.6 0 Q9.6 5.2 3.6 5.2 H-9.4Z" fill="#facc15"/><rect x="-8.6" y="-5.2" width="10.4" height="10.4" rx="1.6" fill="#15803d"/></svg>`;
+/** The marker for a vehicle category: a bike, a three-wheeler or a car. */
+const vehicleIcon = (v?: string): { html: string; size: [number, number] } =>
+  v === "bike" ? { html: BIKE_SVG, size: [36, 19] } : v === "auto" || v === "erick" ? { html: AUTO_SVG, size: [30, 20] } : { html: CAR_SVG, size: [30, 20] };
+
 const PICKUP_HTML = `<span style="display:block;width:22px;height:22px;border-radius:50%;background:rgba(47,158,118,0.22);position:relative"><span style="position:absolute;inset:4px;border-radius:50%;background:#2f9e76;border:2.5px solid white;box-sizing:border-box"></span></span>`;
 const DROP_HTML = `<svg width="28" height="36" viewBox="-14 -34 28 36" style="display:block"><path d="M0 0 c-9 -12 -13 -17 -13 -24 a13 13 0 0 1 26 0 c0 7 -4 12 -13 24z" fill="#e03131" stroke="white" stroke-width="2"/><circle cx="0" cy="-24" r="4.5" fill="white"/></svg>`;
 const ME_HTML = `<span style="display:block;position:relative;width:20px;height:20px"><span class="map-pulse" style="position:absolute;inset:-10px;border-radius:50%;background:rgba(11,92,255,0.18)"></span><span style="position:absolute;inset:0;border-radius:50%;background:var(--blue);border:3.5px solid white;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></span></span>`;
@@ -59,7 +66,7 @@ function along(line: LatLng[], t: number): { pos: LatLng; angle: number } {
 }
 const bearing = (a: LatLng, b: LatLng) => (Math.atan2(-(b.lat - a.lat), (b.lng - a.lng) * Math.cos((a.lat * Math.PI) / 180)) * 180) / Math.PI;
 
-export default function MapView({ mode = "idle", progress = 0, motion, from, to, pickupAt, dropAt, live = false, car, height = 220, radius = 20, style, children }: {
+export default function MapView({ mode = "idle", progress = 0, motion, from, to, pickupAt, dropAt, live = false, car, vehicle, height = 220, radius = 20, style, children }: {
   mode?: MapMode; progress?: number; motion?: MapMotion;
   /** Place ids (`public.places`) for the pickup and drop. */
   from?: string; to?: string;
@@ -69,6 +76,8 @@ export default function MapView({ mode = "idle", progress = 0, motion, from, to,
   live?: boolean;
   /** Where the driver's phone last reported being; omitted while unknown, and the car is simulated. */
   car?: LatLng | null;
+  /** Vehicle category, for the moving marker (bike, auto/e-rickshaw, or a car). */
+  vehicle?: string;
   height?: number | string; radius?: number; style?: React.CSSProperties; children?: React.ReactNode;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -194,13 +203,19 @@ export default function MapView({ mode = "idle", progress = 0, motion, from, to,
   const carMk = useRef<Leaflet.Marker | null>(null);
   const lastMe = useRef<LatLng | null>(null);
   const heading = useRef(0);
+  const carKind = useRef<string | undefined>(undefined);
   const shown = useRef<{ mode: MapMode; t: number } | null>(null);
   const since = motion?.since, seconds = motion?.seconds, max = motion?.max;
 
   useEffect(() => {
     const m = map.current, lf = L.current;
     if (!m || !lf || !moving) { carMk.current?.remove(); carMk.current = null; shown.current = null; return; }
-    if (!carMk.current) carMk.current = lf.marker(toLL(pickup ?? INDIA_CENTER), { icon: lf.divIcon({ html: `<div>${CAR_SVG}</div>`, className: "", iconSize: [30, 20], iconAnchor: [15, 10] }), interactive: false, zIndexOffset: 1000 }).addTo(m);
+    if (carMk.current && carKind.current !== vehicle) { carMk.current.remove(); carMk.current = null; }   // "Book Any" learns its vehicle late
+    if (!carMk.current) {
+      carKind.current = vehicle;
+      const ic = vehicleIcon(vehicle);
+      carMk.current = lf.marker(toLL(pickup ?? INDIA_CENTER), { icon: lf.divIcon({ html: `<div>${ic.html}</div>`, className: "", iconSize: ic.size, iconAnchor: [ic.size[0] / 2, ic.size[1] / 2] }), interactive: false, zIndexOffset: 1000 }).addTo(m);
+    }
     const mk = carMk.current;
     const place = (pos: LatLng, angle: number) => {
       mk.setLatLng(toLL(pos));
@@ -236,7 +251,7 @@ export default function MapView({ mode = "idle", progress = 0, motion, from, to,
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [ready, moving, mode, carLine, live, realCar?.lat, realCar?.lng, progress, since, seconds, max]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ready, moving, mode, carLine, live, realCar?.lat, realCar?.lng, progress, since, seconds, max, vehicle]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => { carMk.current?.remove(); }, []);
 

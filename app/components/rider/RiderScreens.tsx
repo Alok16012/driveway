@@ -301,7 +301,7 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ position: "relative" }}>
-        <MapView mode={phase === "Started" ? "trip" : "approach"} progress={progress} motion={motion} from={trip.from.id} pickupAt={placePos(trip.from)} to={trip.to.id} dropAt={placePos(trip.to)} live height={320} radius={0} />
+        <MapView mode={phase === "Started" ? "trip" : "approach"} progress={progress} motion={motion} from={trip.from.id} pickupAt={placePos(trip.from)} to={trip.to.id} dropAt={placePos(trip.to)} live vehicle={trip.vehicle} height={320} radius={0} />
         <button onClick={onBack} aria-label="Back" className="press" style={{ ...iconBtn, position: "absolute", top: 16, left: 16, width: 40, height: 40, borderRadius: "50%", background: "white", justifyContent: "center", boxShadow: "var(--shadow-md)" }}><BackIcon c="var(--ink)" /></button>
         <div style={{ position: "absolute", top: 16, left: 66, right: 16, background: "var(--blue-dark)", color: "white", borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, boxShadow: "var(--shadow-md)" }}>
           <NavIcon s={22} c="var(--gold)" />

@@ -787,3 +787,21 @@ describe("Fare limits", () => {
     expect(Number((await t.admin(`select per_min from public.vehicles where id = 'bike'`))[0].per_min)).toBe(1);
   });
 });
+
+describe("My offers", () => {
+  it("lists only offers the customer can still use", async () => {
+    await t.admin(`insert into public.coupons (code, title, off, pct, first_ride_only, starts_at, expires_at, per_user_limit) values
+      ('NEWBIE10', 'First ride', 10, false, true, now() - interval '1 day', now() + interval '30 days', 1),
+      ('TWICE20', 'Twice', 20, false, false, now() - interval '1 day', now() + interval '30 days', 1),
+      ('LATER5', 'Not yet', 5, false, false, now() + interval '1 day', now() + interval '30 days', 1)`);
+    const c = await t.user();
+    const codes = async () => (await t.as<{ code: string }>(c, "select code from public.my_offers()")).map((x) => x.code);
+    expect(await codes()).toEqual(expect.arrayContaining(["NEWBIE10", "TWICE20"]));
+    expect(await codes()).not.toContain("LATER5");
+    await fullTrip({ customer: c, coupon: "TWICE20" });
+    const after = await codes();
+    expect(after).not.toContain("TWICE20");    // per-customer limit used
+    expect(after).not.toContain("NEWBIE10");   // first ride done
+    await rejects(t.as(null, "select * from public.my_offers()"), /permission denied/);
+  });
+});

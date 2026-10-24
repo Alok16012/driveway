@@ -23,6 +23,8 @@ interface HomeProps {
   onTrack: () => void;
   onOffers: () => void;
   onNotifications: () => void;
+  /** No completed ride yet — the first-ride offer still applies. */
+  firstRide: boolean;
 }
 
 const greeting = () => {
@@ -174,7 +176,7 @@ export default function HomeScreen(p: HomeProps) {
         ))}
       </div>
 
-      <div style={{ paddingTop: 24 }}><PromoCarousel onOffers={p.onOffers} onRide={() => p.onSearch()} /></div>
+      <div style={{ paddingTop: 24 }}><PromoCarousel firstRide={p.firstRide} onOffers={p.onOffers} onRide={() => p.onSearch("bike")} /></div>
 
       {/* ── Safety strip ── */}
       <div style={{ padding: "18px 16px 0" }}>
@@ -194,20 +196,21 @@ export default function HomeScreen(p: HomeProps) {
 
 const SLIDE_MS = 4000;
 
-function PromoCarousel({ onOffers, onRide }: { onOffers: () => void; onRide: () => void }) {
+function PromoCarousel({ firstRide, onOffers, onRide }: { firstRide: boolean; onOffers: () => void; onRide: () => void }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
   const held = useRef(0);
+  const slides = firstRide ? 2 : 1;
 
   useEffect(() => {
     const t = setInterval(() => {
       const el = trackRef.current;
       if (!el || Date.now() < held.current || document.hidden) return;
       const cur = Math.round(el.scrollLeft / el.clientWidth);
-      el.scrollTo({ left: ((cur + 1) % 2) * el.clientWidth, behavior: "smooth" });
+      el.scrollTo({ left: ((cur + 1) % slides) * el.clientWidth, behavior: "smooth" });
     }, SLIDE_MS);
     return () => clearInterval(t);
-  }, []);
+  }, [slides]);
 
   const slide = (children: React.ReactNode, key: number) => (
     <div key={key} style={{ flex: "0 0 100%", scrollSnapAlign: "start", padding: "0 16px" }}>
@@ -229,7 +232,7 @@ function PromoCarousel({ onOffers, onRide }: { onOffers: () => void; onRide: () 
         onScroll={(e) => setIndex(Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth))}
         onPointerDown={() => { held.current = Date.now() + 7000; }}
         style={{ display: "flex", overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 14, marginBottom: -14 }}>
-        {slide(
+        {firstRide && slide(
           <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ flex: 1 }}>
               <span style={{ display: "inline-block", background: "#CFFB6B", color: "var(--blue-dark)", fontSize: 10.5, fontWeight: 700, padding: "4px 10px", borderRadius: 8 }}>Code: FIRST50</span>
@@ -250,10 +253,10 @@ function PromoCarousel({ onOffers, onRide }: { onOffers: () => void; onRide: () 
           <div style={{ position: "relative", zIndex: 1 }}>
             <span style={{ display: "inline-block", background: "var(--gold)", color: "var(--blue-dark)", fontSize: 10.5, fontWeight: 700, padding: "4px 10px", borderRadius: 8 }}>BIKE RIDES</span>
             <p style={{ margin: "10px 0 0", fontSize: 22, fontWeight: 800, color: "white", lineHeight: 1.2 }}>
-              Skip the traffic<br />from <span style={{ color: "var(--gold)" }}>₹30</span>
+              Skip the traffic<br />on a <span style={{ color: "var(--gold)" }}>Bike</span>
             </p>
             <div style={{ display: "flex", gap: 14, margin: "12px 0 14px", background: "rgba(255,255,255,0.09)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 14, padding: "10px 12px" }}>
-              {[["2 min", "Pickup"], ["₹6", "per km"], ["4.8★", "Captains"]].map(([v, l]) => (
+              {[["Fast", "Pickup"], ["OTP", "Secured"], ["Live", "Tracking"]].map(([v, l]) => (
                 <div key={l}><p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--gold)" }}>{v}</p><p style={{ margin: 0, fontSize: 10.5, color: "rgba(255,255,255,0.7)" }}>{l}</p></div>
               ))}
             </div>
@@ -262,7 +265,7 @@ function PromoCarousel({ onOffers, onRide }: { onOffers: () => void; onRide: () 
         )}
       </div>
       <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 12 }}>
-        {[0, 1].map((i) => (
+        {slides > 1 && Array.from({ length: slides }, (_, i) => i).map((i) => (
           <span key={i} style={{ width: i === index ? 20 : 7, height: 7, borderRadius: 999, background: i === index ? ON_BG : "rgba(255,255,255,0.45)", transition: "width 0.3s" }} />
         ))}
       </div>

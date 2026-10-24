@@ -805,7 +805,7 @@ export function LiveRidePage({ ride, onBack, onCancelled, onEnded, onChat, onSha
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ position: "relative" }}>
-        <MapView mode={mode} progress={progress} motion={motion} from={ride.from.id} pickupAt={placePos(ride.from)} to={ride.to.id} dropAt={placePos(ride.to)} car={car} height={searching ? 330 : 300} radius={0}>
+        <MapView mode={mode} progress={progress} motion={motion} from={ride.from.id} pickupAt={placePos(ride.from)} to={ride.to.id} dropAt={placePos(ride.to)} car={car} vehicle={ride.driver?.vehicle ?? ride.vehicle} height={searching ? 330 : 300} radius={0}>
           {searching && (
             <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: 1, height: 1 }}>
               {[0, 0.6, 1.2].map((d) => <span key={d} className="ripple" style={{ position: "absolute", left: -60, top: -60, width: 120, height: 120, borderRadius: "50%", background: "rgba(11,92,255,0.22)", animationDelay: `${d}s` }} />)}

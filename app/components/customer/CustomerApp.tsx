@@ -269,6 +269,7 @@ export default function CustomerApp() {
                 onQuick={(to) => startBooking(to)}
                 onTrack={() => push({ k: "live" })}
                 onOffers={() => goTab("offers")}
+                firstRide={!me?.completed}
                 onNotifications={() => push({ k: "info", key: "notifications" })}
               />
             )}

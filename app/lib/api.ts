@@ -194,10 +194,11 @@ export async function serviceCities(): Promise<City[]> {
   if (error) throw new Error(friendly(error));
   return data as City[];
 }
+/** Offers this customer can still use: live, not used up by them, and not first-ride-only once they've ridden. */
 export async function activeCoupons(): Promise<CouponRow[]> {
-  const { data, error } = await supabase().from("coupons").select("*").eq("active", true).gt("expires_at", new Date().toISOString()).order("expires_at");
+  const { data, error } = await supabase().rpc("my_offers");
   if (error) throw new Error(friendly(error));
-  return data as CouponRow[];
+  return (data ?? []) as CouponRow[];
 }
 
 /* ───────────── Customer ───────────── */
