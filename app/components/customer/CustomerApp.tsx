@@ -12,10 +12,7 @@ import { LoadState, Toast, card } from "../ui";
 import { CardIcon, UpiIcon, WalletIcon } from "../icons";
 import { inr, type PayMethod } from "../../lib/data";
 import { NATIVE_APP } from "../../lib/native";
-import {
-  cancelRide, closeRide, fmtWhen, getSession, isRecoveryLink, myActiveRide, myProfile, myRides, myWallet, onAuthChange, payRide, recoveryLinkError, places as fetchPlaces,
-  signOut, supportMessage, updateMyPhone, updateMyProfile, watchResume, watchRides, type Place, type Profile, type Quote, type RideView, type Txn,
-} from "../../lib/api";
+import { cancelRide, closeRide, fmtWhen, getSession, isRecoveryLink, myActiveRide, myProfile, myRides, myWallet, onAuthChange, payRide, recoveryLinkError, places as fetchPlaces, signOut, supportMessage, updateMyPhone, updateMyProfile, watchResume, watchRides, type Place, type Profile, type Quote, type RideView, type Txn, placeName, fmtPhone } from "../../lib/api";
 import { supabase } from "../../lib/supabase/client";
 
 const SHELL_MAX_W = 430;
@@ -281,7 +278,7 @@ export default function CustomerApp() {
             )}
             {!detail && tab === "profile" && me && (
               <ProfileScreen
-                user={{ name: me.name, email: me.email ?? "", phone: me.phone ? `+${me.phone}` : "", rating: me.rating, initials: initialsOf(me.name) }}
+                user={{ name: me.name, email: me.email ?? "", phone: fmtPhone(me.phone), rating: me.rating, initials: initialsOf(me.name) }}
                 stats={{ rides: me.completed, saved: 0, coupons: 0 }} locked={blocked}
                 onMenu={(key) => key === "edit" && blocked ? flash(BLOCKED_MSG) : push(key === "rides" ? { k: "rides" } : key === "help" ? { k: "chat" } : { k: "info", key })}
                 onLogout={() => void logout()}
@@ -348,7 +345,7 @@ function ProfileInfo({ which, rides, wallet, onBack }: { which: ProfileKey | "no
           {rides.slice(0, 10).map((r) => (
             <div key={r.id} style={row}>
               <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--blue)", flexShrink: 0 }} />
-              <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{r.code} · {r.status === "NoDrivers" ? "No drivers" : r.status}</p><p style={small}>{r.from.name} → {r.to.name}{r.payment_status === "pending" ? ` · ${inr(r.total)} due` : ""}</p></div>
+              <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{r.code} · {r.status === "NoDrivers" ? "No drivers" : r.status}</p><p style={small}>{placeName(r.from)} → {placeName(r.to)}{r.payment_status === "pending" ? ` · ${inr(r.total)} due` : ""}</p></div>
               <span style={{ fontSize: 11.5, color: "var(--ink-mute)" }}>{fmtWhen(r.created_at).split(", ")[0]}</span>
             </div>
           ))}

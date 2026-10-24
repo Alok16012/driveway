@@ -9,13 +9,12 @@ import MapView, { SIM_APPROACH_SEC, SIM_TRIP_SEC } from "../MapView";
 import VehicleArt, { AnyArt, ParcelArt, RentalArt } from "../VehicleArt";
 import { Avatar, ErrorText, Footer, LoadState, PageHeader, PrimaryButton, Stars, StatusBadge, card, field, iconBtn, onLight } from "../ui";
 import { PARCEL_TYPES, RIDE_STEPS, inr, vehicleById, type PayMethod, type VehicleKind } from "../../lib/data";
-import {
-  activeCoupons, bookRide, cancelRide, closeRide, customerEndRide, isIndianMobile, newKey, payRide, quote as fetchQuote, rateRide, rideLabel, watchDriverPosition,
-  type CouponRow, type DriverPos, type FareLine, type Place, type Quote, type QuoteOption, type RideView,
-} from "../../lib/api";
+import { activeCoupons, bookRide, cancelRide, closeRide, customerEndRide, isIndianMobile, newKey, payRide, quote as fetchQuote, rateRide, rideLabel, watchDriverPosition, type CouponRow, type DriverPos, type FareLine, type Place, type Quote, type QuoteOption, type RideView, placeName } from "../../lib/api";
 import type { RideOption } from "./types";
 import { INDIA_CENTER, distanceM, nearbyPlaces, placePos, reverseGeocode, useCurrentAddress, useDeviceLocation, type LatLng } from "../../lib/location";
 import { hasGoogle, newSearchSession, placeDetails, searchPlaces, type PlaceSuggestion } from "../../lib/google";
+import { searchFree } from "../../lib/photon";
+import { useServiceCities } from "../CityPicker";
 
 const dot = (color: string, square = false): React.CSSProperties => ({
   width: 10, height: 10, borderRadius: square ? 2 : "50%", background: color, flexShrink: 0,
@@ -66,6 +65,35 @@ function useTripEnds(from: Place, to: Place | null) {
   };
 }
 
+/** Shown when the pickup is outside every city the admin has switched on. */
+function NotInCity({ onChangePickup }: { onChangePickup: () => void }) {
+  const { cities } = useServiceCities();
+  return (
+    <div className="fade-up" style={{ padding: "8px 16px" }}>
+      <div style={{ ...card, padding: "28px 20px 22px", textAlign: "center" }}>
+        <div style={{ width: 72, height: 72, margin: "0 auto", borderRadius: "50%", background: "var(--orange-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <PinIcon s={34} c="var(--app-bg)" />
+        </div>
+        <h2 style={{ margin: "16px 0 0", fontSize: 20, fontWeight: 800, color: "var(--ink)" }}>We&apos;re not in your city yet</h2>
+        <p style={{ margin: "8px 0 0", fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+          DriveWay doesn&apos;t pick up from here right now. We&apos;re adding new cities soon — we&apos;ll let you know when we reach yours.
+        </p>
+        {!!cities?.length && (
+          <div style={{ marginTop: 18 }}>
+            <p style={{ margin: "0 0 8px", fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", color: "var(--ink-mute)" }}>NOW SERVING</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+              {cities.map((c) => (
+                <span key={c.id} style={{ padding: "6px 12px", borderRadius: 999, background: "var(--bg-secondary)", fontSize: 12.5, fontWeight: 600, color: "var(--ink)" }}>{c.name}</span>
+              ))}
+            </div>
+          </div>
+        )}
+        <PrimaryButton onClick={onChangePickup} style={{ marginTop: 22 }}>Change pickup</PrimaryButton>
+      </div>
+    </div>
+  );
+}
+
 /* ───────────────────────── 1. Set location ───────────────────────── */
 
 export function SearchPage({ places, initialTo, onBack, onDone }: { places: Place[]; initialTo?: Place; onBack: () => void; onDone: (from: Place, to: Place) => void }) {
@@ -89,23 +117,28 @@ export function SearchPage({ places, initialTo, onBack, onDone }: { places: Plac
     return t ? all.filter((p) => (p.name + p.address).toLowerCase().includes(t)) : all;
   }, [q, focus, local]);
   const token = useRef(newSearchSession());
-  const [found, setFound] = useState<PlaceSuggestion[]>([]);
+  const [found, setFound] = useState<(PlaceSuggestion & { lat?: number; lng?: number })[]>([]);
   const [searching, setSearching] = useState(false);
   useEffect(() => {
     const t = q.trim();
     setFound([]);
-    if (!hasGoogle() || t.length < 2) return;
+    if (t.length < 2) return;
     let live = true;
     setSearching(true);
+    // Google Places when a Maps key is set; otherwise free OpenStreetMap search (Photon).
     const timer = setTimeout(() => {
-      searchPlaces(t, nearPos, token.current)
+      (hasGoogle() ? searchPlaces(t, nearPos, token.current) : searchFree(t, nearPos))
         .then((r) => { if (live) setFound(r); }, (e) => { if (live) setErr((e as Error).message); })
         .finally(() => { if (live) setSearching(false); });
-    }, 300);
+    }, hasGoogle() ? 300 : 450);
     return () => { live = false; clearTimeout(timer); setSearching(false); };
   }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
-  const choose = async (s: PlaceSuggestion) => {
+  const choose = async (s: PlaceSuggestion & { lat?: number; lng?: number }) => {
     setErr(null);
+    if (typeof s.lat === "number" && typeof s.lng === "number") {   // free search results already carry their position
+      pick({ id: `g:${s.placeId}`, name: s.name, address: s.address, kind: null, lat: s.lat, lng: s.lng });
+      return;
+    }
     try {
       const d = await placeDetails(s.placeId, token.current);
       token.current = newSearchSession();
@@ -256,10 +289,27 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
     let live = true;
     setQErr(null);
     if (ends.waiting) return;
-    fetchQuote(ends.fromId, ends.toId, ac, coupon, ends.fromPos, ends.toPos).then((x) => { if (live) setQ(x); }, (e) => { if (live) setQErr((e as Error).message); });
-    return () => { live = false; };
+    const load = (quiet: boolean) => fetchQuote(ends.fromId, ends.toId, ac, coupon, ends.fromPos, ends.toPos)
+      .then((x) => { if (live) setQ(x); }, (e) => { if (live && !quiet) setQErr((e as Error).message); });
+    void load(false);
+    // Riders come online and go busy all the time: refresh who's nearby (and the fares) while this page is open.
+    const t = setInterval(() => { if (document.visibilityState === "visible") void load(true); }, 15000);
+    return () => { live = false; clearInterval(t); };
   }, [ends.fromId, ends.toId, posKey, !!ends.waiting, ac, coupon, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Until the customer picks an option themselves, start on one that has a driver nearby rather than a greyed-out one.
+  const picked = useRef(!!prefer);
+  useEffect(() => {
+    if (!q || picked.current) return;
+    const has = (o: RideOption) => (o === "any" ? q.any_available > 0 && !!q.any : (q.options.find((x) => x.id === o)?.available ?? 0) > 0);
+    if (has(sel)) return;
+    const first = (["any", ...q.options.map((o) => o.id)] as RideOption[]).find(has);
+    if (first) setSel(first);
+  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!q && qErr && /isn.t available here yet/i.test(qErr)) {
+    return <><PageHeader title="Choose a ride" onBack={onBack} /><NotInCity onChangePickup={onEditRoute} /></>;
+  }
   if (!q) {
     const off = !!ends.waiting && ends.waiting !== "Finding your location…";
     return <><PageHeader title="Choose a ride" onBack={onBack} /><LoadState error={qErr ?? (off ? ends.waiting : null)} onRetry={off ? onEditRoute : () => setReload((n) => n + 1)} label={ends.waiting ?? "Getting prices…"} /></>;
@@ -373,7 +423,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
             : v!.tagline;
           const rowAc = (o === "any" || o === "rental" || v?.ac) ? ac : false;
           const row = (
-            <button key={o} disabled={!ok} aria-pressed={on} onClick={() => { setSel(o); if (o === "rental") setSheet("rental"); }} style={{
+            <button key={o} disabled={!ok} aria-pressed={on} onClick={() => { picked.current = true; setSel(o); if (o === "rental") setSheet("rental"); }} style={{
               width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", border: "none", textAlign: "left",
               cursor: ok ? "pointer" : "not-allowed", opacity: ok ? 1 : 0.55,
               background: on ? "var(--blue-tint)" : "transparent", boxShadow: on ? "inset 4px 0 0 var(--blue)" : "none",
@@ -851,7 +901,7 @@ export function LiveRidePage({ ride, onBack, onCancelled, onEnded, onChat, onSha
               <span style={dot("var(--red)", true)} />
             </div>
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
-              <div><p style={capLabel}>PICKUP</p><p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>{ride.from.name}</p></div>
+              <div><p style={capLabel}>PICKUP</p><p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>{placeName(ride.from)}</p></div>
               <div><p style={capLabel}>{parcel ? `DELIVER TO · ${ride.parcel?.receiver.name}` : "DROP"}</p><p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>{ride.to.name}</p></div>
             </div>
           </div>
@@ -959,7 +1009,7 @@ export function TripDonePage({ ride, walletBalance, onDone, onReceipt }: { ride:
           <CheckIcon s={38} c="white" w={3} />
         </div>
         <p style={{ margin: "14px 0 0", fontSize: 22, fontWeight: 800, color: "var(--on-bg)" }}>{ride.service === "parcel" ? "Package Delivered!" : "Trip Completed!"}</p>
-        <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--on-bg-soft)" }}>{ride.from.name} → {ride.to.name}</p>
+        <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--on-bg-soft)" }}>{placeName(ride.from)} → {placeName(ride.to)}</p>
         <p style={{ margin: "14px 0 0", fontSize: 38, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--on-bg)" }}>{inr(ride.total)}</p>
         <p style={{ margin: "4px 0 0", fontSize: 13, fontWeight: 600, color: "var(--on-bg)" }}>
           {paid ? `✓ Paid · ${ride.pay}` : cash ? `Please pay ${inr(ride.total)} in cash — your driver will confirm` : `Payment due · ${inr(ride.total)}`}

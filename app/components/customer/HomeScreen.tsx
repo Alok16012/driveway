@@ -147,19 +147,19 @@ export default function HomeScreen(p: HomeProps) {
           ))}
         </div>
       </div>
-      <div style={{ padding: "12px 12px 0", display: "grid", gridTemplateColumns: "repeat(4,1fr)", rowGap: 14, columnGap: 6 }}>
+      <div style={{ padding: "14px 16px 0", display: "grid", gridTemplateColumns: "repeat(3,1fr)", rowGap: 18, columnGap: 12 }}>
         {SERVICES.map((o) => (
           <button key={o} onClick={() => p.onSearch(o)} className="press" style={{
             background: "none", border: "none", padding: 0, cursor: "pointer",
             display: "flex", flexDirection: "column", alignItems: "center", gap: 11, position: "relative",
           }}>
             <div style={{
-              width: "100%", maxWidth: 70, aspectRatio: "1 / 1", background: "#FFD1A8", borderRadius: "28%",
+              width: "100%", maxWidth: 92, aspectRatio: "1 / 1", background: "#FFD1A8", borderRadius: "28%",
               display: "flex", alignItems: "center", justifyContent: "center",
               boxShadow: "0 6px 10px -2px rgba(15,23,41,0.16), 0 2px 4px rgba(15,23,41,0.06)",
               position: "relative",
             }}>
-              {o === "any" ? <AnyArt size={50} /> : o === "rental" ? <RentalArt size={48} /> : o === "parcel" ? <ParcelArt size={50} /> : <VehicleArt kind={o} size={50} />}
+              {o === "any" ? <AnyArt size={62} /> : o === "rental" ? <RentalArt size={60} /> : o === "parcel" ? <ParcelArt size={62} /> : <VehicleArt kind={o} size={62} />}
               {(o === "any" || o === "rental" || (o !== "parcel" && vehicleById(o).ac)) && (
                 <span style={{
                   position: "absolute", bottom: -7, left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap",
@@ -168,8 +168,8 @@ export default function HomeScreen(p: HomeProps) {
                 }}>{p.ac ? "❄ AC" : "NON-AC"}</span>
               )}
             </div>
-            {o === "parcel" && <span style={{ position: "absolute", top: -6, right: 2, background: "var(--red)", color: "white", fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 6 }}>NEW</span>}
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: ON_BG }}>{o === "any" ? "Book Any" : o === "rental" ? "Rental" : o === "parcel" ? "Parcel" : vehicleById(o).name}</span>
+            {o === "parcel" && <span style={{ position: "absolute", top: -6, right: "calc(50% - 50px)", background: "var(--red)", color: "white", fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 6 }}>NEW</span>}
+            <span style={{ fontSize: 13, fontWeight: 600, color: ON_BG }}>{o === "any" ? "Book Any" : o === "rental" ? "Rental" : o === "parcel" ? "Parcel" : vehicleById(o).name}</span>
           </button>
         ))}
       </div>

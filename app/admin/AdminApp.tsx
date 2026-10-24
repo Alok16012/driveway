@@ -11,7 +11,7 @@ import {
 } from "../components/icons";
 import { Avatar, ErrorText, LoadState, PasswordInput, PrimaryButton, StatusBadge, Toggle, card, field, label, onLight } from "../components/ui";
 import { inr, vehicleById, type VehicleKind } from "../lib/data";
-import { adminSignIn, friendly, getSession, myProfile, newKey, onAuthChange, rpc, signOut, type City } from "../lib/api";
+import { adminSignIn, friendly, getSession, myProfile, newKey, onAuthChange, rpc, signOut, type City, fmtPhone } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
 
 /* ───────────────────────── Data shapes (rows the admin's RLS lets it read) ───────────────────────── */
@@ -550,7 +550,7 @@ function CustomersSection({ d, act }: { d: Data; act: Act }) {
             {list.map((c) => { const s = stats(c.id); return (
               <tr key={c.id} onClick={() => setOpen(c.id)}>
                 <td><span style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar initials={initials(c.name || "?")} size={30} />{c.name || "(no name yet)"}</span></td>
-                <td>{c.phone ? `+${c.phone}` : "—"}</td><td style={{ color: "var(--ink-soft)" }}><span title={c.email ?? undefined} style={{ display: "block", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }}>{c.email ?? "—"}</span></td><td>{s.rides}</td><td>{inr(s.spent)}</td><td>{when(c.created_at)}</td>
+                <td>{c.phone ? fmtPhone(c.phone) : "—"}</td><td style={{ color: "var(--ink-soft)" }}><span title={c.email ?? undefined} style={{ display: "block", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }}>{c.email ?? "—"}</span></td><td>{s.rides}</td><td>{inr(s.spent)}</td><td>{when(c.created_at)}</td>
                 <td><StatusBadge status={c.blocked ? "Blocked" : "Active"} /></td>
                 <td><span style={{ display: "flex", gap: 8 }}>
                   <button onClick={(e) => { e.stopPropagation(); toggle(c); }} style={smallBtn(c.blocked ? "ghost" : "red")}>{c.blocked ? "Unblock" : "Block"}</button>
@@ -564,7 +564,7 @@ function CustomersSection({ d, act }: { d: Data; act: Act }) {
       {sel && (() => { const s = stats(sel.id); return (
         <Drawer title={sel.name || "Customer"} onClose={() => { setOpen(null); setConfirmDel(false); }}>
           <div style={{ ...card, padding: 14 }}>
-            {kv("Phone", sel.phone ? `+${sel.phone}` : "—")}{kv("Email", sel.email ?? "—")}{kv("Joined", when(sel.created_at))}
+            {kv("Phone", sel.phone ? fmtPhone(sel.phone) : "—")}{kv("Email", sel.email ?? "—")}{kv("Joined", when(sel.created_at))}
             {kv("Completed rides", s.rides)}{kv("Total paid (net of refunds)", inr(s.spent))}{kv("Rating from drivers", sel.rating ? `★ ${sel.rating}` : "—")}
             {kv("Account", <StatusBadge status={sel.blocked ? "Blocked" : "Active"} />)}
           </div>
@@ -651,7 +651,7 @@ function DriversSection({ d, act }: { d: Data; act: Act }) {
         <Drawer title={sel.name} onClose={() => { setOpen(null); setConfirmDel(false); }}>
           <div style={{ ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 }}>
             <Avatar initials={initials(sel.name)} size={52} />
-            <div style={{ flex: 1 }}><p style={{ margin: 0, fontWeight: 700 }}>{sel.name}</p><p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>{sel.profiles?.phone ? `+${sel.profiles.phone}` : ""} · {sel.city}</p></div>
+            <div style={{ flex: 1 }}><p style={{ margin: 0, fontWeight: 700 }}>{sel.name}</p><p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>{sel.profiles?.phone ? fmtPhone(sel.profiles.phone) : ""} · {sel.city}</p></div>
             <StatusBadge status={state(sel)} />
           </div>
           <div style={{ ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 }}>

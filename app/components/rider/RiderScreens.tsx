@@ -11,7 +11,7 @@ import { placePos, useCurrentAddress } from "../../lib/location";
 import VehicleArt from "../VehicleArt";
 import { Avatar, ErrorText, OtpInput, PageHeader, PrimaryButton, Stars, StatusBadge, Tabs, Toggle, card, iconBtn, onLight } from "../ui";
 import { inr, vehicleById } from "../../lib/data";
-import { fmtWhen, rideLabel, type DriverMe, type RideView, type Txn } from "../../lib/api";
+import { fmtWhen, rideLabel, type DriverMe, type RideView, type Txn, placeLine, placeName, fmtPhone } from "../../lib/api";
 
 const dotStyle = (c: string, sq = false): React.CSSProperties => ({ width: 9, height: 9, borderRadius: sq ? 2 : "50%", background: c, flexShrink: 0 });
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).map((s) => s[0]).join("").slice(0, 2).toUpperCase() || "DW";
@@ -205,7 +205,7 @@ export function RequestPopup({ offer, autoAccept, busy, err, onAccept, onDecline
             <Avatar initials={initials(who)} size={36} tone="gold" />
             <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{who}</p><p style={{ margin: 0, fontSize: 11.5, color: "var(--ink-soft)" }}>{offer.customer?.rating ? `★ ${offer.customer.rating}` : "New"} {parcel ? "sender" : "customer"}</p></div>
           </div>
-          <RouteLines from={`${offer.from.name}, ${offer.from.address}`} to={`${offer.to.name}, ${offer.to.address}`} />
+          <RouteLines from={placeLine(offer.from)} to={placeLine(offer.to)} />
         </div>
         <ErrorText msg={err} />
         <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
@@ -307,7 +307,7 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
           <NavIcon s={22} c="var(--gold)" />
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700 }}>{phase === "Arrived" ? "You've arrived" : phase === "Started" ? "Head to drop" : "Head to pickup"}</p>
-            <p style={{ margin: 0, fontSize: 11.5, color: "rgba(255,255,255,0.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{phase === "Started" ? `${trip.to.name}, ${trip.to.address}` : `${trip.from.name}, ${trip.from.address}`}</p>
+            <p style={{ margin: 0, fontSize: 11.5, color: "rgba(255,255,255,0.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{phase === "Started" ? placeLine(trip.to) : placeLine(trip.from)}</p>
           </div>
           {phase !== "Arrived" && <span style={{ fontSize: 13, fontWeight: 800, color: "var(--gold)" }}>~{eta} min</span>}
         </div>
@@ -325,7 +325,7 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
             <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>{trip.passenger?.name ?? who}</p><p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>{trip.pay} · {inr(trip.fare - trip.discount)} · {rideLabel(trip, vehicleById(trip.vehicle).name)}</p></div>
             <button onClick={onCall} disabled={!trip.customer?.phone} aria-label="Call customer" className="press" style={{ width: 42, height: 42, borderRadius: "50%", border: "none", background: "var(--blue-tint)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><PhoneIcon s={19} c="var(--blue)" /></button>
           </div>
-          <RouteLines from={`${trip.from.name}, ${trip.from.address}`} to={`${trip.to.name}, ${trip.to.address}`} />
+          <RouteLines from={placeLine(trip.from)} to={placeLine(trip.to)} />
           {parcel && trip.parcel && <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-soft)", background: "var(--gold-tint)", borderRadius: 10, padding: "8px 10px" }}>📦 {trip.parcel.type} · {trip.parcel.weight_label} · deliver to {trip.parcel.receiver.name}{trip.parcel.note ? ` · “${trip.parcel.note}”` : ""}</p>}
         </div>
 
@@ -376,8 +376,8 @@ export function EarningsScreen({ me, onBack }: { me: DriverMe; onBack?: () => vo
         <div style={{ borderRadius: 22, padding: 18, background: "linear-gradient(150deg,var(--blue-dark),var(--blue))", color: "white", boxShadow: "0 10px 28px rgba(11,92,255,0.28)" }}>
           <p style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.75)" }}>Net earnings (after {inr(me.platform_fee)} platform fee per ride, incl. bonuses)</p>
           <p style={{ margin: "2px 0 0", fontSize: 32, fontWeight: 800 }}>{inr(net)}</p>
-          {range === "week" && <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "rgba(255,255,255,0.8)" }}>{me.week_trips} trips · {inr(me.earnings.incentives_week)} in bonuses</p>}
-          {range === "day" && <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "rgba(255,255,255,0.8)" }}>{me.today.trips} trips today</p>}
+          {range === "week" && <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "rgba(255,255,255,0.8)" }}>{me.week_trips} {me.week_trips === 1 ? "trip" : "trips"} · {inr(me.earnings.incentives_week)} in bonuses</p>}
+          {range === "day" && <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "rgba(255,255,255,0.8)" }}>{me.today.trips} {me.today.trips === 1 ? "trip" : "trips"} today</p>}
         </div>
         <p style={{ margin: "4px 2px 0", fontSize: 13.5, fontWeight: 700, color: "var(--on-bg)" }}>Payouts</p>
         {payouts.length === 0 && <p style={{ margin: 0, fontSize: 12.5, color: "var(--on-bg-soft)" }}>No payouts yet. Take an instant payout from your Wallet once you have ₹{me.min_payout} or more.</p>}
@@ -411,7 +411,7 @@ export function TripsScreen({ trips, onOpen }: { trips: RideView[] | null; onOpe
               <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)" }}>#{r.code} · {fmtWhen(r.assigned_at ?? r.created_at)}</span>
               <StatusBadge status={r.status} />
             </div>
-            <RouteLines from={r.from.name} to={r.to.name} />
+            <RouteLines from={placeName(r.from)} to={placeName(r.to)} />
             <div style={{ borderTop: "1px solid var(--line)", marginTop: 10, paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>{r.customer?.name ?? "Customer"} · {r.km} km · {r.pay}</span>
               <span style={{ fontSize: 15, fontWeight: 800, color: r.status === "Completed" ? "var(--ink)" : "var(--ink-mute)" }}>{r.status === "Completed" ? inr(r.fare + r.wait_fee - r.platform_fee) : "—"}</span>
@@ -482,7 +482,7 @@ export function RiderAccount({ me, locked, onMenu, onLogout }: { me: DriverMe; l
             <Avatar initials={initials(me.name)} size={58} />
             <div style={{ flex: 1 }}>
               <p style={{ margin: 0, fontSize: 19, fontWeight: 700 }}>{me.name}</p>
-              <p style={{ margin: "1px 0 0", fontSize: 12.5, color: "var(--text-muted)" }}>{me.phone ? `+${me.phone}` : ""}</p>
+              <p style={{ margin: "1px 0 0", fontSize: 12.5, color: "var(--text-muted)" }}>{fmtPhone(me.phone)}</p>
               <p style={{ margin: "1px 0 0", fontSize: 12.5, color: "var(--text-muted)" }}>{me.city}</p>
             </div>
           </div>

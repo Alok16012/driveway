@@ -7,12 +7,20 @@
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase/client";
 import { NATIVE_APP } from "./native";
+import { tidyAddress } from "./location";
 import type { PayMethod, RideStatus, VehicleKind } from "./data";
 
 /* ───────────── Types returned by the server ───────────── */
 
 /** `lat`/`lng` are set when the place isn't a fixed one: a GPS "Current location" pickup, or a place searched on Google Maps. */
 export interface PlaceRef { id: string; name: string; address: string; lat?: number; lng?: number }
+/** What to call a place on screen. A GPS pickup comes back from the server as "Pickup point"; its street reads better. */
+export const placeName = (p: PlaceRef) => tidyAddress(p.name === "Pickup point" && p.address ? p.address.split(",")[0].trim() : p.name);
+/** Name and address on one line, without saying the street twice. */
+export const placeLine = (p: PlaceRef) => {
+  const n = placeName(p); const a = p.address ? tidyAddress(p.address) : "";
+  return !a ? n : a.startsWith(n) ? a : `${n}, ${a}`;
+};
 export interface Place extends PlaceRef { kind: "home" | "work" | "recent" | "current" | null }
 export interface FareLine { label: string; amount: number }
 export interface CouponResult { ok: boolean; reason?: string; discount?: number; code?: string; title?: string }
@@ -90,6 +98,12 @@ export const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in cr
 /* ───────────── Auth (email + password for everyone) ───────────── */
 
 export const isIndianMobile = (p: string) => /^[6-9]\d{9}$/.test(p);
+/** "919000000001" → "+91 90000 00001" (stored numbers carry the country code without "+"). */
+export const fmtPhone = (p: string | null | undefined) => {
+  if (!p) return "";
+  const d = p.replace(/\D/g, "");
+  return d.length === 12 && d.startsWith("91") ? `+91 ${d.slice(2, 7)} ${d.slice(7)}` : `+${d}`;
+};
 
 /** Does the email's domain exist and accept mail? Looked up over DNS-over-HTTPS (only the domain is sent),
  * because the native apps are static exports with no server of their own. A domain with MX records — or,

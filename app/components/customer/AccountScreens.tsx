@@ -10,7 +10,7 @@ import { BrandMark } from "../Brand";
 import VehicleArt, { ParcelArt } from "../VehicleArt";
 import { Avatar, ErrorText, LoadState, PageHeader, PrimaryButton, StatusBadge, Tabs, card, field, iconBtn, label as fieldLabel } from "../ui";
 import { inr, vehicleById } from "../../lib/data";
-import { activeCoupons, fmtWhen, isIndianMobile, rideLabel, type CouponRow, type RideView } from "../../lib/api";
+import { activeCoupons, fmtWhen, isIndianMobile, rideLabel, type CouponRow, type RideView, placeLine, placeName } from "../../lib/api";
 
 /* ───────────────────────── My rides ───────────────────────── */
 
@@ -39,7 +39,7 @@ export function RidesScreen({ rides, error, onRetry, onBack, onOpen, onBook, ini
                   <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)" }}>{fmtWhen(r.scheduled_for ?? r.created_at)}</span>
                   <StatusBadge status={r.payment_status === "pending" ? "Payment due" : r.status} />
                 </div>
-                <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--ink-soft)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}><b style={{ fontWeight: 600, color: "var(--ink)" }}>{label(r)} · </b>{r.from.name} → {r.to.name}</p>
+                <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--ink-soft)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}><b style={{ fontWeight: 600, color: "var(--ink)" }}>{label(r)} · </b>{placeName(r.from)} → {placeName(r.to)}</p>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
                   <span style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>{owed(r) > 0 ? inr(owed(r)) : "—"}</span>
                   {r.rating ? <span style={{ fontSize: 12, color: "var(--gold-dark)", fontWeight: 600 }}>{"★".repeat(r.rating)}</span>
@@ -86,7 +86,7 @@ export function RideDetailPage({ ride, onBack, onHelp, onPay, onCancel }: {
           <StatusBadge status={ride.status} />
         </div>
         <div style={{ ...card, padding: 14 }}>
-          {[["PICKUP", ride.from.name, "var(--green)"], ["DROP", ride.to.name, "var(--red)"]].map(([k, val, c]) => (
+          {[["PICKUP", placeLine(ride.from), "var(--green)"], ["DROP", placeLine(ride.to), "var(--red)"]].map(([k, val, c]) => (
             <div key={k} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>
               <span style={{ width: 9, height: 9, marginTop: 6, borderRadius: k === "DROP" ? 2 : "50%", background: c }} />
               <div><p style={{ margin: 0, fontSize: 11, color: "var(--ink-mute)", fontWeight: 600 }}>{k}</p><p style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>{val}</p></div>
@@ -264,7 +264,7 @@ export function ProfileScreen({ user, stats, locked, onMenu, onLogout, onDelete 
               <p style={{ margin: "1px 0 0", fontSize: 12.5, color: "var(--text-muted)" }}>{user.phone}</p>
             </div>
           </div>
-          {user.rating ? <span style={{ display: "inline-block", marginTop: 14, background: "var(--green)", color: "white", fontSize: 11, fontWeight: 600, padding: "5px 11px", borderRadius: 6, letterSpacing: "0.02em" }}>★ {user.rating} RIDER RATING</span> : <span style={{ display: "inline-block", marginTop: 14, fontSize: 11.5, color: "var(--ink-soft)" }}>New rider · rated by drivers after your first trip</span>}
+          {user.rating ? <span style={{ display: "inline-block", marginTop: 14, background: "var(--green)", color: "white", fontSize: 11, fontWeight: 600, padding: "5px 11px", borderRadius: 6, letterSpacing: "0.02em" }}>★ {user.rating} CUSTOMER RATING</span> : <span style={{ display: "inline-block", marginTop: 14, fontSize: 11.5, color: "var(--ink-soft)" }}>New customer · drivers rate you after your first trip</span>}
         </div>
       </div>
       <div style={{ padding: "14px 16px 0" }}>

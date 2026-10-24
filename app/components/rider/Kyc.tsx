@@ -116,7 +116,7 @@ export function KycFlow({ onSubmitted }: { onSubmitted: () => void }) {
                 {VEHICLES.map((v) => {
                   const on = v.id === k.vehicle;
                   return (
-                    <button key={v.id} onClick={() => set({ vehicle: v.id, ac: v.ac ? k.ac : false })} aria-pressed={on} className="press" style={{ ...card, padding: "10px 4px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, border: on ? "1.5px solid var(--blue)" : "1.5px solid transparent", background: on ? "var(--blue-tint)" : "var(--surface)" }}>
+                    <button key={v.id} onClick={() => set({ vehicle: v.id, ac: v.ac ? k.ac : false })} aria-pressed={on} aria-label={v.name} className="press" style={{ ...card, padding: "10px 4px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, border: on ? "1.5px solid var(--blue)" : "1.5px solid transparent", background: on ? "var(--blue-tint)" : "var(--surface)" }}>
                       <VehicleArt kind={v.id} size={50} />
                       <span style={{ fontSize: 12.5, fontWeight: 600 }}>{v.name}</span>
                     </button>

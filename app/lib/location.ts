@@ -171,16 +171,27 @@ export function formatAddress(j: NominatimReverse): string | null {
   return j.display_name?.split(",").slice(0, 3).map((x) => x.trim()).join(", ") ?? parts[0] ?? null;
 }
 
+/** Map data often has roads in capitals ("STEPHEN KING SARANI"); show them in title case. Short codes such as
+ *  "DF" or "II" stay as they are. */
+export function tidyAddress(a: string): string {
+  return a.split(",").map((part) => {
+    const t = part.trim();
+    if (t !== t.toUpperCase() || !/[A-Z]{3}/.test(t)) return t;
+    return t.split(/\s+/).map((w) => (w.length <= 2 ? w : w[0] + w.slice(1).toLowerCase())).join(" ");
+  }).join(", ");
+}
+
 export async function reverseGeocode(pos: LatLng): Promise<string | null> {
   const hit = geoCache.find((c) => distanceM(c.pos, pos) < 50);
   if (hit) return hit.address;
   const g = (hasOla() ? await olaReverseGeocode(pos) : null) ?? (hasGoogle() ? await googleReverseGeocode(pos) : null);
-  if (g) { geoCache.push({ pos, address: g }); return g; }
+  if (g) { const t = tidyAddress(g); geoCache.push({ pos, address: t }); return t; }
   try {
     const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=${pos.lat}&lon=${pos.lng}`,
       { headers: { "Accept-Language": "en" } });
     if (!res.ok) return null;
-    const address = formatAddress(await res.json());
+    const found = formatAddress(await res.json());
+    const address = found && tidyAddress(found);
     if (address) geoCache.push({ pos, address });
     return address;
   } catch { return null; }

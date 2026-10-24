@@ -8,7 +8,7 @@ import { InfoPage } from "../customer/AccountScreens";
 import { RouteLines, rates } from "./RiderScreens";
 import { ErrorText, PrimaryButton, StatusBadge, Stars, Toggle, card, field, label } from "../ui";
 import { inr, vehicleById } from "../../lib/data";
-import { fmtWhen, type DriverMe, type RideView } from "../../lib/api";
+import { fmtWhen, type DriverMe, type RideView, placeName } from "../../lib/api";
 
 const row: React.CSSProperties = { ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 };
 const small: React.CSSProperties = { margin: "2px 0 0", fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.5 };
@@ -262,7 +262,7 @@ export function TripDetailPage({ ride, onHelp, onBack }: { ride: RideView; onHel
           <span style={{ fontSize: 13, color: "var(--ink-soft)", display: "flex", alignItems: "center", gap: 6 }}><ClockIcon s={16} c="var(--ink-soft)" /> {fmtWhen(ride.assigned_at ?? ride.created_at)}</span>
           <StatusBadge status={ride.status} />
         </div>
-        <RouteLines from={ride.from.name} to={ride.to.name} />
+        <RouteLines from={placeName(ride.from)} to={placeName(ride.to)} />
       </div>
       <div style={{ ...card, padding: "12px 16px" }}>
         {[["Customer", ride.customer?.name ?? "—"], ["Distance · time", `${ride.km} km · ${ride.mins} min`], ["Payment", `${ride.pay} · ${ride.payment_status}`],

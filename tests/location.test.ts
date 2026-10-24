@@ -1,6 +1,6 @@
 /* Pickup labels built from OpenStreetMap (Nominatim) reverse-geocoding results. */
 import { describe, expect, it } from "vitest";
-import { formatAddress } from "../app/lib/location";
+import { formatAddress, tidyAddress } from "../app/lib/location";
 import { decodePolyline, formatGoogleAddress } from "../app/lib/google";
 import { formatOlaAddress } from "../app/lib/olamaps";
 
@@ -69,5 +69,14 @@ describe("formatOlaAddress", () => {
   it("trims the formatted address when the components say too little", () => {
     expect(formatOlaAddress([{ formatted_address: "Gandhi Maidan, Patna, Bihar 800001, India" }])).toBe("Gandhi Maidan, Patna, Bihar 800001");
     expect(formatOlaAddress([])).toBeNull();
+  });
+});
+
+describe("tidyAddress", () => {
+  it("title-cases roads written in capitals and leaves the rest alone", () => {
+    expect(tidyAddress("STEPHEN KING SARANI, DF Block, Sector II")).toBe("Stephen King Sarani, DF Block, Sector II");
+    expect(tidyAddress("BANKIM CHANDRA CHATTOPADHYAY SARANI, Salt Lake")).toBe("Bankim Chandra Chattopadhyay Sarani, Salt Lake");
+    expect(tidyAddress("Park Street, Kolkata")).toBe("Park Street, Kolkata");
+    expect(tidyAddress("NH 12, MG Road")).toBe("NH 12, MG Road");
   });
 });

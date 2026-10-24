@@ -13,11 +13,7 @@ import { ChatScreen, EditProfilePage, type ChatMessage } from "../components/cus
 import { HOME_BG, LoadState, Toast } from "../components/ui";
 import { inr } from "../lib/data";
 import { NATIVE_APP } from "../lib/native";
-import {
-  acceptRide, completeRide, confirmCash, confirmDirectPayment, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, isRecoveryLink, myDriver, myDriverTrips, myProfile,
-  myTrip, newKey, onAuthChange, recoveryLinkError, payDues, rateCustomer, rechargeWallet, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides,
-  type DriverMe, type RideView,
-} from "../lib/api";
+import { acceptRide, completeRide, confirmCash, confirmDirectPayment, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, isRecoveryLink, myDriver, myDriverTrips, myProfile, myTrip, newKey, onAuthChange, recoveryLinkError, payDues, rateCustomer, rechargeWallet, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides, type DriverMe, type RideView, placeName } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
 import { startTripTracking } from "../lib/tripTracking";
 
@@ -348,7 +344,7 @@ export default function RiderApp() {
             setSheet(null);
             if (a === "police") window.location.href = "tel:112";
             else if (a === "support") void supportMessage(`SOS during trip ${trip?.code ?? ""}`, "Driver", trip?.id ?? null).then(() => flash("Support has your SOS ticket — call 112 if you're in danger"), (e) => flash((e as Error).message));
-            else if (trip && "share" in navigator) void navigator.share({ title: `DriveWay trip ${trip.code}`, text: `${trip.from.name} → ${trip.to.name} · ${me?.model} ${me?.plate}` }).catch(() => undefined);
+            else if (trip && "share" in navigator) void navigator.share({ title: `DriveWay trip ${trip.code}`, text: `${placeName(trip.from)} → ${placeName(trip.to)} · ${me?.model} ${me?.plate}` }).catch(() => undefined);
             else flash("Sharing isn't available on this device");
           }} />
         )}
