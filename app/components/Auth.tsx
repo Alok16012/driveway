@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, BackIcon, BellIcon, PinIcon, CheckIcon, LockIcon, LogoutIcon } from "./icons";
 import { ErrorText, PasswordInput, PrimaryButton, card, field, iconBtn, label } from "./ui";
 import { emailDomainExists, emailSignIn, emailSignUp, isIndianMobile, sendPasswordReset, signOut, updatePassword } from "../lib/api";
@@ -83,27 +83,119 @@ export function ImageSplash({ src, cta = "Get Started", onStart, onDone, footer,
   );
 }
 
-/** Launch video. Signed-out users (`onStart` given) see it hold on its last frame with the CTA;
- * otherwise it calls `onDone` once it finishes. Tap skips to the end; a timer covers a stalled video. */
-export function VideoSplash({ src, cta = "Get Started", onStart, onDone, footer, maxMs = 6000 }: {
-  src: string; cta?: string; onStart?: () => void; onDone?: () => void; footer?: React.ReactNode; maxMs?: number;
+type SplashVariant = "customer" | "rider" | "admin";
+
+const SPLASH_COPY: Record<SplashVariant, { headline: string; points: [string, string][] }> = {
+  customer: {
+    headline: "Rides across Kolkata, in a tap",
+    points: [["🛡️", "Verified riders"], ["🔐", "OTP-secured trips"], ["📍", "Live GPS tracking"]],
+  },
+  rider: {
+    headline: "Drive on your time. Earn every day.",
+    points: [["💸", "Instant payouts"], ["🎯", "Daily incentives"], ["🧭", "Hotspot guidance"]],
+  },
+  admin: {
+    headline: "Run the whole fleet from one place",
+    points: [["🚦", "Live rides"], ["🪪", "Rider KYC"], ["📊", "Pricing & reports"]],
+  },
+};
+
+const SPLASH_FLEET = [
+  { src: "/vehicles/bike.webp", name: "Bike" },
+  { src: "/vehicles/auto.webp", name: "Auto" },
+  { src: "/vehicles/mini.webp", name: "Cab" },
+  { src: "/vehicles/parcel.webp", name: "Parcel" },
+];
+
+/** Animated launch screen: logo, tagline, fleet and what the app offers, with a loading bar.
+ * Signed-out users (`onStart` given) get the CTA once it has played; everyone else continues
+ * via `onDone` after `holdMs`. Tapping skips the wait. */
+export function BrandSplash({ variant = "customer", cta = "Get Started", onStart, onDone, footer, holdMs = 2400 }: {
+  variant?: SplashVariant; cta?: string; onStart?: () => void; onDone?: () => void; footer?: React.ReactNode; holdMs?: number;
 }) {
   const [ended, setEnded] = useState(false);
-  const ref = useRef<HTMLVideoElement>(null);
-  const finish = () => { ref.current?.pause(); setEnded(true); };
-  useEffect(() => { const t = setTimeout(finish, maxMs); return () => clearTimeout(t); }, [maxMs]);
+  const finish = () => setEnded(true);
+  useEffect(() => { const t = setTimeout(finish, holdMs); return () => clearTimeout(t); }, [holdMs]);
   useEffect(() => { if (ended && !onStart) onDone?.(); }, [ended, onStart, onDone]);
+  const copy = SPLASH_COPY[variant];
+  const showCta = ended && !!onStart;
 
   return (
-    <div onClick={ended ? undefined : finish} style={{ position: "absolute", inset: 0, zIndex: 300, background: "#ea580c", overflow: "hidden" }}>
-      <video ref={ref} src={src} poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" autoPlay muted playsInline preload="auto" onEnded={() => setEnded(true)} onError={() => setEnded(true)}
-        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-      {ended && onStart && (
-        <div className="fade-up" style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "18px 20px calc(22px + env(safe-area-inset-bottom))" }}>
-          <PrimaryButton tone="blue" onClick={onStart}>{cta} <ArrowRight s={18} c="white" /></PrimaryButton>
-          {footer}
+    <div onClick={ended ? undefined : finish} data-testid="brand-splash" style={{
+      position: "absolute", inset: 0, zIndex: 300, overflow: "hidden", display: "flex", flexDirection: "column",
+      background: "radial-gradient(120% 70% at 50% 0%, #fdba74 0%, #f97316 38%, #ea580c 68%, #9a3412 100%)",
+    }}>
+      {/* soft light behind the logo */}
+      <div className="splash-glow" style={{ position: "absolute", left: "50%", top: "6%", width: 380, height: 380, marginLeft: -190, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,247,214,0.55), transparent 65%)", pointerEvents: "none" }} />
+
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "safe center", padding: "calc(28px + env(safe-area-inset-top)) 24px 0", position: "relative", zIndex: 1, minHeight: 0 }}>
+        <div className="splash-pop">
+          <div className="splash-float splash-badge" style={{ padding: 18, borderRadius: 34, background: "white", boxShadow: "0 18px 40px rgba(124,45,18,0.35), inset 0 -4px 0 rgba(234,88,12,0.12)" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/driveway-mark.png" alt="DriveWay" width={84} height={92} style={{ display: "block", width: "var(--splash-mark, 84px)", height: "auto" }} />
+          </div>
         </div>
-      )}
+
+        <h1 className="fade-up" style={{ margin: "22px 0 0", fontSize: 40, fontWeight: 800, letterSpacing: "-0.02em", color: "white", lineHeight: 1, textShadow: "0 3px 14px rgba(124,45,18,0.35)", animationDelay: "0.35s" }}>
+          Drive<span style={{ color: "#fef08a" }}>Way</span>
+        </h1>
+        <p className="fade-up" style={{ margin: "10px 0 0", fontSize: 12, fontWeight: 700, letterSpacing: "0.32em", color: "rgba(255,255,255,0.9)", animationDelay: "0.5s" }}>
+          RIDE · REACH · RELAX
+        </p>
+        <p className="fade-up" style={{ margin: "18px 0 0", fontSize: 15, fontWeight: 600, color: "white", textAlign: "center", lineHeight: 1.4, animationDelay: "0.7s" }}>
+          {copy.headline}
+        </p>
+
+        {variant !== "admin" && (
+          <div className="fade-up" style={{ display: "flex", gap: 10, marginTop: 20, animationDelay: "0.85s" }}>
+            {SPLASH_FLEET.map((v) => (
+              <div key={v.name} style={{ width: 66, padding: "8px 4px 6px", borderRadius: 16, background: "rgba(255,255,255,0.16)", border: "1px solid rgba(255,255,255,0.28)", backdropFilter: "blur(6px)", textAlign: "center" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={v.src} alt="" width={50} height={36} style={{ display: "block", margin: "0 auto", objectFit: "contain", height: 36 }} />
+                <span style={{ display: "block", marginTop: 4, fontSize: 11, fontWeight: 700, color: "white" }}>{v.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="fade-up splash-points" style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, marginTop: 16, maxWidth: 340, animationDelay: "1s" }}>
+          {copy.points.map(([icon, text]) => (
+            <span key={text} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 999, background: "rgba(124,45,18,0.28)", color: "white", fontSize: 11.5, fontWeight: 600 }}>
+              <span aria-hidden="true">{icon}</span>{text}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Kolkata skyline, then the road with a car driving across */}
+      <div aria-hidden="true" className="splash-skyline" style={{ position: "relative", zIndex: 0, padding: "0 6px", marginTop: 12, opacity: 0.55, flexShrink: 0 }}>
+        <KolkataSkyline style={{ maxHeight: 140 }} />
+      </div>
+      <div aria-hidden="true" style={{ position: "relative", height: 54, flexShrink: 0 }}>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 34, background: "#1f2937", boxShadow: "inset 0 3px 0 rgba(255,255,255,0.12)" }}>
+          <div className="splash-road" style={{ position: "absolute", left: 0, right: 0, top: 15, height: 4, backgroundImage: "linear-gradient(90deg, #fde68a 0 32px, transparent 32px 64px)", backgroundSize: "64px 4px" }} />
+        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/vehicles/sedan.webp" alt="" width={74} height={46} style={{ position: "absolute", bottom: 12, left: 0, height: 46, width: "auto", animation: "splash-drive 3.4s cubic-bezier(0.4,0,0.3,1) 0.3s infinite" }} />
+      </div>
+
+      <div style={{ background: "#1f2937", padding: `14px 20px calc(${showCta ? 20 : 26}px + env(safe-area-inset-bottom))`, position: "relative", zIndex: 1, flexShrink: 0 }}>
+        {showCta ? (
+          <div className="fade-up">
+            <PrimaryButton tone="gold" onClick={onStart}>{cta} <ArrowRight s={18} c="var(--blue-dark)" /></PrimaryButton>
+            {footer}
+          </div>
+        ) : (
+          <div>
+            <div style={{ height: 4, borderRadius: 4, background: "rgba(255,255,255,0.14)", overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 4, background: "linear-gradient(90deg,#fde68a,#f97316)", animation: `splash-load ${holdMs}ms ease-out both` }} />
+            </div>
+            <p style={{ margin: "10px 0 0", textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.6)", letterSpacing: "0.06em" }}>
+              {variant === "admin" ? "Opening the admin console…" : "Now serving Kolkata · Tap to skip"}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

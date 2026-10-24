@@ -218,6 +218,38 @@ h1, h2, h3, h4 { letter-spacing: -0.02em; }
 
 @media (prefers-reduced-motion: reduce) { .map-pulse, .ripple, .slide-up { animation: none; } }
 
+/* ── Launch splash (BrandSplash in Auth.tsx) ── */
+@keyframes splash-pop {
+  0%   { opacity: 0; transform: scale(0.55) rotate(-8deg); }
+  60%  { opacity: 1; transform: scale(1.06) rotate(1deg); }
+  100% { opacity: 1; transform: none; }
+}
+.splash-pop { animation: splash-pop 0.75s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+@keyframes splash-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+.splash-float { animation: splash-float 3.2s ease-in-out 0.8s infinite; }
+@keyframes splash-road { to { background-position: -64px 0; } }
+.splash-road { animation: splash-road 0.6s linear infinite; }
+@keyframes splash-drive {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(calc(100vw + 40%)); }
+}
+@keyframes splash-load { from { width: 0; } to { width: 100%; } }
+@keyframes splash-glow {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 0.9;  transform: scale(1.08); }
+}
+.splash-glow { animation: splash-glow 3s ease-in-out infinite; }
+/* Short phones: drop the skyline and shrink the logo so nothing overlaps. */
+@media (max-height: 760px) { .splash-skyline { display: none; } }
+@media (max-height: 600px) { .splash-points { display: none !important; } }
+@media (max-height: 640px) { .splash-badge { --splash-mark: 60px; padding: 12px !important; border-radius: 26px !important; } }
+@media (prefers-reduced-motion: reduce) {
+  .splash-pop, .splash-float, .splash-road, .splash-glow { animation: none; }
+}
+
 /* Netlify injects a "Powered by Netlify" badge (and an owner toolbar) into
    every page as an iframe. This keeps both hidden regardless of the
    dashboard setting. */

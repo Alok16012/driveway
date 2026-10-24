@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { VideoSplash } from "../components/Auth";
+import { BrandSplash } from "../components/Auth";
 import { BrandMark, Wordmark } from "../components/Brand";
 import MapView from "../components/MapView";
 import VehicleArt from "../components/VehicleArt";
@@ -122,12 +122,12 @@ export default function AdminApp() {
     try { await rpc(fn, args); flash(ok); await reload(); return true; } catch (e) { flash((e as Error).message); return false; }
   };
 
-  // Muted launch video, played each time the panel opens (portrait, so it sits in a phone-width column).
-  // Signed-out admins stay on its last frame until they tap Admin Login; signed-in admins continue when it ends.
+  // Animated launch screen, shown each time the panel opens (in a phone-width column).
+  // Signed-out admins stay on it until they tap Admin Login; signed-in admins continue once it has played.
   const splash = intro && (
     <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "#ea580c", display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: SPLASH_MAX_W, height: "100%", position: "relative", boxShadow: "var(--shadow-float)" }}>
-        <VideoSplash src="/driveway-intro.mp4" cta="Admin Login" onDone={authed === null ? undefined : endIntro}
+        <BrandSplash variant="admin" cta="Admin Login" onDone={authed === null ? undefined : endIntro}
           onStart={authed === false ? endIntro : undefined} />
       </div>
     </div>

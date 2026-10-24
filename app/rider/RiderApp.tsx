@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import BottomNav, { HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph, WalletGlyph } from "../components/BottomNav";
-import { BlockedBanner, BlockedScreen, EmailLogin, ForgotPassword, ResetPassword, SignUp, VideoSplash } from "../components/Auth";
+import { BlockedBanner, BlockedScreen, EmailLogin, ForgotPassword, ResetPassword, SignUp, BrandSplash } from "../components/Auth";
 import { KycFlow, PendingApproval } from "../components/rider/Kyc";
 import { AlertsScreen, EarningsScreen, RequestPopup, RiderAccount, RiderHome, TripPage, TripsScreen, type AccountKey, type QuickKey } from "../components/rider/RiderScreens";
 import {
@@ -240,10 +240,10 @@ export default function RiderApp() {
     <div style={{ position: "fixed", inset: 0, background: "var(--app-bg)", display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: SHELL_MAX_W, height: "100%", position: "relative", background: "var(--app-bg)", overflow: "hidden", boxShadow: "var(--shadow-float)", display: "flex", flexDirection: "column" }}>
 
-        {/* Muted launch video, played each time the app opens. Signed-out riders stay on its last frame
-            until they tap Start Riding; everyone else continues into the app when it ends. */}
+        {/* Animated launch screen, shown each time the app opens. Signed-out riders stay on it until they
+            tap Start Riding; everyone else continues into the app once it has played. */}
         {(intro || stage === "splash") && (
-          <VideoSplash src="/driveway-intro.mp4" cta="Start Riding" onDone={stage === "loading" && !bootErr ? undefined : endIntro}
+          <BrandSplash variant="rider" cta="Start Riding" onDone={stage === "loading" && !bootErr ? undefined : endIntro}
             onStart={stage === "splash" ? () => { setIntro(false); setStage("login"); } : undefined}
             footer={NATIVE_APP ? undefined : <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.75)" }}><Link href="/" style={{ color: "white", fontWeight: 600 }}>Book a ride instead</Link></p>} />
         )}

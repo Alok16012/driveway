@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import BottomNav, { ChatGlyph, HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph } from "../BottomNav";
-import { BlockedBanner, EmailLogin, ForgotPassword, PermissionStep, ProfileSetup, ResetPassword, SignUp, VideoSplash } from "../Auth";
+import { BlockedBanner, EmailLogin, ForgotPassword, PermissionStep, ProfileSetup, ResetPassword, SignUp, BrandSplash } from "../Auth";
 import HomeScreen, { HOME_BG } from "./HomeScreen";
 import { ChooseRidePage, LiveRidePage, ParcelPage, SearchPage, TripDonePage } from "./BookingScreens";
 import { ChatScreen, EditProfilePage, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen, type ChatMessage, type ProfileKey } from "./AccountScreens";
@@ -194,10 +194,10 @@ export default function CustomerApp() {
     <div style={{ position: "fixed", inset: 0, background: "var(--app-bg)", display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: SHELL_MAX_W, height: "100%", position: "relative", background: "var(--app-bg)", overflow: "hidden", boxShadow: "var(--shadow-float)", display: "flex", flexDirection: "column" }}>
 
-        {/* Muted launch video, played each time the app opens. Signed-out users stay on its last frame
-            until they tap Get Started; everyone else continues into the app when it ends. */}
+        {/* Animated launch screen, shown each time the app opens. Signed-out users stay on it until they
+            tap Get Started; everyone else continues into the app once it has played. */}
         {(intro || stage === "splash") && (
-          <VideoSplash src="/driveway-intro.mp4" onDone={stage === "loading" && !bootErr ? undefined : endIntro}
+          <BrandSplash variant="customer" onDone={stage === "loading" && !bootErr ? undefined : endIntro}
             onStart={stage === "splash" ? () => { setIntro(false); setStage("login"); } : undefined}
             footer={NATIVE_APP ? undefined :
               <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
