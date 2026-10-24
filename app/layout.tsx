@@ -24,8 +24,9 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={poppins.variable}>
-      <body style={{ margin: 0, padding: 0, minHeight: "100vh", fontFamily: "var(--font-poppins)" }}>
+    <html lang="en" className={poppins.variable} style={{ background: "#ea580c" }}>
+      {/* Inline orange so the first paint matches the launch screen, before the stylesheet arrives. */}
+      <body style={{ margin: 0, padding: 0, minHeight: "100vh", fontFamily: "var(--font-poppins)", background: "#ea580c" }}>
         {children}
       </body>
     </html>

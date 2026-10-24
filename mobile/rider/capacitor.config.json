@@ -2,6 +2,7 @@
   "appId": "com.driveway.rider",
   "appName": "DriveWay Rider",
   "webDir": "www",
+  "backgroundColor": "#ea580c",
   "server": { "androidScheme": "https", "appStartPath": "/rider" },
   "includePlugins": ["@capacitor-community/background-geolocation", "@capacitor/geolocation"],
   "android": { "allowMixedContent": false, "useLegacyBridge": true }

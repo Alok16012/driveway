@@ -2,6 +2,7 @@
   "appId": "com.driveway.customer",
   "appName": "DriveWay",
   "webDir": "www",
+  "backgroundColor": "#ea580c",
   "server": { "androidScheme": "https", "appStartPath": "/" },
   "includePlugins": ["@capacitor/geolocation"],
   "android": { "allowMixedContent": false }
