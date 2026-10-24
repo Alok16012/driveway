@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { formatAddress } from "../app/lib/location";
 import { decodePolyline, formatGoogleAddress } from "../app/lib/google";
+import { formatOlaAddress } from "../app/lib/olamaps";
 
 const bhopal = { city_district: "Bhopal", city: "Bhopal", state: "Madhya Pradesh", country: "India" };
 
@@ -50,5 +51,23 @@ describe("formatGoogleAddress", () => {
 describe("decodePolyline", () => {
   it("decodes Google's reference example", () => {
     expect(decodePolyline("_p~iF~ps|U_ulLnnqC_mqNvxq`@")).toEqual([{ lat: 38.5, lng: -120.2 }, { lat: 40.7, lng: -120.95 }, { lat: 43.252, lng: -126.453 }]);
+  });
+});
+
+describe("formatOlaAddress", () => {
+  const comp = (long_name: string, types: string) => ({ long_name, short_name: long_name, types });
+  it("uses the place name, locality and city", () => {
+    expect(formatOlaAddress([{ formatted_address: "Spencer's, 6 Camac St, Elgin, Kolkata, West Bengal 700017, India", name: "Spencer's",
+      address_components: [comp("Camac Street", "route"), comp("Elgin", "sublocality"), comp("Kolkata", "locality"), comp("West Bengal", "administrative_area_level_1")] }]))
+      .toBe("Spencer's, Elgin, Kolkata");
+  });
+  it("falls back to the street when there is no name, and accepts array types", () => {
+    expect(formatOlaAddress([{ formatted_address: "x", address_components: [
+      { long_name: "Boring Road", short_name: "Boring Rd", types: ["route"] }, { long_name: "Patna", short_name: "Patna", types: ["locality"] }] }]))
+      .toBe("Boring Road, Patna");
+  });
+  it("trims the formatted address when the components say too little", () => {
+    expect(formatOlaAddress([{ formatted_address: "Gandhi Maidan, Patna, Bihar 800001, India" }])).toBe("Gandhi Maidan, Patna, Bihar 800001");
+    expect(formatOlaAddress([])).toBeNull();
   });
 });

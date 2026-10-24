@@ -3,5 +3,6 @@
   "appName": "DriveWay Admin",
   "webDir": "www",
   "server": { "androidScheme": "https", "appStartPath": "/admin" },
+  "includePlugins": ["@capacitor/geolocation"],
   "android": { "allowMixedContent": false }
 }

@@ -1,11 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Capacitor, registerPlugin } from "@capacitor/core";
+import type { GeolocationPlugin } from "@capacitor/geolocation";
 import { googleReverseGeocode, hasGoogle } from "./google";
+import { hasOla, olaReverseGeocode } from "./olamaps";
 
-/* The device's real position, shared by every map on screen. One `watchPosition` runs while anything is
- * subscribed. Works in the browser (HTTPS or localhost only) and in the Capacitor apps, whose WebView asks
- * for the Android/iOS location permission declared in mobile/*. */
+/* The device's real position, shared by every map on screen. One watch runs while anything is subscribed.
+ * In the Android/iOS apps it comes from @capacitor/geolocation — Google's Fused Location Provider (GPS + Wi-Fi +
+ * cell towers) on Android and Core Location on iOS — which is much sharper than the WebView's own geolocation.
+ * In a browser (HTTPS or localhost only) it is navigator.geolocation. */
+
+// Kept on globalThis so a dev hot reload doesn't register the plugin twice.
+const gg = globalThis as { __drivewayGeo?: GeolocationPlugin };
+const NativeGeo = (gg.__drivewayGeo ??= registerPlugin<GeolocationPlugin>("Geolocation"));
+const nativeGps = () => Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("Geolocation");
 
 export type LatLng = { lat: number; lng: number };
 export type DeviceLocation =
@@ -44,15 +53,43 @@ export const placePos = (p: { id: string; lat?: number; lng?: number } | undefin
 
 let current: DeviceLocation = { status: "locating" };
 const listeners = new Set<(l: DeviceLocation) => void>();
-let watchId: number | null = null;
+let watchId: number | string | null = null;
+let starting = false;                         // a native watch is being set up (permission prompt, etc.)
 
 function set(l: DeviceLocation) {
   current = l;
   listeners.forEach((f) => f(l));
 }
 
+const OFF = "Location is off — allow it for DriveWay in your settings.";
+const NO_FIX = "Couldn't find your location. Check GPS is on.";
+
+/** The app builds: ask for precise location, then watch the fused provider. */
+async function startNative() {
+  starting = true;
+  try {
+    let perm = await NativeGeo.checkPermissions();
+    if (perm.location !== "granted") perm = await NativeGeo.requestPermissions({ permissions: ["location", "coarseLocation"] });
+    if (perm.location !== "granted" && perm.coarseLocation !== "granted") { set({ status: "denied", message: OFF }); return; }
+    const id = await NativeGeo.watchPosition(
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000, minimumUpdateInterval: 1000 },
+      (p, err) => {
+        if (p) { set({ status: "ok", pos: { lat: p.coords.latitude, lng: p.coords.longitude }, accuracy: p.coords.accuracy, at: p.timestamp }); return; }
+        if (current.status === "ok") return;   // a lost fix keeps the last good position on screen
+        set(/denied|permission/i.test(String(err?.message ?? err)) ? { status: "denied", message: OFF } : { status: "unavailable", message: NO_FIX });
+      },
+    );
+    if (listeners.size === 0) { void NativeGeo.clearWatch({ id }); return; }   // everyone left while we were asking
+    watchId = id;
+  } catch (e) {
+    // Thrown when the phone's location services are switched off.
+    set({ status: "unavailable", message: /disabled|services/i.test(String((e as Error)?.message)) ? "Turn on Location in your phone's settings." : NO_FIX });
+  } finally { starting = false; }
+}
+
 function start() {
-  if (watchId !== null || typeof window === "undefined") return;
+  if (watchId !== null || starting || typeof window === "undefined") return;
+  if (nativeGps()) { void startNative(); return; }
   if (!window.isSecureContext) {
     set({ status: "insecure", message: "Location needs HTTPS — open the app over https:// or localhost." });
     return;
@@ -66,16 +103,15 @@ function start() {
     (e) => {
       // A timeout or a lost fix keeps the last good position on screen.
       if (e.code === e.TIMEOUT && current.status === "ok") return;
-      set(e.code === e.PERMISSION_DENIED
-        ? { status: "denied", message: "Location is off — allow it for DriveWay in your settings." }
-        : { status: "unavailable", message: "Couldn't find your location. Check GPS is on." });
+      set(e.code === e.PERMISSION_DENIED ? { status: "denied", message: OFF } : { status: "unavailable", message: NO_FIX });
     },
     { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },   // fresh fixes only: a cached one can be from another place
   );
 }
 
 function stop() {
-  if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+  if (typeof watchId === "string") void NativeGeo.clearWatch({ id: watchId });
+  else if (watchId !== null) navigator.geolocation.clearWatch(watchId);
   watchId = null;
   if (current.status !== "ok") current = { status: "locating" };
 }
@@ -110,8 +146,9 @@ export function distanceM(a: LatLng, b: LatLng): number {
   return 2 * 6371000 * Math.asin(Math.sqrt(s));
 }
 
-/* Street address for a point: Google Geocoding when a Maps key is set, else (or if it fails) OpenStreetMap
- * Nominatim, whose usage policy allows ~1 request a second. Cached; looked up again after moving 50 m. */
+/* Street address for a point, best source first: Ola Maps (India-first, free tier) when its key is set, then Google
+ * Geocoding when a Maps key is set, then OpenStreetMap Nominatim (no key; ~1 request a second).
+ * Cached; looked up again after moving 50 m. */
 const geoCache: { pos: LatLng; address: string }[] = [];
 
 type NominatimReverse = { category?: string; type?: string; name?: string; display_name?: string; address?: Record<string, string> };
@@ -137,7 +174,7 @@ export function formatAddress(j: NominatimReverse): string | null {
 export async function reverseGeocode(pos: LatLng): Promise<string | null> {
   const hit = geoCache.find((c) => distanceM(c.pos, pos) < 50);
   if (hit) return hit.address;
-  const g = hasGoogle() ? await googleReverseGeocode(pos) : null;
+  const g = (hasOla() ? await olaReverseGeocode(pos) : null) ?? (hasGoogle() ? await googleReverseGeocode(pos) : null);
   if (g) { geoCache.push({ pos, address: g }); return g; }
   try {
     const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=${pos.lat}&lon=${pos.lng}`,
