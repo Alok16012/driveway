@@ -53,8 +53,9 @@ export const placePos = (p: { id: string; lat?: number; lng?: number } | undefin
 
 let current: DeviceLocation = { status: "locating" };
 const listeners = new Set<(l: DeviceLocation) => void>();
-let watchId: number | string | null = null;
-let starting = false;                         // a native watch is being set up (permission prompt, etc.)
+let running = false;
+let gen = 0;                                  // bumped on stop, so a slow permission prompt can't revive a stopped watch
+let stops: (() => void)[] = [];
 
 function set(l: DeviceLocation) {
   current = l;
@@ -64,55 +65,75 @@ function set(l: DeviceLocation) {
 const OFF = "Location is off — allow it for DriveWay in your settings.";
 const NO_FIX = "Couldn't find your location. Check GPS is on.";
 
-/** The app builds: ask for precise location, then watch the fused provider. */
-async function startNative() {
-  starting = true;
-  try {
-    let perm = await NativeGeo.checkPermissions();
-    if (perm.location !== "granted") perm = await NativeGeo.requestPermissions({ permissions: ["location", "coarseLocation"] });
-    if (perm.location !== "granted" && perm.coarseLocation !== "granted") { set({ status: "denied", message: OFF }); return; }
-    const id = await NativeGeo.watchPosition(
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000, minimumUpdateInterval: 1000 },
-      (p, err) => {
-        if (p) { set({ status: "ok", pos: { lat: p.coords.latitude, lng: p.coords.longitude }, accuracy: p.coords.accuracy, at: p.timestamp }); return; }
-        if (current.status === "ok") return;   // a lost fix keeps the last good position on screen
-        set(/denied|permission/i.test(String(err?.message ?? err)) ? { status: "denied", message: OFF } : { status: "unavailable", message: NO_FIX });
-      },
-    );
-    if (listeners.size === 0) { void NativeGeo.clearWatch({ id }); return; }   // everyone left while we were asking
-    watchId = id;
-  } catch (e) {
-    // Thrown when the phone's location services are switched off.
-    set({ status: "unavailable", message: /disabled|services/i.test(String((e as Error)?.message)) ? "Turn on Location in your phone's settings." : NO_FIX });
-  } finally { starting = false; }
+/** A fix from any source. With two sources running, keep the sharper one unless ours is getting old. */
+function onFix(lat: number, lng: number, accuracy: number, at: number) {
+  if (current.status === "ok" && accuracy > current.accuracy * 1.5 && Date.now() - current.at < 10_000) return;
+  set({ status: "ok", pos: { lat, lng }, accuracy, at });
 }
 
-function start() {
-  if (watchId !== null || starting || typeof window === "undefined") return;
-  if (nativeGps()) { void startNative(); return; }
-  if (!window.isSecureContext) {
-    set({ status: "insecure", message: "Location needs HTTPS — open the app over https:// or localhost." });
-    return;
-  }
-  if (!("geolocation" in navigator)) {
-    set({ status: "unavailable", message: "This device can't share its location." });
-    return;
-  }
-  watchId = navigator.geolocation.watchPosition(
-    (p) => set({ status: "ok", pos: { lat: p.coords.latitude, lng: p.coords.longitude }, accuracy: p.coords.accuracy, at: p.timestamp }),
+/** The browser's / WebView's own geolocation (Android LocationManager inside the apps). */
+function watchBrowser(reportErrors: boolean) {
+  if (!("geolocation" in navigator)) return false;
+  const id = navigator.geolocation.watchPosition(
+    (p) => onFix(p.coords.latitude, p.coords.longitude, p.coords.accuracy, p.timestamp),
     (e) => {
       // A timeout or a lost fix keeps the last good position on screen.
-      if (e.code === e.TIMEOUT && current.status === "ok") return;
+      if (!reportErrors || current.status === "ok") return;
+      if (e.code === e.TIMEOUT) return;
       set(e.code === e.PERMISSION_DENIED ? { status: "denied", message: OFF } : { status: "unavailable", message: NO_FIX });
     },
     { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },   // fresh fixes only: a cached one can be from another place
   );
+  stops.push(() => navigator.geolocation.clearWatch(id));
+  return true;
+}
+
+/** The app builds: ask for precise location, then watch two sources at once — @capacitor/geolocation (Google's
+ *  fused provider) and the WebView's geolocation (Android LocationManager). Phones whose Google location service is
+ *  missing or broken (Huawei, de-Googled or outdated Play services) still get fixes from the second. */
+async function startNative(g: number) {
+  try {
+    let perm = await NativeGeo.checkPermissions();
+    if (perm.location !== "granted") perm = await NativeGeo.requestPermissions({ permissions: ["location", "coarseLocation"] });
+    if (g !== gen) return;
+    if (perm.location !== "granted" && perm.coarseLocation !== "granted") { set({ status: "denied", message: OFF }); return; }
+    watchBrowser(false);
+    const id = await NativeGeo.watchPosition(
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000, minimumUpdateInterval: 1000 },
+      (p, err) => {
+        if (p) { onFix(p.coords.latitude, p.coords.longitude, p.coords.accuracy, p.timestamp); return; }
+        if (current.status === "ok") return;
+        if (/denied|permission/i.test(String(err?.message ?? err))) set({ status: "denied", message: OFF });
+      },
+    );
+    if (g !== gen) { void NativeGeo.clearWatch({ id }); return; }   // stopped while we were asking
+    stops.push(() => void NativeGeo.clearWatch({ id }));
+    // Neither source has answered: say so instead of spinning forever (fixes still land if they come later).
+    const t = setTimeout(() => { if (g === gen && current.status !== "ok") set({ status: "unavailable", message: NO_FIX }); }, 25_000);
+    stops.push(() => clearTimeout(t));
+  } catch (e) {
+    if (g !== gen) return;
+    // Thrown when the phone's location services are switched off — the WebView may still manage.
+    if (!watchBrowser(true)) set({ status: "unavailable", message: /disabled|services/i.test(String((e as Error)?.message)) ? "Turn on Location in your phone's settings." : NO_FIX });
+  }
+}
+
+function start() {
+  if (running || typeof window === "undefined") return;
+  running = true;
+  if (nativeGps()) { void startNative(gen); return; }
+  if (!window.isSecureContext) {
+    set({ status: "insecure", message: "Location needs HTTPS — open the app over https:// or localhost." });
+    return;
+  }
+  if (!watchBrowser(true)) set({ status: "unavailable", message: "This device can't share its location." });
 }
 
 function stop() {
-  if (typeof watchId === "string") void NativeGeo.clearWatch({ id: watchId });
-  else if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-  watchId = null;
+  gen++;
+  running = false;
+  stops.forEach((f) => f());
+  stops = [];
   if (current.status !== "ok") current = { status: "locating" };
 }
 
