@@ -713,92 +713,187 @@ function DriversSection({ d, act }: { d: Data; act: Act }) {
   );
 }
 
-/* ───────────────────────── Pricing (saved to the database; applies to the next quote) ───────────────────────── */
+/* ───────────────────────── Pricing ───────────────────────── */
+
+type PriceKey = "base" | "per_km" | "per_min" | "min_fare" | "cancel_fee" | "platform_fee" | "platform_fee_non_ac";
+
+/** Every price an admin can set, in plain words. `max` matches the server's limits (vehicles_fare_limits). */
+const PRICE_FIELDS: { k: PriceKey; label: string; hint: string; max: number; step: number; whole?: boolean }[] = [
+  { k: "base", label: "Starting fare", hint: "Ride shuru hote hi lagta hai", max: 1000, step: 1, whole: true },
+  { k: "per_km", label: "Per km", hint: "Har kilometre ka", max: 100, step: 0.5 },
+  { k: "per_min", label: "Per minute", hint: "Ride ke har minute ka (traffic time)", max: 10, step: 0.5 },
+  { k: "min_fare", label: "Minimum fare", hint: "Chhoti ride bhi isse kam nahi hogi", max: 2000, step: 1, whole: true },
+  { k: "cancel_fee", label: "Cancellation fee", hint: "Driver nikal chuka ho, tab customer cancel kare toh", max: 500, step: 1, whole: true },
+  { k: "platform_fee", label: "DriveWay fee · AC ride", hint: "Har AC ride pe rider ke wallet se", max: 100, step: 1, whole: true },
+  { k: "platform_fee_non_ac", label: "DriveWay fee · Non-AC ride", hint: "Har Non-AC ride pe rider ke wallet se", max: 100, step: 1, whole: true },
+];
+
+const EXAMPLE_KMS = [2, 5, 10, 20];
+/** Two- and three-wheelers never have AC, so they get no AC switch. */
+const NO_AC: string[] = ["bike", "auto", "erick"];
+/** The app's time estimate for a trip of `km` (same as the server's trip_estimate_at). */
+const minsFor = (km: number) => Math.round(km * 2.6 + 4);
+
+/** The fare the server would quote (fare_quote) — so the preview matches what customers see. */
+function previewFare(v: Vehicle, s: Settings, km: number, ac: boolean) {
+  const mins = minsFor(km);
+  const sub = Number(v.base) + Math.round(Number(v.per_km) * km) + Math.round(Number(v.per_min) * mins);
+  const surge = s.surge_on && Number(s.surge_mult) > 1 ? Math.round(sub * Number(s.surge_mult)) - sub : 0;
+  let total = Math.max(sub + surge, Number(v.min_fare));
+  if (v.ac && !ac) total = Math.round(total * Number(s.non_ac_factor));
+  const fee = Number(ac && v.ac ? v.platform_fee : v.platform_fee_non_ac);
+  const booking = total > Number(s.booking_fee_above) ? Number(s.booking_fee) : 0;
+  return { mins, fare: total, customerPays: total + booking, riderGets: total - Math.min(fee, total), minApplied: sub + surge < Number(v.min_fare) };
+}
 
 function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<void> }) {
   const [rows, setRows] = useState<Vehicle[]>(d.vehicles);
   const [s, setS] = useState<Settings>(d.settings);
   const [busy, setBusy] = useState(false);
+  const [km, setKm] = useState(5);
   // The panel reloads every 15s; only take the fresh values while there are no unsaved edits.
   const [dirty, setDirty] = useState(false);
   useEffect(() => { if (!dirty) { setRows(d.vehicles); setS(d.settings); } }, [d.vehicles, d.settings, dirty]);
-  type NumKey = "base" | "per_km" | "per_min" | "min_fare" | "cancel_fee" | "platform_fee" | "platform_fee_non_ac";
-  const cols: [NumKey, string][] = [["base", "Base ₹"], ["per_km", "₹ / km"], ["per_min", "₹ / min"], ["min_fare", "Min fare ₹"], ["cancel_fee", "Cancel fee ₹"],
-    ["platform_fee", "AC platform fee ₹"], ["platform_fee_non_ac", "Non-AC platform fee ₹"]];
-  const isFee = (k: NumKey) => k === "platform_fee" || k === "platform_fee_non_ac";
-  // Same upper bounds as the server (vehicles_fare_limits), so a typo like ₹30/min can't be saved.
-  const MAX: Record<NumKey, number> = { base: 1000, per_km: 100, per_min: 10, min_fare: 2000, cancel_fee: 500, platform_fee: 100, platform_fee_non_ac: 100 };
-  const valid = (k: NumKey, n: number) => Number.isFinite(n) && n >= 0 && n <= MAX[k] && (!isFee(k) || Number.isInteger(n));
+
+  const valid = (k: PriceKey, n: number) => {
+    const f = PRICE_FIELDS.find((x) => x.k === k)!;
+    return Number.isFinite(n) && n >= 0 && n <= f.max && (!f.whole || Number.isInteger(n));
+  };
   const validS = (n: number, max: number) => Number.isInteger(n) && n >= 0 && n <= max;
   const upd = (id: string, p: Partial<Vehicle>) => { setDirty(true); setRows((r) => r.map((x) => (x.id === id ? { ...x, ...p } : x))); };
   const updS = (p: Partial<Settings>) => { setDirty(true); setS((x) => ({ ...x, ...p })); };
-  const invalid = rows.some((v) => cols.some(([k]) => !valid(k, Number(v[k])))) || !validS(Number(s.booking_fee), 100) || !validS(Number(s.booking_fee_above), 10000);
+  const shown = (v: Vehicle) => PRICE_FIELDS.filter((f) => f.k !== "platform_fee" || v.ac);
+  const invalid = rows.some((v) => shown(v).some((f) => !valid(f.k, Number(v[f.k])))) || !validS(Number(s.booking_fee), 100) || !validS(Number(s.booking_fee_above), 10000);
+
+  const KEYS = ["base", "per_km", "per_min", "min_fare", "cancel_fee", "platform_fee", "platform_fee_non_ac", "ac", "enabled"] as const;
+  const changedOf = (v: Vehicle) => { const o = d.vehicles.find((x) => x.id === v.id)!; return KEYS.filter((k) => String(v[k]) !== String(o[k])); };
+  const settingsChanged = s.surge_on !== d.settings.surge_on || s.surge_mult !== d.settings.surge_mult || s.booking_fee !== d.settings.booking_fee || s.booking_fee_above !== d.settings.booking_fee_above;
+  const changes = rows.reduce((n, v) => n + changedOf(v).length, 0) + (settingsChanged ? 1 : 0);
+
   const save = async () => {
     setBusy(true);
     try {
       for (const v of rows) {
-        const orig = d.vehicles.find((x) => x.id === v.id)!;
-        const changed = Object.fromEntries((["base", "per_km", "per_min", "min_fare", "cancel_fee", "platform_fee", "platform_fee_non_ac", "ac", "enabled"] as const).filter((k) => String(v[k]) !== String(orig[k])).map((k) => [k, v[k]]));
-        if (Object.keys(changed).length) await rpc("admin_update_vehicle", { p_id: v.id, p: changed });
+        const keys = changedOf(v);
+        if (keys.length) await rpc("admin_update_vehicle", { p_id: v.id, p: Object.fromEntries(keys.map((k) => [k, v[k]])) });
       }
-      if (s.surge_on !== d.settings.surge_on || s.surge_mult !== d.settings.surge_mult || s.booking_fee !== d.settings.booking_fee || s.booking_fee_above !== d.settings.booking_fee_above) {
+      if (settingsChanged) {
         await rpc("admin_update_settings", { p: { surge_on: s.surge_on, surge_mult: s.surge_mult, booking_fee: s.booking_fee, booking_fee_above: s.booking_fee_above } });
       }
       setDirty(false);
-      await done("Pricing saved — applies to the next quote; booked rides keep their price");
+      await done("Prices saved ✓ — new bookings use them now. Rides already booked keep their price.");
     } catch (e) { await done((e as Error).message); } finally { setBusy(false); }
   };
-  const num: React.CSSProperties = { ...field, width: 84, padding: "7px 10px", fontSize: 13 };
+  const discard = () => { setRows(d.vehicles); setS(d.settings); setDirty(false); };
+
+  const money = (n: number) => (Number.isFinite(n) ? inr(n) : "—");
+  const priceInput = (v: Vehicle, f: (typeof PRICE_FIELDS)[number]) => {
+    const val = Number(v[f.k]); const ok = valid(f.k, val);
+    const orig = Number(d.vehicles.find((x) => x.id === v.id)![f.k]);
+    const changed = String(v[f.k]) !== String(orig);
+    return (
+      <label key={f.k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>{f.label}</span>
+          <span style={{ display: "block", fontSize: 11.5, color: ok ? "var(--ink-mute)" : "var(--red)" }}>
+            {ok ? (changed ? `Pehle ${money(orig)} tha` : f.hint) : `₹0 – ₹${f.max}${f.whole ? ", poore rupaye" : ""}`}
+          </span>
+        </span>
+        <span style={{ display: "flex", alignItems: "center", borderRadius: 10, border: `1.5px solid ${!ok ? "var(--red)" : changed ? "var(--gold)" : "var(--line)"}`, background: changed ? "var(--gold-tint)" : "var(--surface-input)", overflow: "hidden" }}>
+          <span style={{ padding: "0 0 0 10px", fontSize: 13, color: "var(--ink-soft)" }}>₹</span>
+          <input type="number" inputMode="decimal" min={0} max={f.max} step={f.step} value={Number.isNaN(val) ? "" : v[f.k]} aria-label={`${v.name} ${f.label}`}
+            onChange={(e) => upd(v.id, { [f.k]: e.target.value === "" ? NaN : Number(e.target.value) } as Partial<Vehicle>)}
+            style={{ width: 74, border: "none", outline: "none", background: "transparent", padding: "8px 10px 8px 4px", fontSize: 15, fontWeight: 700, color: "var(--ink)", textAlign: "right" }} />
+        </span>
+      </label>
+    );
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Panel title={`Vehicle categories & fares · Non-AC is ${Math.round((1 - d.settings.non_ac_factor) * 100)}% cheaper`} right={<PrimaryButton onClick={() => void save()} disabled={busy || invalid} style={{ width: "auto", padding: "10px 18px", fontSize: 13.5 }}>{busy ? "Saving…" : "Save changes"}</PrimaryButton>}>
-        {invalid && <ErrorText msg="Check the red boxes. Limits: base ≤ ₹1000, ₹/km ≤ 100, ₹/min ≤ 10, min fare ≤ ₹2000, cancel fee ≤ ₹500; platform fees and the booking charge are whole rupees, ₹0–₹100." />}
-        <div className="adm-table-wrap">
-          <table className="adm-table">
-            <thead><tr><th>Category</th>{cols.map(([, l]) => <th key={l}>{l}</th>)}<th>AC option</th><th>Enabled</th></tr></thead>
-            <tbody>
-              {rows.map((v) => (
-                <tr key={v.id} style={{ cursor: "default" }}>
-                  <td><span style={{ display: "flex", alignItems: "center", gap: 8 }}><VehicleArt kind={v.id} size={40} /><b>{v.name}</b></span></td>
-                  {cols.map(([k]) => k === "platform_fee" && !v.ac ? (
-                    <td key={k} style={{ color: "var(--ink-mute)", fontSize: 12 }} title="Turn on the AC option to set an AC platform fee">No AC</td>
-                  ) : (
-                    <td key={k}><input type="number" min={0} max={MAX[k]} step={k === "per_min" || k === "per_km" ? 0.5 : 1} value={v[k]} aria-label={`${v.name} ${k}`}
-                      onChange={(e) => upd(v.id, { [k]: e.target.value === "" ? NaN : Number(e.target.value) } as Partial<Vehicle>)} style={{ ...num, borderColor: valid(k, Number(v[k])) ? undefined : "var(--red)" }} /></td>
-                  ))}
-                  <td><Toggle on={v.ac} onChange={(on) => upd(v.id, { ac: on })} label={`${v.name} offers AC`} /></td>
-                  <td><Toggle on={v.enabled} onChange={(on) => upd(v.id, { enabled: on })} label={`${v.name} enabled`} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingBottom: changes ? 84 : 0 }}>
+      <Panel title="How fares work">
+        <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.6 }}>
+          <b style={{ color: "var(--ink)" }}>Fare = Starting fare + (km × Per km) + (minutes × Per minute)</b>. Agar ye Minimum fare se kam ho, toh Minimum fare lagta hai.
+          Non-AC car ride {Math.round((1 - Number(d.settings.non_ac_factor)) * 100)}% sasti hoti hai. Har card mein neeche dekhiye ki ek example ride ka customer kitna dega aur rider ko kitna milega — number badalte hi turant update hota hai.
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Example ride:</span>
+          {EXAMPLE_KMS.map((k) => (
+            <button key={k} onClick={() => setKm(k)} aria-pressed={km === k} style={{ ...smallBtn(km === k ? "blue" : "ghost"), padding: "6px 12px" }}>{k} km</button>
+          ))}
+          <span style={{ fontSize: 12.5, color: "var(--ink-mute)" }}>≈ {minsFor(km)} min</span>
         </div>
       </Panel>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+        {rows.map((v) => {
+          const ex = previewFare(v, s, km, true);
+          const exNon = v.ac ? previewFare(v, s, km, false) : null;
+          const edited = changedOf(v).length > 0;
+          return (
+            <div key={v.id} style={{ ...card, padding: 16, opacity: v.enabled ? 1 : 0.7, outline: edited ? "2px solid var(--gold)" : "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <VehicleArt kind={v.id} size={48} />
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>{v.name}</p>
+                  <p style={{ margin: 0, fontSize: 11.5, color: v.enabled ? "var(--green)" : "var(--ink-mute)", fontWeight: 600 }}>{v.enabled ? "Customers can book" : "Hidden from customers"}</p>
+                </div>
+                <Toggle on={v.enabled} onChange={(on) => upd(v.id, { enabled: on })} label={`${v.name} bookable`} />
+              </div>
+              {!NO_AC.includes(v.id) && <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, padding: "8px 10px", borderRadius: 10, background: "var(--bg-secondary)" }}>
+                <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600 }}>❄ AC option {v.ac ? "on" : "off"}<span style={{ display: "block", fontWeight: 500, color: "var(--ink-mute)", fontSize: 11 }}>{v.ac ? "Customer AC ya Non-AC chun sakta hai" : "Sirf Non-AC rides"}</span></span>
+                <Toggle on={v.ac} onChange={(on) => upd(v.id, { ac: on })} label={`${v.name} offers AC`} />
+              </label>}
+              <div style={{ marginTop: 4 }}>{shown(v).map((f) => priceInput(v, f))}</div>
+              <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "var(--blue-tint)" }}>
+                <p style={{ margin: 0, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em", color: "var(--blue)" }}>{km} KM RIDE (≈ {ex.mins} MIN)</p>
+                {[[v.ac ? "AC" : "Ride", ex], ...(exNon ? [["Non-AC", exNon] as const] : [])].map(([lbl, x]) => {
+                  const p = x as ReturnType<typeof previewFare>;
+                  return (
+                    <div key={String(lbl)} style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 6, fontSize: 13 }}>
+                      <span style={{ color: "var(--ink-soft)" }}>{String(lbl)}{p.minApplied ? " · minimum fare" : ""}</span>
+                      <span>Customer <b>{money(p.customerPays)}</b> · Rider <b style={{ color: "var(--green)" }}>{money(p.riderGets)}</b></span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       <div className="adm-grid-2">
-        <Panel title="Platform fee per completed ride">
-          {rows.flatMap((v) => (v.ac ? [["AC", "platform_fee"], ["Non-AC", "platform_fee_non_ac"]] as const : [["Non-AC", "platform_fee_non_ac"]] as const).map(([lbl, k]) => {
-            const fee = Number(v[k]); const ok = valid(k, fee);
-            return <div key={v.id + k}>{kv(`${v.name} ${lbl} · ${ok ? inr(fee) : "—"}`, ok ? `${Math.floor(50 / Math.max(fee, 1))} rides from a ${inr(50)} wallet` : "—")}</div>;
-          }))}
-          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>A flat fee in rupees, taken from the rider&apos;s wallet when a ride completes (never on cancellations). An AC ride uses the AC fee, a non-AC ride the non-AC fee. Riders whose wallet is below the fee get no new rides until they recharge. A new fee applies to rides completed after you save. Coupon discounts are paid by DriveWay, not the driver.</p>
-        </Panel>
-        <Panel title="Customer booking charge">
+        <Panel title="Booking charge (customer se)">
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
-            <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>Charge ₹
-              <input type="number" min={0} max={100} step={1} value={s.booking_fee} aria-label="Booking charge" onChange={(e) => updS({ booking_fee: e.target.value === "" ? NaN : Number(e.target.value) })} style={{ ...num, borderColor: validS(Number(s.booking_fee), 100) ? undefined : "var(--red)" }} /></label>
-            <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>when the fare is above ₹
-              <input type="number" min={0} max={10000} step={1} value={s.booking_fee_above} aria-label="Booking charge threshold" onChange={(e) => updS({ booking_fee_above: e.target.value === "" ? NaN : Number(e.target.value) })} style={{ ...num, borderColor: validS(Number(s.booking_fee_above), 10000) ? undefined : "var(--red)" }} /></label>
+            <label style={{ fontSize: 13.5, display: "flex", alignItems: "center", gap: 8 }}>Charge ₹
+              <input type="number" min={0} max={100} step={1} value={Number.isNaN(Number(s.booking_fee)) ? "" : s.booking_fee} aria-label="Booking charge" onChange={(e) => updS({ booking_fee: e.target.value === "" ? NaN : Number(e.target.value) })} style={{ ...field, width: 84, padding: "7px 10px", fontSize: 14, borderColor: validS(Number(s.booking_fee), 100) ? undefined : "var(--red)" }} /></label>
+            <label style={{ fontSize: 13.5, display: "flex", alignItems: "center", gap: 8 }}>jab fare ₹
+              <input type="number" min={0} max={10000} step={1} value={Number.isNaN(Number(s.booking_fee_above)) ? "" : s.booking_fee_above} aria-label="Booking charge threshold" onChange={(e) => updS({ booking_fee_above: e.target.value === "" ? NaN : Number(e.target.value) })} style={{ ...field, width: 84, padding: "7px 10px", fontSize: 14, borderColor: validS(Number(s.booking_fee_above), 10000) ? undefined : "var(--red)" }} /> se zyada ho</label>
           </div>
-          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>Paid by the customer and kept by DriveWay; the rider&apos;s earning is unchanged. Checked on the fare after any coupon and before the faster-pickup add-on, and shown as its own line on the fare. Applies to new bookings.</p>
+          <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>Customer deta hai, DriveWay rakhta hai. Rider ki kamai nahi badalti. Fare pe alag line mein dikhta hai.</p>
         </Panel>
-        <Panel title="Surge pricing" right={<Toggle on={s.surge_on} onChange={(on) => updS({ surge_on: on })} label="Surge pricing" />}>
+        <Panel title="Surge (high demand)" right={<Toggle on={s.surge_on} onChange={(on) => updS({ surge_on: on })} label="Surge pricing" />}>
           <div style={{ display: "flex", alignItems: "center", gap: 14, opacity: s.surge_on ? 1 : 0.45 }}>
             <input type="range" min={1} max={3} step={0.1} disabled={!s.surge_on} value={s.surge_mult} onChange={(e) => updS({ surge_mult: Number(e.target.value) })} style={{ flex: 1, accentColor: "var(--blue)" }} aria-label="Surge multiplier" />
             <span style={{ fontSize: 24, fontWeight: 800, width: 64, textAlign: "right" }}>{Number(s.surge_mult).toFixed(1)}×</span>
           </div>
-          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>When on, every new quote is multiplied and shows a &quot;High demand&quot; line to the customer.</p>
+          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>
+            {s.surge_on ? `On: har fare ${Number(s.surge_mult).toFixed(1)} guna — ₹100 ki ride ₹${Math.round(100 * Number(s.surge_mult))} ki hogi. Customer ko "High demand" dikhega.` : "Off: normal fare. Rush ke time on karein."}
+          </p>
         </Panel>
       </div>
+
+      {changes > 0 && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50, display: "flex", justifyContent: "center", padding: "12px 16px calc(12px + env(safe-area-inset-bottom))", pointerEvents: "none" }}>
+          <div style={{ ...card, pointerEvents: "auto", display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", maxWidth: 640, width: "100%", boxShadow: "0 12px 32px rgba(15,23,41,0.25)" }}>
+            <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: invalid ? "var(--red)" : "var(--ink)" }}>
+              {invalid ? "Laal box theek karein, phir save hoga" : `${changes} ${changes === 1 ? "change" : "changes"} save nahi hue`}
+            </span>
+            <button onClick={discard} disabled={busy} style={smallBtn("ghost")}>Discard</button>
+            <button onClick={() => void save()} disabled={busy || invalid} style={{ ...smallBtn("blue"), opacity: busy || invalid ? 0.5 : 1, padding: "9px 16px", fontSize: 13.5 }}>{busy ? "Saving…" : "Save prices"}</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
