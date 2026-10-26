@@ -786,6 +786,12 @@ describe("Fare limits", () => {
     await rejects(t.rpc(adm, "admin_update_vehicle", "bike", { min_fare: 50000 }), /at most ₹2000/);
     expect(Number((await t.admin(`select per_min from public.vehicles where id = 'bike'`))[0].per_min)).toBe(1);
   });
+  it("bikes, autos and e-rickshaws can't be made AC", async () => {
+    const adm = await t.user({ admin: true });
+    for (const id of ["bike", "auto", "erick"]) await rejects(t.rpc(adm, "admin_update_vehicle", id, { ac: true }), /cannot be AC/);
+    await rejects(t.admin(`update public.vehicles set ac = true where id = 'bike'`), /vehicles_no_ac_two_three_wheelers/);
+    await t.rpc(adm, "admin_update_vehicle", "bike", { ac: false });
+  });
 });
 
 describe("My offers", () => {

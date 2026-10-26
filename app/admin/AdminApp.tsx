@@ -731,6 +731,8 @@ const PRICE_FIELDS: { k: PriceKey; label: string; hint: string; max: number; ste
 const EXAMPLE_KMS = [2, 5, 10, 20];
 /** Two- and three-wheelers never have AC, so they get no AC switch. */
 const NO_AC: string[] = ["bike", "auto", "erick"];
+/** Whether customers can pick AC — never for NO_AC vehicles, even if their row says otherwise. */
+const hasAc = (v: Vehicle) => v.ac && !NO_AC.includes(v.id);
 /** The app's time estimate for a trip of `km` (same as the server's trip_estimate_at). */
 const minsFor = (km: number) => Math.round(km * 2.6 + 4);
 
@@ -740,8 +742,8 @@ function previewFare(v: Vehicle, s: Settings, km: number, ac: boolean) {
   const sub = Number(v.base) + Math.round(Number(v.per_km) * km) + Math.round(Number(v.per_min) * mins);
   const surge = s.surge_on && Number(s.surge_mult) > 1 ? Math.round(sub * Number(s.surge_mult)) - sub : 0;
   let total = Math.max(sub + surge, Number(v.min_fare));
-  if (v.ac && !ac) total = Math.round(total * Number(s.non_ac_factor));
-  const fee = Number(ac && v.ac ? v.platform_fee : v.platform_fee_non_ac);
+  if (hasAc(v) && !ac) total = Math.round(total * Number(s.non_ac_factor));
+  const fee = Number(ac && hasAc(v) ? v.platform_fee : v.platform_fee_non_ac);
   const booking = total > Number(s.booking_fee_above) ? Number(s.booking_fee) : 0;
   return { mins, fare: total, customerPays: total + booking, riderGets: total - Math.min(fee, total), minApplied: sub + surge < Number(v.min_fare) };
 }
@@ -762,7 +764,7 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
   const validS = (n: number, max: number) => Number.isInteger(n) && n >= 0 && n <= max;
   const upd = (id: string, p: Partial<Vehicle>) => { setDirty(true); setRows((r) => r.map((x) => (x.id === id ? { ...x, ...p } : x))); };
   const updS = (p: Partial<Settings>) => { setDirty(true); setS((x) => ({ ...x, ...p })); };
-  const shown = (v: Vehicle) => PRICE_FIELDS.filter((f) => f.k !== "platform_fee" || v.ac);
+  const shown = (v: Vehicle) => PRICE_FIELDS.filter((f) => f.k !== "platform_fee" || hasAc(v));
   const invalid = rows.some((v) => shown(v).some((f) => !valid(f.k, Number(v[f.k])))) || !validS(Number(s.booking_fee), 100) || !validS(Number(s.booking_fee_above), 10000);
 
   const KEYS = ["base", "per_km", "per_min", "min_fare", "cancel_fee", "platform_fee", "platform_fee_non_ac", "ac", "enabled"] as const;
@@ -828,7 +830,7 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
         {rows.map((v) => {
           const ex = previewFare(v, s, km, true);
-          const exNon = v.ac ? previewFare(v, s, km, false) : null;
+          const exNon = hasAc(v) ? previewFare(v, s, km, false) : null;
           const edited = changedOf(v).length > 0;
           return (
             <div key={v.id} style={{ ...card, padding: 16, opacity: v.enabled ? 1 : 0.7, outline: edited ? "2px solid var(--gold)" : "none" }}>
@@ -847,7 +849,7 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
               <div style={{ marginTop: 4 }}>{shown(v).map((f) => priceInput(v, f))}</div>
               <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "var(--blue-tint)" }}>
                 <p style={{ margin: 0, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em", color: "var(--blue)" }}>{km} KM RIDE (≈ {ex.mins} MIN)</p>
-                {[[v.ac ? "AC" : "Ride", ex], ...(exNon ? [["Non-AC", exNon] as const] : [])].map(([lbl, x]) => {
+                {[[hasAc(v) ? "AC" : "Ride", ex], ...(exNon ? [["Non-AC", exNon] as const] : [])].map(([lbl, x]) => {
                   const p = x as ReturnType<typeof previewFare>;
                   return (
                     <div key={String(lbl)} style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 6, fontSize: 13 }}>
