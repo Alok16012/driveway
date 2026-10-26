@@ -11,7 +11,7 @@ import {
 } from "../components/icons";
 import { Avatar, ErrorText, LoadState, PasswordInput, PrimaryButton, StatusBadge, Toggle, card, field, label, onLight } from "../components/ui";
 import { inr, vehicleById, type VehicleKind } from "../lib/data";
-import { adminSignIn, friendly, getSession, myProfile, newKey, onAuthChange, rpc, signOut, type City, fmtPhone } from "../lib/api";
+import { adminSignIn, changePassword, friendly, getSession, myProfile, newKey, onAuthChange, rpc, signOut, type City, fmtPhone } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
 
 /* ───────────────────────── Data shapes (rows the admin's RLS lets it read) ───────────────────────── */
@@ -1286,6 +1286,51 @@ function SettingsSection({ d }: { d: Data }) {
         ))}
         <p style={{ margin: "12px 0 0", fontSize: 12, color: "var(--ink-mute)" }}>Admin access is granted from the Supabase SQL editor (see docs/SETUP.md). Every admin action is recorded in the audit log.</p>
       </Panel>
+      <ChangePasswordPanel />
     </div>
+  );
+}
+
+const ADMIN_MIN_PASSWORD = 12;
+
+/** The signed-in admin changes their own password; the current one is checked first. */
+function ChangePasswordPanel() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const ok = current.length > 0 && next.length >= ADMIN_MIN_PASSWORD && confirm === next;
+  const edit = (set: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => { set(e.target.value); setErr(null); setSaved(false); };
+  const submit = async () => {
+    if (!ok || busy) return;
+    if (next === current) { setErr("Choose a password different from your current one."); return; }
+    setBusy(true); setErr(null);
+    try { await changePassword(current, next); setCurrent(""); setNext(""); setConfirm(""); setSaved(true); }
+    catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <Panel title="Change password">
+      <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div>
+          <label style={label} htmlFor="cp-cur">Current password</label>
+          <PasswordInput id="cp-cur" value={current} onChange={edit(setCurrent)} autoComplete="current-password" />
+        </div>
+        <div>
+          <label style={label} htmlFor="cp-new">New password</label>
+          <PasswordInput id="cp-new" value={next} onChange={edit(setNext)} placeholder={`At least ${ADMIN_MIN_PASSWORD} characters`} autoComplete="new-password" />
+          {next.length > 0 && next.length < ADMIN_MIN_PASSWORD && <ErrorText msg={`Use at least ${ADMIN_MIN_PASSWORD} characters.`} />}
+        </div>
+        <div>
+          <label style={label} htmlFor="cp-conf">Confirm new password</label>
+          <PasswordInput id="cp-conf" value={confirm} onChange={edit(setConfirm)} placeholder="Type it again" autoComplete="new-password" />
+          {confirm.length > 0 && confirm !== next && <ErrorText msg="Passwords don't match." />}
+        </div>
+        <ErrorText msg={err} />
+        {saved && <p role="status" style={{ margin: 0, fontSize: 13, color: "var(--green)", fontWeight: 600 }}>Password changed ✓ — use the new one next time you log in.</p>}
+        <PrimaryButton type="submit" disabled={!ok || busy}>{busy ? "Saving…" : "Change password"}</PrimaryButton>
+      </form>
+    </Panel>
   );
 }

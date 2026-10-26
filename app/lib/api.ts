@@ -174,6 +174,14 @@ export async function sendPasswordReset(email: string) {
   const { error } = await supabase().auth.resetPasswordForEmail(email.trim(), { redirectTo });
   if (error) throw new Error(/rate limit|security purposes/i.test(error.message) ? "Too many requests — wait a minute and try again." : friendly(error));
 }
+/** Changes the signed-in user's password after checking their current one (signing in again with it). */
+export async function changePassword(current: string, next: string) {
+  const email = (await getSession())?.user.email;
+  if (!email) throw new Error("Your session has ended — log in again.");
+  const { error } = await supabase().auth.signInWithPassword({ email, password: current });
+  if (error) throw new Error(/invalid login credentials/i.test(error.message) ? "Current password is wrong." : friendly(error));
+  await updatePassword(next);
+}
 /** Sets a new password for the signed-in (recovery) session. */
 export async function updatePassword(password: string) {
   const { error } = await supabase().auth.updateUser({ password });
