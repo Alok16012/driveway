@@ -160,7 +160,7 @@ export function onAuthChange(cb: (signedIn: boolean) => void) {
   return () => data.subscription.unsubscribe();
 }
 
-/* Password reset. The emailed link comes back to the app it was asked from (/ or /rider) with
+/* Password reset. The emailed link comes back to the app it was asked from (/, /rider or /admin) with
  * `#…type=recovery` (or `#error=…` once expired); read the hash at load, before Supabase consumes it. */
 const landingHash = typeof window === "undefined" ? "" : window.location.hash;
 export const isRecoveryLink = () => /[#&]type=recovery\b/.test(landingHash);
@@ -170,7 +170,8 @@ export function recoveryLinkError(): string | null {
 }
 /** Emails a reset link. The native apps leave the redirect to the project's Site URL (the web app). */
 export async function sendPasswordReset(email: string) {
-  const redirectTo = NATIVE_APP ? undefined : `${window.location.origin}${window.location.pathname.startsWith("/rider") ? "/rider" : "/"}`;
+  const app = ["/rider", "/admin"].find((p) => window.location.pathname.startsWith(p)) ?? "/";
+  const redirectTo = NATIVE_APP ? undefined : `${window.location.origin}${app}`;
   const { error } = await supabase().auth.resetPasswordForEmail(email.trim(), { redirectTo });
   if (error) throw new Error(/rate limit|security purposes/i.test(error.message) ? "Too many requests — wait a minute and try again." : friendly(error));
 }

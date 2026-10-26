@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrandSplash } from "../components/Auth";
 import { BrandMark, Wordmark } from "../components/Brand";
 import MapView from "../components/MapView";
@@ -11,7 +11,7 @@ import {
 } from "../components/icons";
 import { Avatar, ErrorText, LoadState, PasswordInput, PrimaryButton, StatusBadge, Toggle, card, field, label, onLight } from "../components/ui";
 import { inr, vehicleById, type VehicleKind } from "../lib/data";
-import { adminSignIn, changePassword, friendly, getSession, myProfile, newKey, onAuthChange, rpc, signOut, type City, fmtPhone } from "../lib/api";
+import { adminSignIn, changePassword, friendly, getSession, isRecoveryLink, myProfile, newKey, onAuthChange, recoveryLinkError, rpc, sendPasswordReset, signOut, updatePassword, type City, fmtPhone } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
 
 /* ───────────────────────── Data shapes (rows the admin's RLS lets it read) ───────────────────────── */
@@ -90,6 +90,9 @@ const SPLASH_MAX_W = 430;   // same column as the customer and rider apps
 
 export default function AdminApp() {
   const [authed, setAuthed] = useState<boolean | null>(null);
+  // Opened from a password-reset email: set a new password before going in.
+  const [resetting, setResetting] = useState(false);
+  const recovering = useRef(isRecoveryLink());
   const [section, setSection] = useState<Section>("dashboard");
   const [data, setData] = useState<Data | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -103,7 +106,11 @@ export default function AdminApp() {
   useEffect(() => {
     void (async () => {
       if (!(await getSession())) { setAuthed(false); return; }
-      try { setAuthed(!!(await myProfile())?.is_admin); } catch { setAuthed(false); }
+      try {
+        const admin = !!(await myProfile())?.is_admin;
+        if (admin && recovering.current) setResetting(true);
+        setAuthed(admin);
+      } catch { setAuthed(false); }
     })();
     return onAuthChange((s) => { if (!s) setAuthed(false); });
   }, []);
@@ -113,11 +120,11 @@ export default function AdminApp() {
     try { setData(await loadAll()); return true; } catch (e) { setLoadErr((e as Error).message); return false; }
   }, []);
   useEffect(() => {
-    if (!authed) return;
+    if (!authed || resetting) return;
     void reload();
     const t = setInterval(() => void reload(), 15000);
     return () => clearInterval(t);
-  }, [authed, reload]);
+  }, [authed, resetting, reload]);
 
   /** Run an audited admin function, then refresh everything from the database. */
   const act = async (fn: string, args: Record<string, unknown>, ok: string) => {
@@ -136,7 +143,8 @@ export default function AdminApp() {
   );
 
   if (authed === null) return <>{splash}<LoadState /></>;
-  if (!authed) return <>{splash}<AdminLogin onLogin={() => setAuthed(true)} /></>;
+  if (!authed) return <>{splash}<AdminLogin notice={recoveryLinkError()} onLogin={() => setAuthed(true)} /></>;
+  if (resetting) return <>{splash}<AdminResetPassword onDone={() => { recovering.current = false; setResetting(false); flash("Password updated — you're signed in."); }} /></>;
   if (!data) return <>{splash}<LoadState error={loadErr} onRetry={() => void reload()} /></>;
 
   const pending = data.drivers.filter((d) => d.kyc === "Pending").length;
@@ -322,29 +330,90 @@ const last7 = () => Array.from({ length: 7 }, (_, i) => {
 
 /* ───────────────────────── Login (Supabase email + password, admin role required) ───────────────────────── */
 
-function AdminLogin({ onLogin }: { onLogin: () => void }) {
+/** The orange page behind the admin sign-in, forgot-password and new-password cards. */
+function AdminAuthCard({ title, body, children, onSubmit }: { title: string; body: string; children: React.ReactNode; onSubmit?: () => void }) {
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "linear-gradient(170deg,#fb923c 0%,#ea580c 55%,#c2410c 100%)" }}>
+      <form onSubmit={(e) => { e.preventDefault(); onSubmit?.(); }} className="fade-up" style={{ ...card, width: "min(400px,100%)", padding: 28, background: "var(--sheet-bg)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}><BrandMark size={40} /><Wordmark sub="ADMIN PANEL" size={22} /></div>
+        <h1 style={{ margin: "22px 0 4px", fontSize: 22, fontWeight: 800, textAlign: "center" }}>{title}</h1>
+        <p style={{ margin: "0 0 20px", fontSize: 13.5, color: "var(--ink-soft)", textAlign: "center" }}>{body}</p>
+        {children}
+      </form>
+    </div>
+  );
+}
+
+const linkBtn: React.CSSProperties = { background: "none", border: "none", padding: 0, color: "var(--blue)", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+
+function AdminLogin({ onLogin, notice }: { onLogin: () => void; notice: string | null }) {
+  const [mode, setMode] = useState<"login" | "forgot" | "sent">("login");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(notice);
+  const go = (m: typeof mode) => { setMode(m); setErr(null); };
   const submit = async () => {
     setBusy(true); setErr(null);
     try { await adminSignIn(email.trim(), pw); onLogin(); } catch (e) { setErr((e as Error).message); setPw(""); } finally { setBusy(false); }
   };
+  const sendLink = async () => {
+    if (!email.trim() || busy) return;
+    setBusy(true); setErr(null);
+    try { await sendPasswordReset(email); setMode("sent"); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+
+  if (mode === "sent") return (
+    <AdminAuthCard title="Check your inbox" body={`If ${email.trim()} is an admin account, we've sent it a link to set a new password. The link works once and expires in an hour.`}>
+      <PrimaryButton type="button" onClick={() => go("login")}>Back to login</PrimaryButton>
+      <p style={{ margin: "14px 0 0", fontSize: 13, color: "var(--ink-soft)", textAlign: "center" }}>No email? Check spam, or <button type="button" onClick={() => go("forgot")} style={linkBtn}>send it again</button></p>
+    </AdminAuthCard>
+  );
+  if (mode === "forgot") return (
+    <AdminAuthCard title="Forgot password?" body="Enter your admin email and we'll send you a link to set a new password." onSubmit={() => void sendLink()}>
+      <label style={label} htmlFor="ae">Email</label>
+      <input id="ae" type="email" required value={email} onChange={(e) => { setEmail(e.target.value); setErr(null); }} style={{ ...field, marginBottom: 12 }} autoComplete="username" />
+      <ErrorText msg={err} />
+      <div style={{ marginTop: 12 }}><PrimaryButton type="submit" disabled={!email.trim() || busy}>{busy ? "Sending…" : "Send reset link"}</PrimaryButton></div>
+      <p style={{ margin: "14px 0 0", fontSize: 13, color: "var(--ink-soft)", textAlign: "center" }}>Remembered it? <button type="button" onClick={() => go("login")} style={linkBtn}>Log in</button></p>
+    </AdminAuthCard>
+  );
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "linear-gradient(170deg,#fb923c 0%,#ea580c 55%,#c2410c 100%)" }}>
-      <form onSubmit={(e) => { e.preventDefault(); void submit(); }} className="fade-up" style={{ ...card, width: "min(400px,100%)", padding: 28, background: "var(--sheet-bg)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}><BrandMark size={40} /><Wordmark sub="ADMIN PANEL" size={22} /></div>
-        <h1 style={{ margin: "22px 0 4px", fontSize: 22, fontWeight: 800, textAlign: "center" }}>Admin Portal</h1>
-        <p style={{ margin: "0 0 20px", fontSize: 13.5, color: "var(--ink-soft)", textAlign: "center" }}>Sign in with your DriveWay admin account</p>
-        <label style={label} htmlFor="ae">Email</label>
-        <input id="ae" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} style={{ ...field, marginBottom: 14 }} autoComplete="username" />
-        <label style={label} htmlFor="ap">Password</label>
-        <PasswordInput id="ap" required value={pw} onChange={(e) => setPw(e.target.value)} style={{ marginBottom: 12 }} autoComplete="current-password" />
-        <ErrorText msg={err} />
-        <div style={{ marginTop: 12 }}><PrimaryButton type="submit" disabled={!email || !pw || busy}><LockIcon s={17} c={email && pw ? "white" : "var(--ink-mute)"} /> {busy ? "Signing in…" : "Login"}</PrimaryButton></div>
-      </form>
-    </div>
+    <AdminAuthCard title="Admin Portal" body="Sign in with your DriveWay admin account" onSubmit={() => void submit()}>
+      <label style={label} htmlFor="ae">Email</label>
+      <input id="ae" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} style={{ ...field, marginBottom: 14 }} autoComplete="username" />
+      <label style={label} htmlFor="ap">Password</label>
+      <PasswordInput id="ap" required value={pw} onChange={(e) => setPw(e.target.value)} style={{ marginBottom: 12 }} autoComplete="current-password" />
+      <div style={{ textAlign: "right" }}><button type="button" onClick={() => go("forgot")} style={linkBtn}>Forgot password?</button></div>
+      <ErrorText msg={err} />
+      <div style={{ marginTop: 12 }}><PrimaryButton type="submit" disabled={!email || !pw || busy}><LockIcon s={17} c={email && pw ? "white" : "var(--ink-mute)"} /> {busy ? "Signing in…" : "Login"}</PrimaryButton></div>
+    </AdminAuthCard>
+  );
+}
+
+/** Opened from the emailed reset link (a recovery session) → choose a new password. */
+function AdminResetPassword({ onDone }: { onDone: () => void }) {
+  const [pw, setPw] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const ok = pw.length >= ADMIN_MIN_PASSWORD && confirm === pw;
+  const submit = async () => {
+    if (!ok || busy) return;
+    setBusy(true); setErr(null);
+    try { await updatePassword(pw); onDone(); } catch (e) { setErr((e as Error).message); setBusy(false); }
+  };
+  return (
+    <AdminAuthCard title="Set a new password" body="Choose a new password for your DriveWay admin account." onSubmit={() => void submit()}>
+      <label style={label} htmlFor="arp">New password</label>
+      <PasswordInput id="arp" value={pw} onChange={(e) => { setPw(e.target.value); setErr(null); }} placeholder={`At least ${ADMIN_MIN_PASSWORD} characters`} autoComplete="new-password" />
+      {pw.length > 0 && pw.length < ADMIN_MIN_PASSWORD && <ErrorText msg={`Use at least ${ADMIN_MIN_PASSWORD} characters.`} />}
+      <label style={{ ...label, marginTop: 14 }} htmlFor="arc">Confirm new password</label>
+      <PasswordInput id="arc" value={confirm} onChange={(e) => { setConfirm(e.target.value); setErr(null); }} placeholder="Type it again" autoComplete="new-password" />
+      {confirm.length > 0 && confirm !== pw && <ErrorText msg="Passwords don't match." />}
+      <ErrorText msg={err} />
+      <div style={{ marginTop: 16 }}><PrimaryButton type="submit" disabled={!ok || busy}>{busy ? "Saving…" : "Save password"}</PrimaryButton></div>
+    </AdminAuthCard>
   );
 }
 
