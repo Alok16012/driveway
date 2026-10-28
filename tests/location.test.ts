@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { formatAddress, tidyAddress } from "../app/lib/location";
 import { decodePolyline, formatGoogleAddress } from "../app/lib/google";
-import { formatOlaAddress } from "../app/lib/olamaps";
+import { formatOlaAddress, olaSearch } from "../app/lib/olamaps";
 
 const bhopal = { city_district: "Bhopal", city: "Bhopal", state: "Madhya Pradesh", country: "India" };
 
@@ -78,5 +78,21 @@ describe("tidyAddress", () => {
     expect(tidyAddress("BANKIM CHANDRA CHATTOPADHYAY SARANI, Salt Lake")).toBe("Bankim Chandra Chattopadhyay Sarani, Salt Lake");
     expect(tidyAddress("Park Street, Kolkata")).toBe("Park Street, Kolkata");
     expect(tidyAddress("NH 12, MG Road")).toBe("NH 12, MG Road");
+  });
+});
+
+describe("olaSearch", () => {
+  it("maps Ola predictions to places with their position", async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify({ predictions: [
+      { place_id: "x1", description: "Howrah Station, Howrah, West Bengal", geometry: { location: { lat: 22.583, lng: 88.343 } },
+        structured_formatting: { main_text: "Howrah Station", secondary_text: "Howrah, West Bengal" } },
+      { place_id: "x2", description: "No position" },
+    ] }))) as typeof fetch;
+    try {
+      expect(await olaSearch("howrah", { lat: 22.57, lng: 88.36 })).toEqual([
+        { placeId: "ola-x1", name: "Howrah Station", address: "Howrah, West Bengal", lat: 22.583, lng: 88.343 },
+      ]);
+    } finally { globalThis.fetch = real; }
   });
 });

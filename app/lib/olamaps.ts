@@ -3,7 +3,7 @@
 import type { LatLng } from "./location";
 
 /* Ola Maps (maps.olakrutrim.com): India-first addresses, with a free allowance of 100,000 calls a month.
- * Switches on when NEXT_PUBLIC_OLA_MAPS_API_KEY is set; without it, or when a call fails, the callers fall back to
+ * Used for addresses and place search. Switches on when NEXT_PUBLIC_OLA_MAPS_API_KEY is set; without it, or when a call fails, the callers fall back to
  * Google (if configured) and then OpenStreetMap. The key is public by design — restrict it to the app's origins in
  * the Ola Maps console. */
 
@@ -39,4 +39,26 @@ export async function olaReverseGeocode(pos: LatLng): Promise<string | null> {
     const j = (await res.json()) as { status?: string; results?: OlaResult[] };
     return j.results?.length ? formatOlaAddress(j.results) : null;
   } catch { return null; }
+}
+
+export interface OlaPlace { placeId: string; name: string; address: string; lat: number; lng: number }
+type OlaPrediction = {
+  place_id?: string; description?: string; geometry?: { location?: { lat: number; lng: number } };
+  structured_formatting?: { main_text?: string; secondary_text?: string };
+};
+
+/** Place search near `near`, India-first. Predictions carry their position, so no details call is needed. */
+export async function olaSearch(input: string, near: LatLng): Promise<OlaPlace[]> {
+  const res = await fetch(`https://api.olamaps.io/places/v1/autocomplete?input=${encodeURIComponent(input)}&location=${near.lat},${near.lng}&api_key=${encodeURIComponent(OLA_KEY)}`,
+    { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error("Place search isn't responding — try again in a moment.");
+  const j = (await res.json()) as { predictions?: OlaPrediction[] };
+  return (j.predictions ?? [])
+    .filter((p) => p.geometry?.location && typeof p.geometry.location.lat === "number")
+    .slice(0, 6)
+    .map((p, i) => {
+      const main = p.structured_formatting?.main_text || p.description?.split(",")[0] || input;
+      const rest = p.structured_formatting?.secondary_text || p.description?.split(",").slice(1).join(",").trim() || "";
+      return { placeId: `ola-${p.place_id ?? i}`, name: main.trim(), address: rest, lat: p.geometry!.location!.lat, lng: p.geometry!.location!.lng };
+    });
 }

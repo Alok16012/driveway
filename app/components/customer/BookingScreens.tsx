@@ -14,6 +14,7 @@ import type { RideOption } from "./types";
 import { INDIA_CENTER, distanceM, nearbyPlaces, placePos, reverseGeocode, useCurrentAddress, useDeviceLocation, type LatLng } from "../../lib/location";
 import { hasGoogle, newSearchSession, placeDetails, searchPlaces, type PlaceSuggestion } from "../../lib/google";
 import { searchFree } from "../../lib/photon";
+import { hasOla, olaSearch } from "../../lib/olamaps";
 import { useServiceCities } from "../CityPicker";
 
 const dot = (color: string, square = false): React.CSSProperties => ({
@@ -125,9 +126,9 @@ export function SearchPage({ places, initialTo, onBack, onDone }: { places: Plac
     if (t.length < 2) return;
     let live = true;
     setSearching(true);
-    // Google Places when a Maps key is set; otherwise free OpenStreetMap search (Photon).
+    // Google Places when a Maps key is set, else Ola Maps (India-first), else free OpenStreetMap search (Photon).
     const timer = setTimeout(() => {
-      (hasGoogle() ? searchPlaces(t, nearPos, token.current) : searchFree(t, nearPos))
+      (hasGoogle() ? searchPlaces(t, nearPos, token.current) : hasOla() ? olaSearch(t, nearPos).catch(() => searchFree(t, nearPos)) : searchFree(t, nearPos))
         .then((r) => { if (live) setFound(r); }, (e) => { if (live) setErr((e as Error).message); })
         .finally(() => { if (live) setSearching(false); });
     }, hasGoogle() ? 300 : 450);

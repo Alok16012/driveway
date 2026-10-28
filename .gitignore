@@ -49,3 +49,6 @@ next-env.d.ts
 /mobile/*/www/
 /mobile/dist/
 /mobile/ios-build/
+
+# Local Netlify folder
+.netlify
