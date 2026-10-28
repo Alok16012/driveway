@@ -1,5 +1,5 @@
 /* Pickup labels built from OpenStreetMap (Nominatim) reverse-geocoding results. */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { formatAddress, tidyAddress } from "../app/lib/location";
 import { decodePolyline, formatGoogleAddress } from "../app/lib/google";
 import { formatOlaAddress, olaSearch } from "../app/lib/olamaps";
@@ -93,6 +93,23 @@ describe("olaSearch", () => {
       expect(await olaSearch("howrah", { lat: 22.57, lng: 88.36 })).toEqual([
         { placeId: "ola-x1", name: "Howrah Station", address: "Howrah, West Bengal", lat: 22.583, lng: 88.343 },
       ]);
-    } finally { globalThis.fetch = real; }
+    } finally { globalThis.fetch = real; vi.unstubAllEnvs(); }
+  });
+});
+
+describe("olaRoute", () => {
+  it("adds up the legs into km and minutes, and gives up quietly on errors", async () => {
+    const real = globalThis.fetch;
+    vi.stubEnv("NEXT_PUBLIC_OLA_MAPS_API_KEY", "test-key");
+    vi.resetModules();
+    const { olaRoute } = await import("../app/lib/olamaps");
+    try {
+      globalThis.fetch = (async () => new Response(JSON.stringify({ routes: [{ legs: [{ distance: 10248, duration: 2625 }] }] }))) as typeof fetch;
+      expect(await olaRoute({ lat: 22.5867, lng: 88.4171 }, { lat: 22.5832, lng: 88.3434 })).toEqual({ km: 10.2, mins: 44 });
+      globalThis.fetch = (async () => new Response("{}", { status: 403 })) as typeof fetch;
+      expect(await olaRoute({ lat: 1, lng: 1 }, { lat: 2, lng: 2 })).toBeNull();
+      globalThis.fetch = (async () => { throw new Error("offline"); }) as typeof fetch;
+      expect(await olaRoute({ lat: 1, lng: 1 }, { lat: 2, lng: 2 })).toBeNull();
+    } finally { globalThis.fetch = real; vi.unstubAllEnvs(); }
   });
 });

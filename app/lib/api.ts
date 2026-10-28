@@ -32,7 +32,7 @@ export interface QuoteOption {
 }
 export interface RentalQuote { pkg: string; hours: number; km: number; extra_km: number; extra_hour: number; car: VehicleKind; fare: number; discount: number; coupon: CouponResult | null; booking_fee: number; available: number }
 export interface ParcelQuote { id: "light" | "medium" | "heavy"; label: string; sub: string; vehicle: VehicleKind; fee: number; fare: number; discount: number; coupon: CouponResult | null; booking_fee: number; available: number }
-export interface Quote { km: number; mins: number; options: QuoteOption[]; any: QuoteOption | null; any_available: number; rentals: RentalQuote[]; parcels: ParcelQuote[]; booking_fee: number; booking_fee_above: number }
+export interface Quote { km: number; mins: number; road?: boolean; roadInput?: RoadInfo | null; options: QuoteOption[]; any: QuoteOption | null; any_available: number; rentals: RentalQuote[]; parcels: ParcelQuote[]; booking_fee: number; booking_fee_above: number }
 
 export type PaymentStatus = "unpaid" | "pending" | "paid" | "refunded" | "partially_refunded";
 export interface RideView {
@@ -218,8 +218,10 @@ export const updateMyProfile = (name: string, email: string) => rpc<void>("updat
 export const updateMyPhone = (phone: string) => rpc<void>("update_my_phone", { p_phone: phone });
 export const updateMyDriverProfile = (name: string, city: string) => rpc<void>("update_my_driver_profile", { p_name: name, p_city: city });
 /** Positions go with the stand-in ids: `fromPos` with "cur" (GPS or searched pickup), `toPos` with "pin" (searched drop). */
-export const quote = (from: string, to: string, ac: boolean, coupon: string | null, fromPos?: { lat: number; lng: number } | null, toPos?: { lat: number; lng: number } | null) =>
-  rpc<Quote>("quote", { p_from: from, p_to: to, p_ac: ac, p_coupon: coupon, p_from_pos: fromPos ?? null, p_to_pos: toPos ?? null });
+/** Road distance and drive time from a routing service; the server checks it against the straight line. */
+export interface RoadInfo { km: number; mins: number }
+export const quote = (from: string, to: string, ac: boolean, coupon: string | null, fromPos?: { lat: number; lng: number } | null, toPos?: { lat: number; lng: number } | null, road?: RoadInfo | null) =>
+  rpc<Quote>("quote", { p_from: from, p_to: to, p_ac: ac, p_coupon: coupon, p_from_pos: fromPos ?? null, p_to_pos: toPos ?? null, p_road: road ?? null });
 
 export interface BookRequest {
   option: string; from: string; to: string; ac: boolean; pay: PayMethod; coupon: string | null; when: string | null;
@@ -229,6 +231,7 @@ export interface BookRequest {
   add_on?: number;                                      // ₹10 / ₹20 / ₹30 on top of the fare
   pickup?: { lat: number; lng: number; name?: string; address: string | null };   // with `from` "cur": GPS fix or searched place
   drop?: { lat: number; lng: number; name: string; address: string };            // with `to` "pin": searched place
+  road?: RoadInfo | null;                               // the route the quote was priced on
   idem: string;
 }
 export const bookRide = (p: BookRequest) => rpc<{ id: string; code: string; status: RideStatus; duplicate: boolean }>("book_ride", { p });

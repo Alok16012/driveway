@@ -811,3 +811,38 @@ describe("My offers", () => {
     await rejects(t.as(null, "select * from public.my_offers()"), /permission denied/);
   });
 });
+
+describe("Road distance from the app", () => {
+  const gps = { lat: 22.5867, lng: 88.4171 };            // Salt Lake
+  const drop = { lat: 22.5832, lng: 88.3434, name: "Howrah Station", address: "Howrah" };   // ≈ 7.6 km straight
+  const q = (u: string, road: unknown) => t.rpc(u, "quote", "cur", "pin", true, null, gps, { lat: drop.lat, lng: drop.lng }, road);
+  it("prices on the real route when it is plausible", async () => {
+    const u = await t.user();
+    const est = await q(u, null);
+    expect(est.road).toBe(false);
+    const r = await q(u, { km: 10.25, mins: 44 });
+    expect(r).toMatchObject({ road: true, km: 10.3, mins: 44 });
+    const bike = (x: any) => x.options.find((o: any) => o.id === "bike").fare;
+    expect(bike(r)).toBeGreaterThan(bike(est));               // 44 traffic minutes cost more than the 31-minute guess
+  });
+  it("ignores a route shorter than the straight line or absurdly long", async () => {
+    const u = await t.user();
+    const est = await q(u, null);
+    for (const road of [{ km: 2, mins: 6 }, { km: 40, mins: 60 }, { km: "10", mins: 44 }, { km: 10, mins: -1 }]) {
+      const r = await q(u, road);
+      expect(r).toMatchObject({ road: false, km: est.km, mins: est.mins });
+    }
+  });
+  it("keeps travel time within a believable speed", async () => {
+    const u = await t.user();
+    expect((await q(u, { km: 10, mins: 1 })).mins).toBe(10);            // at most 60 km/h
+    expect((await q(u, { km: 10, mins: 900 })).mins).toBe(120);         // at most km × 10 + 20
+  });
+  it("the booking uses the same road distance as the quote", async () => {
+    const c = await t.user();
+    const quoted = await q(c, { km: 10.25, mins: 44 });
+    const b = await t.book(c, { option: "bike", to: "pin", pickup: { ...gps, address: "Salt Lake" }, drop, road: { km: 10.25, mins: 44 } });
+    const r = await t.ride(b.id);
+    expect([Number(r.km), r.mins, r.fare]).toEqual([10.3, 44, quoted.options.find((o: any) => o.id === "bike").fare]);
+  });
+});

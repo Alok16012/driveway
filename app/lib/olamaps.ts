@@ -62,3 +62,17 @@ export async function olaSearch(input: string, near: LatLng): Promise<OlaPlace[]
       return { placeId: `ola-${p.place_id ?? i}`, name: main.trim(), address: rest, lat: p.geometry!.location!.lat, lng: p.geometry!.location!.lng };
     });
 }
+
+/** Driving distance and time (with traffic) between two points. Null when Ola isn't set up or doesn't answer. */
+export async function olaRoute(a: LatLng, b: LatLng): Promise<{ km: number; mins: number } | null> {
+  if (!hasOla()) return null;
+  try {
+    const res = await fetch(`https://api.olamaps.io/routing/v1/directions?origin=${a.lat},${a.lng}&destination=${b.lat},${b.lng}&mode=driving&alternatives=false&steps=false&overview=false&api_key=${encodeURIComponent(OLA_KEY)}`,
+      { method: "POST", headers: { Accept: "application/json" } });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { routes?: { legs?: { distance?: number; duration?: number }[] }[] };
+    const legs = j.routes?.[0]?.legs ?? [];
+    const m = legs.reduce((s, l) => s + (l.distance ?? 0), 0), sec = legs.reduce((s, l) => s + (l.duration ?? 0), 0);
+    return m > 0 && sec > 0 ? { km: Math.round(m / 100) / 10, mins: Math.round(sec / 60) } : null;
+  } catch { return null; }
+}

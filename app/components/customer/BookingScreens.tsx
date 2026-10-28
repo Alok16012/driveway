@@ -9,12 +9,12 @@ import MapView, { SIM_APPROACH_SEC, SIM_TRIP_SEC } from "../MapView";
 import VehicleArt, { AnyArt, ParcelArt, RentalArt } from "../VehicleArt";
 import { Avatar, ErrorText, Footer, LoadState, PageHeader, PrimaryButton, Stars, StatusBadge, card, field, iconBtn, onLight } from "../ui";
 import { PARCEL_TYPES, RIDE_STEPS, inr, vehicleById, type PayMethod, type VehicleKind } from "../../lib/data";
-import { activeCoupons, bookRide, cancelRide, closeRide, customerEndRide, isIndianMobile, newKey, payRide, quote as fetchQuote, rateRide, rideLabel, watchDriverPosition, type CouponRow, type DriverPos, type FareLine, type Place, type Quote, type QuoteOption, type RideView, placeName } from "../../lib/api";
+import { activeCoupons, bookRide, cancelRide, closeRide, customerEndRide, isIndianMobile, newKey, payRide, quote as fetchQuote, rateRide, rideLabel, watchDriverPosition, type CouponRow, type DriverPos, type FareLine, type Place, type Quote, type QuoteOption, type RideView, placeName, type RoadInfo } from "../../lib/api";
 import type { RideOption } from "./types";
 import { INDIA_CENTER, distanceM, nearbyPlaces, placePos, reverseGeocode, useCurrentAddress, useDeviceLocation, type LatLng } from "../../lib/location";
 import { hasGoogle, newSearchSession, placeDetails, searchPlaces, type PlaceSuggestion } from "../../lib/google";
 import { searchFree } from "../../lib/photon";
-import { hasOla, olaSearch } from "../../lib/olamaps";
+import { hasOla, olaRoute, olaSearch } from "../../lib/olamaps";
 import { useServiceCities } from "../CityPicker";
 
 const dot = (color: string, square = false): React.CSSProperties => ({
@@ -64,6 +64,22 @@ function useTripEnds(from: Place, to: Place | null) {
     waiting: !isCur || curPos ? null : loc.status === "denied" || loc.status === "unavailable" || loc.status === "insecure"
       ? `${loc.message} Or pick a pickup point instead.` : "Finding your location…",
   };
+}
+
+/** The road route between two points from Ola Maps: undefined while asking (at most ~4 s), null when unavailable. */
+function useRoad(a: LatLng | null, b: LatLng | null, enabled: boolean): RoadInfo | null | undefined {
+  const [road, setRoad] = useState<RoadInfo | null | undefined>(undefined);
+  const key = a && b ? `${a.lat.toFixed(5)},${a.lng.toFixed(5)};${b.lat.toFixed(5)},${b.lng.toFixed(5)}` : "";
+  useEffect(() => {
+    if (!enabled) return;
+    if (!key || !hasOla()) { setRoad(null); return; }
+    let live = true;
+    setRoad(undefined);
+    const giveUp = setTimeout(() => { if (live) setRoad((r) => (r === undefined ? null : r)); }, 4000);
+    void olaRoute(a!, b!).then((r) => { if (live) setRoad(r); });
+    return () => { live = false; clearTimeout(giveUp); };
+  }, [key, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  return road;
 }
 
 /** Shown when the pickup is outside every city the admin has switched on. */
@@ -285,18 +301,19 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
   const [reload, setReload] = useState(0);
   const ends = useTripEnds(from, to);
   const posKey = `${ends.fromPos?.lat},${ends.fromPos?.lng};${ends.toPos?.lat},${ends.toPos?.lng}`;
+  const road = useRoad(ends.fromPos ?? placePos(from), ends.toPos ?? placePos(to), !ends.waiting);
 
   useEffect(() => {
     let live = true;
     setQErr(null);
-    if (ends.waiting) return;
-    const load = (quiet: boolean) => fetchQuote(ends.fromId, ends.toId, ac, coupon, ends.fromPos, ends.toPos)
-      .then((x) => { if (live) setQ(x); }, (e) => { if (live && !quiet) setQErr((e as Error).message); });
+    if (ends.waiting || road === undefined) return;   // wait (briefly) for the route, so the first price is the right one
+    const load = (quiet: boolean) => fetchQuote(ends.fromId, ends.toId, ac, coupon, ends.fromPos, ends.toPos, road)
+      .then((x) => { if (live) setQ({ ...x, roadInput: road }); }, (e) => { if (live && !quiet) setQErr((e as Error).message); });
     void load(false);
     // Riders come online and go busy all the time: refresh who's nearby (and the fares) while this page is open.
     const t = setInterval(() => { if (document.visibilityState === "visible") void load(true); }, 15000);
     return () => { live = false; clearInterval(t); };
-  }, [ends.fromId, ends.toId, posKey, !!ends.waiting, ac, coupon, reload]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ends.fromId, ends.toId, posKey, !!ends.waiting, ac, coupon, reload, road === undefined, road?.km, road?.mins]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Until the customer picks an option themselves, start on one that has a driver nearby rather than a greyed-out one.
   const picked = useRef(!!prefer);
@@ -338,7 +355,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
     try {
       await bookRide({
         option: sel, from: ends.fromId, to: ends.toId, pickup: ends.pickup, drop: ends.drop, ac, pay, coupon, when: when?.[1] ?? null, passenger,
-        rental: sel === "rental" ? rental : undefined, add_on: extra, idem: idem.current,
+        rental: sel === "rental" ? rental : undefined, add_on: extra, road: q.roadInput ?? null, idem: idem.current,
       });
       onBooked(!!when);
     } catch (e) {
@@ -652,7 +669,7 @@ export function ParcelPage({ from, to, quote: q, pay: initialPay, coupon, onBack
     setBusy(true); setErr(null);
     try {
       await bookRide({ option: "parcel", from: ends.fromId, to: ends.toId, pickup: ends.pickup, drop: ends.drop, ac: false, pay, coupon, when: null,
-        parcel: { type, weight, receiver: { name: receiver.name.trim(), phone: receiver.phone }, note: note.trim() }, idem: idem.current });
+        parcel: { type, weight, receiver: { name: receiver.name.trim(), phone: receiver.phone }, note: note.trim() }, road: q.roadInput ?? null, idem: idem.current });
       onBooked();
     } catch (e) { setErr((e as Error).message); idem.current = newKey(); } finally { setBusy(false); }
   };
