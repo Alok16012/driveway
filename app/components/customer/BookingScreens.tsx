@@ -14,6 +14,7 @@ import type { RideOption } from "./types";
 import { INDIA_CENTER, distanceM, nearbyPlaces, placePos, reverseGeocode, useCurrentAddress, useDeviceLocation, type LatLng } from "../../lib/location";
 import { hasGoogle, newSearchSession, placeDetails, searchPlaces, type PlaceSuggestion } from "../../lib/google";
 import { searchFree } from "../../lib/photon";
+import { useRoadEta } from "../../lib/eta";
 import { hasOla, olaRoute, olaSearch } from "../../lib/olamaps";
 import { useServiceCities } from "../CityPicker";
 
@@ -805,9 +806,10 @@ export function LiveRidePage({ ride, onBack, onCancelled, onEnded, onChat, onSha
   // The driver's real position, while their phone keeps reporting it; otherwise the car is simulated.
   const car = tracking && driverPos && Date.now() - new Date(driverPos.at).getTime() < 120_000 ? { lat: driverPos.lat, lng: driverPos.lng } : undefined;
   const headingTo = placePos(ride.status === "Started" ? ride.to : ride.from);
-  // Real ETA: straight-line distance × 1.3 for roads, at ~22 km/h city traffic.
-  const eta = car && headingTo ? Math.max(1, Math.round((distanceM(car, headingTo) * 1.3) / 1000 / 22 * 60))
-    : Math.max(1, Math.round((ride.status === "Started" ? ride.mins : approachMins) * (1 - progress)));
+  // ETA from the driver's real position: Ola Maps road time with traffic, else straight line × 1.3 at ~22 km/h.
+  const roadEta = useRoadEta(car, headingTo);
+  const eta = roadEta ?? (car && headingTo ? Math.max(1, Math.round((distanceM(car, headingTo) * 1.3) / 1000 / 22 * 60))
+    : Math.max(1, Math.round((ride.status === "Started" ? ride.mins : approachMins) * (1 - progress))));
 
   const cancel = async (reason: string) => {
     if (busy) return;

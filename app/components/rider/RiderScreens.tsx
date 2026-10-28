@@ -7,7 +7,8 @@ import {
 } from "../icons";
 import { BrandMark, Wordmark } from "../Brand";
 import MapView, { SIM_APPROACH_SEC, SIM_TRIP_SEC } from "../MapView";
-import { placePos, useCurrentAddress } from "../../lib/location";
+import { placePos, useCurrentAddress, useDeviceLocation } from "../../lib/location";
+import { useRoadEta } from "../../lib/eta";
 import VehicleArt from "../VehicleArt";
 import { Avatar, ErrorText, OtpInput, PageHeader, PrimaryButton, Stars, StatusBadge, Tabs, Toggle, card, iconBtn, onLight } from "../ui";
 import { inr, vehicleById } from "../../lib/data";
@@ -239,6 +240,10 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
   const sinceStart = useSince(trip.started_at);
   const parcel = trip.service === "parcel";
   const who = trip.customer?.name ?? "Customer";
+  // Minutes to the pickup (or, once started, the drop) from this phone's GPS, on the road with traffic.
+  const here = useDeviceLocation(trip.status === "Arriving" || trip.status === "Started");
+  const roadEta = useRoadEta(here.status === "ok" ? here.pos : null,
+    trip.status === "Arriving" ? placePos(trip.from) : trip.status === "Started" ? placePos(trip.to) : null);
 
   if (trip.status === "Completed") {
     const gross = trip.fare + trip.wait_fee;
@@ -294,7 +299,7 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
   const progress = phase === "Arrived" ? 1 : phase === "Started" ? Math.min(0.97, sinceStart / SIM_TRIP_SEC) : Math.min(0.95, sinceAssign / SIM_APPROACH_SEC);
   const motion = phase === "Started" && trip.started_at ? { since: trip.started_at, seconds: SIM_TRIP_SEC, max: 0.97 }
     : phase === "Arriving" && trip.assigned_at ? { since: trip.assigned_at, seconds: SIM_APPROACH_SEC, max: 0.95 } : undefined;
-  const eta = Math.max(1, Math.round((phase === "Started" ? trip.mins : approachMins) * (1 - progress)));
+  const eta = roadEta ?? Math.max(1, Math.round((phase === "Started" ? trip.mins : approachMins) * (1 - progress)));
   const fee = Math.max(0, Math.ceil((waited - trip.free_wait_sec) / 60)) * trip.wait_fee_per_min;
   const pill: React.CSSProperties = { flex: 1, border: "none", borderRadius: 12, padding: "10px 6px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
 
