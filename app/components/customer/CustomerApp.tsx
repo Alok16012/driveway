@@ -6,6 +6,7 @@ import BottomNav, { ChatGlyph, HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph 
 import { BlockedBanner, EmailLogin, ForgotPassword, PermissionStep, ProfileSetup, ResetPassword, SignUp, BrandSplash } from "../Auth";
 import HomeScreen, { HOME_BG } from "./HomeScreen";
 import { ChooseRidePage, LiveRidePage, ParcelPage, SearchPage, TripDonePage } from "./BookingScreens";
+import { ConfirmPickupPage } from "./ConfirmPickup";
 import { ChatScreen, EditProfilePage, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen, type ChatMessage, type ProfileKey } from "./AccountScreens";
 import type { RideOption } from "./types";
 import { LoadState, Toast, card } from "../ui";
@@ -23,6 +24,7 @@ type Stage = "loading" | "splash" | "login" | "signup" | "forgot" | "reset" | "s
 
 type Detail =
   | { k: "search"; to?: Place; prefer?: RideOption }
+  | { k: "pickup"; from: Place; to: Place; prefer?: RideOption }
   | { k: "choose"; from: Place; to: Place; prefer?: RideOption }
   | { k: "parcel"; from: Place; to: Place; quote: Quote; pay: PayMethod; coupon: string | null }
   | { k: "live" }
@@ -230,7 +232,12 @@ export default function CustomerApp() {
             paddingBottom: showNav ? "calc(76px + env(safe-area-inset-bottom))" : undefined,
           }}>
             {detail?.k === "search" && (
-              places.length ? <SearchPage places={places} initialTo={detail.to} onBack={back} onDone={(from, to) => push({ k: "choose", from, to, prefer: detail.prefer })} /> : <LoadState />
+              places.length ? <SearchPage places={places} initialTo={detail.to} onBack={back} onDone={(from, to) => push(
+                // A GPS pickup is confirmed on the map first, so the rider comes to the exact gate.
+                from.kind === "current" && typeof from.lat !== "number" ? { k: "pickup", from, to, prefer: detail.prefer } : { k: "choose", from, to, prefer: detail.prefer })} /> : <LoadState />
+            )}
+            {detail?.k === "pickup" && (
+              <ConfirmPickupPage from={detail.from} onBack={back} onConfirm={(p) => push({ k: "choose", from: p, to: detail.to, prefer: detail.prefer })} />
             )}
             {detail?.k === "choose" && (
               <ChooseRidePage from={detail.from} to={detail.to} prefer={detail.prefer} initialCoupon={pendingCoupon}
