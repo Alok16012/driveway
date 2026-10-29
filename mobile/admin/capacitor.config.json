@@ -2,7 +2,7 @@
   "appId": "com.driveway.admin",
   "appName": "DriveWay Admin",
   "webDir": "www",
-  "backgroundColor": "#ea580c",
+  "backgroundColor": "#f97316",
   "server": { "androidScheme": "https", "appStartPath": "/admin" },
   "includePlugins": ["@capacitor/geolocation"],
   "android": { "allowMixedContent": false }

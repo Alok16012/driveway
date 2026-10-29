@@ -15,7 +15,7 @@ export function SplashScreen({ tagline, cta = "Get Started", onStart, footer, ko
   return (
     <div style={{
       position: "absolute", inset: 0, zIndex: 200,
-      background: kolkata ? "linear-gradient(170deg,#fb923c 0%,#ea580c 55%,#c2410c 100%)" : "linear-gradient(165deg,#04246b 0%,#020b24 100%)",
+      background: kolkata ? "linear-gradient(170deg,#fdba74 0%,#f97316 55%,#ea580c 100%)" : "linear-gradient(165deg,#04246b 0%,#020b24 100%)",
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
       {kolkata ? (
@@ -70,7 +70,7 @@ export function ImageSplash({ src, cta = "Get Started", onStart, onDone, footer,
   useEffect(() => { if (ended && !onStart) onDone?.(); }, [ended, onStart, onDone]);
 
   return (
-    <div onClick={ended ? undefined : finish} style={{ position: "absolute", inset: 0, zIndex: 300, background: "#ea580c", overflow: "hidden" }}>
+    <div onClick={ended ? undefined : finish} style={{ position: "absolute", inset: 0, zIndex: 300, background: "#f97316", overflow: "hidden" }}>
       <img src={src} alt="DriveWay — Ride · Reach · Relax"
         style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       {onStart && (
@@ -97,7 +97,7 @@ function CitySkyline() {
           {Array.from({ length: Math.floor((h - 14) / 14) }, (_, r) =>
             Array.from({ length: Math.max(1, Math.floor((w - 8) / 9)) }, (_, c) => (
               <rect key={`${r}-${c}`} x={x + 5 + c * 9} y={150 - h + 8 + r * 14} width={4} height={6} rx={1}
-                fill={(r * 3 + c * 5 + i) % 4 === 0 ? "#fde68a" : "#ea580c"} opacity={(r * 3 + c * 5 + i) % 4 === 0 ? 1 : 0.35} />
+                fill={(r * 3 + c * 5 + i) % 4 === 0 ? "#fde68a" : "#f97316"} opacity={(r * 3 + c * 5 + i) % 4 === 0 ? 1 : 0.35} />
             )))}
         </g>
       ))}
@@ -145,7 +145,7 @@ export function BrandSplash({ variant = "customer", cta = "Get Started", onStart
   return (
     <div onClick={ended ? undefined : finish} data-testid="brand-splash" style={{
       position: "absolute", inset: 0, zIndex: 300, overflow: "hidden", display: "flex", flexDirection: "column",
-      background: "radial-gradient(120% 70% at 50% 0%, #fdba74 0%, #f97316 38%, #ea580c 68%, #9a3412 100%)",
+      background: "radial-gradient(120% 70% at 50% 0%, #fdba74 0%, #f97316 38%, #f97316 68%, #c2410c 100%)",
     }}>
       {/* soft light behind the logo */}
       <div className="splash-glow" style={{ position: "absolute", left: "50%", top: "6%", width: 380, height: 380, marginLeft: -190, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,247,214,0.55), transparent 65%)", pointerEvents: "none" }} />

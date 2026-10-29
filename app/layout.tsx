@@ -19,14 +19,14 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#ea580c",
+  themeColor: "#f97316",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={poppins.variable} style={{ background: "#ea580c" }}>
+    <html lang="en" className={poppins.variable} style={{ background: "#f97316" }}>
       {/* Inline orange so the first paint matches the launch screen, before the stylesheet arrives. */}
-      <body style={{ margin: 0, padding: 0, minHeight: "100vh", fontFamily: "var(--font-poppins)", background: "#ea580c" }}>
+      <body style={{ margin: 0, padding: 0, minHeight: "100vh", fontFamily: "var(--font-poppins)", background: "#f97316" }}>
         {children}
       </body>
     </html>

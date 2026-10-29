@@ -138,7 +138,7 @@ export default function AdminApp() {
   // Animated launch screen, shown each time the panel opens (in a phone-width column).
   // Signed-out admins stay on it until they tap Admin Login; signed-in admins continue once it has played.
   const splash = intro && (
-    <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "#ea580c", display: "flex", justifyContent: "center" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "#f97316", display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: SPLASH_MAX_W, height: "100%", position: "relative", boxShadow: "var(--shadow-float)" }}>
         <BrandSplash variant="admin" cta="Admin Login" onDone={authed === null ? undefined : endIntro}
           onStart={authed === false ? endIntro : undefined} />
@@ -337,7 +337,7 @@ const last7 = () => Array.from({ length: 7 }, (_, i) => {
 /** The orange page behind the admin sign-in, forgot-password and new-password cards. */
 function AdminAuthCard({ title, body, children, onSubmit }: { title: string; body: string; children: React.ReactNode; onSubmit?: () => void }) {
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "linear-gradient(170deg,#fb923c 0%,#ea580c 55%,#c2410c 100%)" }}>
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "linear-gradient(170deg,#fdba74 0%,#f97316 55%,#ea580c 100%)" }}>
       <form onSubmit={(e) => { e.preventDefault(); onSubmit?.(); }} className="fade-up" style={{ ...card, width: "min(400px,100%)", padding: 28, background: "var(--sheet-bg)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}><BrandMark size={40} /><Wordmark sub="ADMIN PANEL" size={22} /></div>
         <h1 style={{ margin: "22px 0 4px", fontSize: 22, fontWeight: 800, textAlign: "center" }}>{title}</h1>

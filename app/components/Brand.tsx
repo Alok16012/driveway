@@ -18,7 +18,7 @@ export function Wordmark({ sub = "RIDE · REACH · RELAX", light, size = 20 }: {
     <div style={{ lineHeight: 1.05 }}>
       <p style={{ margin: 0, fontSize: size, fontWeight: 800, letterSpacing: "-0.01em", color: light ? "white" : "var(--ink)" }}>
         Drive<span style={{
-          background: light ? "linear-gradient(90deg,#fef3c7 0%,#fde68a 50%,#fbbf24 100%)" : "linear-gradient(90deg,#fdba2c 0%,#f97316 50%,#c2410c 100%)",
+          background: light ? "linear-gradient(90deg,#fef3c7 0%,#fde68a 50%,#fbbf24 100%)" : "linear-gradient(90deg,#fdba2c 0%,#f97316 50%,#ea580c 100%)",
           WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent",
         }}>Way</span>
       </p>
