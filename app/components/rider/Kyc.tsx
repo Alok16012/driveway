@@ -29,7 +29,7 @@ const STEPS = ["Personal", "Vehicle", "Documents", "Payout"];
 /** Four-step driver application. Documents go to a private storage bucket; an admin reviews them. */
 export function KycFlow({ onSubmitted }: { onSubmitted: () => void }) {
   const [step, setStep] = useState(0);
-  const [k, setK] = useState({ name: "", city: "", vehicle: "sedan" as VehicleKind, model: "", plate: "", ac: true, upi: "" });
+  const [k, setK] = useState({ referral: "", name: "", city: "", vehicle: "sedan" as VehicleKind, model: "", plate: "", ac: true, upi: "" });
   const [docs, setDocs] = useState<Partial<Record<DocKey, string>>>({});
   const [uploading, setUploading] = useState<DocKey | null>(null);
   const [busy, setBusy] = useState(false);
@@ -73,7 +73,7 @@ export function KycFlow({ onSubmitted }: { onSubmitted: () => void }) {
     setBusy(true); setErr(null);
     try {
       const app: DriverApplication = { name: k.name.trim(), city: k.city, vehicle: k.vehicle, model: k.model.trim(), plate: k.plate.trim(), ac: k.ac,
-        docs: docs as DriverApplication["docs"], upi: k.upi };
+        docs: docs as DriverApplication["docs"], upi: k.upi, ...(k.referral ? { referral_code: k.referral } : {}) };
       await registerDriver(app);
       onSubmitted();
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
@@ -104,6 +104,12 @@ export function KycFlow({ onSubmitted }: { onSubmitted: () => void }) {
             <div>
               <label style={label} htmlFor="kc">City</label>
               <CityPicker id="kc" cities={cities} value={k.city} onChange={(city) => set({ city })} />
+            </div>
+            <div>
+              <label style={label} htmlFor="kr">Referral code <span style={{ fontWeight: 500, opacity: 0.8 }}>(optional)</span></label>
+              <input id="kr" value={k.referral} maxLength={12} autoCapitalize="characters" placeholder="e.g. ARJUN427"
+                onChange={(e) => set({ referral: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })} style={{ ...field, letterSpacing: "0.08em" }} />
+              <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--on-bg-soft)" }}>Kisi DriveWay rider ne code diya hai toh daalein — kuch rides ke baad dono ko bonus milega.</p>
             </div>
           </>
         )}

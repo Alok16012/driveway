@@ -253,7 +253,14 @@ export interface DriverApplication {
   name: string; city: string; vehicle: VehicleKind; model: string; plate: string; ac: boolean;
   docs: Record<"photo" | "licence" | "rc" | "insurance" | "aadhaar", string>;   // storage paths in the driver-docs bucket
   upi: string;
+  referral_code?: string;                                 // another rider's "Refer & Earn" code, optional
 }
+/** The signed-in rider's referral code, the current offer (set by the admin) and how their referrals are doing. */
+export interface MyReferral {
+  code: string; on: boolean; referrer_bonus: number; new_bonus: number; rides: number; earned: number;
+  referred: { name: string; kyc: string; done: number; paid: boolean; joined: string }[];
+}
+export const myReferral = () => rpc<MyReferral>("my_referral");
 export const registerDriver = (p: DriverApplication) => rpc<unknown>("register_driver", { p });
 export const myDriver = () => rpc<DriverMe | null>("my_driver");
 export const setOnline = (online: boolean) => rpc<{ online: boolean }>("set_online", { p_online: online });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckIcon, ClockIcon, DocIcon, GiftIcon, NavIcon, PhoneIcon, ShareIcon, ShieldIcon, WalletIcon } from "../icons";
 import VehicleArt from "../VehicleArt";
 import { Sheet } from "../customer/BookingScreens";
@@ -8,7 +8,7 @@ import { InfoPage } from "../customer/AccountScreens";
 import { RouteLines, rates } from "./RiderScreens";
 import { ErrorText, PrimaryButton, StatusBadge, Stars, Toggle, card, field, label } from "../ui";
 import { inr, vehicleById } from "../../lib/data";
-import { fmtWhen, type DriverMe, type RideView, placeName } from "../../lib/api";
+import { fmtWhen, myReferral, type DriverMe, type MyReferral, type RideView, placeName } from "../../lib/api";
 
 const row: React.CSSProperties = { ...card, padding: 14, display: "flex", alignItems: "center", gap: 12 };
 const small: React.CSSProperties = { margin: "2px 0 0", fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.5 };
@@ -327,5 +327,68 @@ export function SosSheet({ onClose, onAction }: { onClose: () => void; onAction:
       </div>
       <div style={{ marginTop: 14 }}><PrimaryButton tone="ghost" onClick={onClose}>Close</PrimaryButton></div>
     </Sheet>
+  );
+}
+
+/* ───────────────────────── Refer & Earn ───────────────────────── */
+
+/** The rider's own code to share, the offer the admin has set, and how each referred rider is getting on. */
+export function ReferPage({ onBack, onCopied }: { onBack: () => void; onCopied: () => void }) {
+  const [r, setR] = useState<MyReferral | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { myReferral().then(setR, (e) => setErr((e as Error).message)); }, []);
+  const msg = r ? `DriveWay pe rider bano aur kamao! Apply karte waqt mera code daalo: ${r.code} — ${r.rides} rides ke baad tumhe ${inr(r.new_bonus)} bonus milega. App: https://drivewayride.in/rider` : "";
+  const copy = async () => { try { await navigator.clipboard.writeText(r!.code); onCopied(); } catch { /* clipboard blocked */ } };
+  return (
+    <InfoPage title="Refer & Earn" onBack={onBack}>
+      {err && <ErrorText msg={err} />}
+      {!r && !err && <p style={{ color: "var(--on-bg-soft)" }}>Loading…</p>}
+      {r && (
+        <>
+          <div style={{ ...card, padding: 18, textAlign: "center", background: "linear-gradient(150deg,#fff7ed,#ffffff)" }}>
+            <span style={{ display: "inline-flex", width: 52, height: 52, borderRadius: "50%", background: "var(--gold-tint)", alignItems: "center", justifyContent: "center" }}><GiftIcon s={26} c="var(--gold-dark)" /></span>
+            {r.on ? (
+              <p style={{ margin: "10px 0 0", fontSize: 18, fontWeight: 800, color: "var(--ink)", lineHeight: 1.3 }}>
+                Har dost pe <span style={{ color: "var(--green)" }}>{inr(r.referrer_bonus)}</span> kamao
+              </p>
+            ) : <p style={{ margin: "10px 0 0", fontSize: 16, fontWeight: 700 }}>Referral bonus abhi band hai</p>}
+            <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+              {r.on ? `Aapka dost aapke code se join kare aur ${r.rides} rides poori kare — aapko ${inr(r.referrer_bonus)}, usko ${inr(r.new_bonus)}. Seedha wallet mein.`
+                : "Admin jab ise chalu karega, aapke purane referrals bhi gine jayenge."}
+            </p>
+            <div style={{ margin: "16px auto 0", maxWidth: 260, border: "2px dashed var(--gold)", borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "0.12em", color: "var(--ink)" }}>{r.code}</span>
+              <button onClick={() => void copy()} style={{ border: "none", background: "var(--gold-tint)", color: "var(--gold-dark)", fontWeight: 700, fontSize: 12.5, borderRadius: 10, padding: "6px 10px", cursor: "pointer" }}>Copy</button>
+            </div>
+            <a href={`https://wa.me/?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 14, padding: "13px 16px", borderRadius: 14, background: "#25D366", color: "white", fontWeight: 700, fontSize: 14.5, textDecoration: "none" }}>
+              <ShareIcon s={18} c="white" /> WhatsApp pe share karein
+            </a>
+          </div>
+
+          <div style={{ ...card, padding: 16, marginTop: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Aapke referrals</p>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--green)", fontWeight: 700 }}>Kamaaye: {inr(r.earned)}</p>
+            </div>
+            {r.referred.length === 0 && <p style={{ margin: "10px 0 0", fontSize: 13, color: "var(--ink-soft)" }}>Abhi koi nahi. Code share karein — dost ke {r.rides} rides poori karte hi bonus aayega.</p>}
+            {r.referred.map((x, i) => {
+              const pct = Math.min(100, Math.round((x.done / r.rides) * 100));
+              return (
+                <div key={i} style={{ padding: "12px 0", borderTop: i ? "1px solid var(--line)" : "none", marginTop: i ? 0 : 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13.5 }}>
+                    <b>{x.name}</b>
+                    <span style={{ color: x.paid ? "var(--green)" : "var(--ink-soft)", fontWeight: 600 }}>
+                      {x.paid ? `✓ ${inr(r.referrer_bonus)} mila` : x.kyc !== "Approved" ? "Approval baaki" : `${Math.min(x.done, r.rides)}/${r.rides} rides`}
+                    </span>
+                  </div>
+                  {!x.paid && <div style={{ marginTop: 6, height: 6, borderRadius: 6, background: "var(--bg-secondary)", overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: "var(--gold)" }} /></div>}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </InfoPage>
   );
 }

@@ -21,6 +21,7 @@ interface Drv {
   id: string; name: string; vehicle: VehicleKind; model: string; plate: string; ac: boolean; city: string; kyc: "Pending" | "Approved" | "Rejected";
   kyc_note: string | null; docs: Record<string, string>; upi: string | null; suspended: boolean; online: boolean; last_seen: string | null;
   rating: number | null; trips: number; created_at: string; profiles: { phone: string | null; blocked: boolean; deleted_at?: string | null } | null;
+  referral_code: string; referred_by: string | null; referral_paid_at: string | null;
 }
 interface RideRow {
   id: string; code: string; customer_id: string; driver_id: string | null; service: string; vehicle: VehicleKind | null; requested_vehicles: VehicleKind[];
@@ -30,7 +31,10 @@ interface RideRow {
   cancelled_by: string | null; rating: number | null; created_at: string; completed_at: string | null; scheduled_for: string | null;
 }
 interface Vehicle { id: VehicleKind; name: string; base: number; per_km: number; per_min: number; min_fare: number; cancel_fee: number; platform_fee: number; platform_fee_non_ac: number; ac: boolean; enabled: boolean; sort: number }
-interface Settings { surge_on: boolean; surge_mult: number; non_ac_factor: number; booking_fee: number; booking_fee_above: number }
+interface Settings {
+  surge_on: boolean; surge_mult: number; non_ac_factor: number; booking_fee: number; booking_fee_above: number;
+  referral_on: boolean; referral_referrer_bonus: number; referral_new_bonus: number; referral_rides: number;
+}
 interface Coupon { code: string; title: string; body: string; off: number; pct: boolean; max_off: number | null; min_fare: number; expires_at: string; active: boolean; uses: number; total_limit: number | null; per_user_limit: number }
 interface Ledger { id: number; ride_id: string | null; user_id: string | null; party: string; kind: string; amount: number; method: string | null; note: string | null; created_at: string }
 interface Ticket { id: string; code: string; user_id: string; role: string; subject: string; ride_id: string | null; status: "Open" | "In Progress" | "Resolved"; notes: { from: string; body: string; at: string }[]; created_at: string }
@@ -736,7 +740,7 @@ function DriversSection({ d, act }: { d: Data; act: Act }) {
             ))}
           </Panel>
           <div style={{ ...card, padding: 14 }}>
-            {kv("Applied", when(sel.created_at))}{kv("Trips", sel.trips)}{kv("UPI", sel.upi ?? "—")}{kv("Last seen", when(sel.last_seen))}
+            {kv("Applied", when(sel.created_at))}{kv("Trips", sel.trips)}{kv("UPI", sel.upi ?? "—")}{kv("Referral code", sel.referral_code)}{kv("Referred by", sel.referred_by ? `${d.drivers.find((x) => x.id === sel.referred_by)?.name ?? "A rider"}${sel.referral_paid_at ? " · bonus paid" : ""}` : "—")}{kv("Last seen", when(sel.last_seen))}
             {kv("Wallet balance", inr(d.ledger.filter((l) => l.user_id === sel.id && l.party === "driver").reduce((s, l) => s + l.amount, 0)))}
           </div>
           {sel.kyc === "Pending" && (
@@ -834,11 +838,13 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
   const upd = (id: string, p: Partial<Vehicle>) => { setDirty(true); setRows((r) => r.map((x) => (x.id === id ? { ...x, ...p } : x))); };
   const updS = (p: Partial<Settings>) => { setDirty(true); setS((x) => ({ ...x, ...p })); };
   const shown = (v: Vehicle) => PRICE_FIELDS.filter((f) => f.k !== "platform_fee" || hasAc(v));
-  const invalid = rows.some((v) => shown(v).some((f) => !valid(f.k, Number(v[f.k])))) || !validS(Number(s.booking_fee), 100) || !validS(Number(s.booking_fee_above), 10000);
+  const refOk = validS(Number(s.referral_referrer_bonus), 5000) && validS(Number(s.referral_new_bonus), 5000) && Number(s.referral_rides) >= 1 && validS(Number(s.referral_rides), 500);
+  const invalid = rows.some((v) => shown(v).some((f) => !valid(f.k, Number(v[f.k])))) || !validS(Number(s.booking_fee), 100) || !validS(Number(s.booking_fee_above), 10000) || !refOk;
 
   const KEYS = ["base", "per_km", "per_min", "min_fare", "cancel_fee", "platform_fee", "platform_fee_non_ac", "ac", "enabled"] as const;
   const changedOf = (v: Vehicle) => { const o = d.vehicles.find((x) => x.id === v.id)!; return KEYS.filter((k) => String(v[k]) !== String(o[k])); };
-  const settingsChanged = s.surge_on !== d.settings.surge_on || s.surge_mult !== d.settings.surge_mult || s.booking_fee !== d.settings.booking_fee || s.booking_fee_above !== d.settings.booking_fee_above;
+  const SETTING_KEYS = ["surge_on", "surge_mult", "booking_fee", "booking_fee_above", "referral_on", "referral_referrer_bonus", "referral_new_bonus", "referral_rides"] as const;
+  const settingsChanged = SETTING_KEYS.some((k) => String(s[k]) !== String(d.settings[k]));
   const changes = rows.reduce((n, v) => n + changedOf(v).length, 0) + (settingsChanged ? 1 : 0);
 
   const save = async () => {
@@ -849,7 +855,7 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
         if (keys.length) await rpc("admin_update_vehicle", { p_id: v.id, p: Object.fromEntries(keys.map((k) => [k, v[k]])) });
       }
       if (settingsChanged) {
-        await rpc("admin_update_settings", { p: { surge_on: s.surge_on, surge_mult: s.surge_mult, booking_fee: s.booking_fee, booking_fee_above: s.booking_fee_above } });
+        await rpc("admin_update_settings", { p: Object.fromEntries(SETTING_KEYS.map((k) => [k, s[k]])) });
       }
       setDirty(false);
       await done("Prices saved ✓ — new bookings use them now. Rides already booked keep their price.");
@@ -950,6 +956,25 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
           </div>
           <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>
             {s.surge_on ? `On: har fare ${Number(s.surge_mult).toFixed(1)} guna — ₹100 ki ride ₹${Math.round(100 * Number(s.surge_mult))} ki hogi. Customer ko "High demand" dikhega.` : "Off: normal fare. Rush ke time on karein."}
+          </p>
+        </Panel>
+        <Panel title="Rider referral (Refer & Earn)" right={<Toggle on={s.referral_on} onChange={(on) => updS({ referral_on: on })} label="Rider referrals" />}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, opacity: s.referral_on ? 1 : 0.5 }}>
+            {([["referral_referrer_bonus", "Refer karne wale rider ko ₹", 5000], ["referral_new_bonus", "Naye rider ko ₹", 5000], ["referral_rides", "Itni rides poori hone pe", 500]] as const).map(([k, l, max]) => {
+              const ok = validS(Number(s[k]), max) && (k !== "referral_rides" || Number(s[k]) >= 1);
+              return (
+                <label key={k} style={{ fontSize: 13.5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>{l}
+                  <input type="number" min={k === "referral_rides" ? 1 : 0} max={max} step={1} value={Number.isNaN(Number(s[k])) ? "" : s[k]} aria-label={l}
+                    onChange={(e) => updS({ [k]: e.target.value === "" ? NaN : Number(e.target.value) } as Partial<Settings>)}
+                    style={{ ...field, width: 90, padding: "7px 10px", fontSize: 14, borderColor: ok ? undefined : "var(--red)" }} />
+                </label>
+              );
+            })}
+          </div>
+          <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>
+            {s.referral_on ? `Naya rider kisi rider ka code daal ke join kare aur ${s.referral_rides} rides poori kare — refer karne wale ko ₹${s.referral_referrer_bonus}, naye ko ₹${s.referral_new_bonus}, dono ke wallet mein, ek hi baar.`
+              : "Off: koi referral bonus nahi milega. Codes chalte rahenge; on karne ke baad agli poori ride pe bonus check hoga."}
+            {" "}Is mahine diye: {inr(d.ledger.filter((x) => x.kind === "incentive" && /^Referral bonus|^Welcome bonus/.test(x.note ?? "") && new Date(x.created_at).getMonth() === new Date().getMonth()).reduce((n, x) => n + x.amount, 0))}.
           </p>
         </Panel>
       </div>

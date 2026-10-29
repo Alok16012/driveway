@@ -7,7 +7,7 @@ import { BlockedBanner, BlockedScreen, EmailLogin, ForgotPassword, ResetPassword
 import { KycFlow, PendingApproval } from "../components/rider/Kyc";
 import { AlertsScreen, EarningsScreen, RequestPopup, RiderAccount, RiderHome, TripPage, TripsScreen, type AccountKey, type QuickKey } from "../components/rider/RiderScreens";
 import {
-  BankPage, CancelTripSheet, DocumentsPage, IncentivesScreen, PerformancePage, PreferencesPage, SosSheet, TripDetailPage, VehiclePage, WalletPage, type RiderPrefs,
+  BankPage, CancelTripSheet, DocumentsPage, IncentivesScreen, PerformancePage, PreferencesPage, ReferPage, SosSheet, TripDetailPage, VehiclePage, WalletPage, type RiderPrefs,
 } from "../components/rider/RiderPages";
 import { ChatScreen, EditProfilePage, type ChatMessage } from "../components/customer/AccountScreens";
 import { HOME_BG, LoadState, Toast } from "../components/ui";
@@ -302,6 +302,7 @@ export default function RiderApp() {
                 )}
                 {detail.k === "bank" && !blocked && <BankPage upi={me.upi} onBack={back} onSave={async (u) => { await updateMyUpi(u); await refreshMe(); flash("UPI ID updated"); }} />}
                 {detail.k === "preferences" && <PreferencesPage prefs={prefs} onBack={back} onChange={changePrefs} />}
+                {detail.k === "refer" && <ReferPage onBack={back} onCopied={() => flash("Code copied")} />}
                 {detail.k === "trip" && (() => {
                   const r = trips?.find((x) => x.id === detail.id);
                   return r ? <TripDetailPage ride={r} onBack={back} onHelp={() => push({ k: "support" })} /> : <LoadState />;

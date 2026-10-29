@@ -846,3 +846,63 @@ describe("Road distance from the app", () => {
     expect([Number(r.km), r.mins, r.fare]).toEqual([10.3, 44, quoted.options.find((o: any) => o.id === "bike").fare]);
   });
 });
+
+describe("Rider referrals (Refer & Earn)", () => {
+  const docs = (id: string) => Object.fromEntries(["photo", "licence", "rc", "insurance", "aadhaar"].map((k) => [k, `${id}/${k}.jpg`]));
+  const apply = async (uid: string, extra: Record<string, unknown> = {}) => t.rpc(uid, "register_driver", { name: "Neel Roy", vehicle: "bike", model: "Splendor",
+    plate: `WB${Math.floor(Math.random() * 1e8)}`, ac: false, city: "Kolkata", docs: docs(uid), ...extra });
+  const wallet = async (uid: string) => Number((await t.admin(`select coalesce(sum(amount),0)::int n from public.ledger where user_id = $1 and kind = 'incentive'`, [uid]))[0].n);
+
+  it("every rider gets a code; a new rider can apply with someone else's code, not their own or a wrong one", async () => {
+    const a = await t.driver("bike");
+    const code = (await t.admin(`select referral_code from public.drivers where id = $1`, [a]))[0].referral_code as string;
+    expect(code).toMatch(/^[A-Z]{1,5}\d{3}$/);
+    const b = await t.user({ name: "Neel Roy" });
+    await rejects(apply(b, { referral_code: "NOPE999" }), /referral code not found/);
+    await apply(b, { referral_code: code.toLowerCase() });
+    expect((await t.admin(`select referred_by from public.drivers where id = $1`, [b]))[0].referred_by).toBe(a);
+    const c = await t.driver("bike");
+    const own = (await t.admin(`select referral_code from public.drivers where id = $1`, [c]))[0].referral_code;
+    await t.admin(`update public.drivers set kyc = 'Rejected' where id = $1`, [c]);
+    await rejects(t.rpc(c, "register_driver", { name: "Test Driver", vehicle: "bike", model: "X", plate: `TS${Math.floor(Math.random() * 1e8)}`, ac: false, city: "Kolkata", docs: docs(c), referral_code: own }), /own referral code/);
+  });
+
+  it("pays both riders once, after the set number of rides, with the admin's amounts", async () => {
+    const adm = await t.user({ admin: true });
+    await t.rpc(adm, "admin_update_settings", { referral_on: true, referral_referrer_bonus: 250, referral_new_bonus: 50, referral_rides: 2 });
+    const a = await t.driver("bike");
+    const code = (await t.admin(`select referral_code from public.drivers where id = $1`, [a]))[0].referral_code;
+    const b = await t.user({ name: "Neel Roy" });
+    await apply(b, { referral_code: code });
+    await t.admin(`update public.drivers set kyc = 'Approved' where id = $1`, [b]);
+    await t.rpc(b, "set_online", true); await t.rpc(b, "recharge_wallet", 100, t.idem());
+    const before = await wallet(a);
+    await fullTrip({ driver: b });
+    expect(await wallet(a)).toBe(before);                         // 1 ride: not yet
+    await fullTrip({ driver: b });
+    expect(await wallet(a)).toBe(before + 250);                   // 2 rides: referrer paid
+    expect(await wallet(b)).toBe(50);                             // and the new rider
+    await fullTrip({ driver: b });
+    expect(await wallet(a)).toBe(before + 250);                   // never twice
+    const mine = await t.rpc(a, "my_referral");
+    expect(mine).toMatchObject({ code, referrer_bonus: 250, new_bonus: 50, rides: 2, earned: 250 });
+    expect(mine.referred[0]).toMatchObject({ name: "Neel Roy", done: 3, paid: true });
+    await t.rpc(adm, "admin_update_settings", { referral_referrer_bonus: 200, referral_new_bonus: 100, referral_rides: 10 });
+  });
+
+  it("nothing is paid while referrals are switched off; only admins change the offer", async () => {
+    const adm = await t.user({ admin: true });
+    await t.rpc(adm, "admin_update_settings", { referral_on: false, referral_rides: 1 });
+    const a = await t.driver("bike");
+    const code = (await t.admin(`select referral_code from public.drivers where id = $1`, [a]))[0].referral_code;
+    const b = await t.user({ name: "Neel Roy" });
+    await apply(b, { referral_code: code });
+    await t.admin(`update public.drivers set kyc = 'Approved' where id = $1`, [b]);
+    await t.rpc(b, "set_online", true); await t.rpc(b, "recharge_wallet", 100, t.idem());
+    await fullTrip({ driver: b });
+    expect(await wallet(a)).toBe(0);
+    await rejects(t.rpc(await t.user(), "admin_update_settings", { referral_referrer_bonus: 9999 }), /admin only/);
+    await rejects(t.rpc(adm, "admin_update_settings", { referral_referrer_bonus: 9999 }), /₹0–₹5000/);
+    await t.rpc(adm, "admin_update_settings", { referral_on: true, referral_rides: 10 });
+  });
+});
