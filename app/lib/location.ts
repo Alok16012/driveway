@@ -65,11 +65,21 @@ function set(l: DeviceLocation) {
 const OFF = "Location is off — allow it for DriveWay in your settings.";
 const NO_FIX = "Couldn't find your location. Check GPS is on.";
 
-/** A fix from any source. With two sources running, keep the sharper one unless ours is getting old. */
+/** A fix from any source. With two sources running, keep the sharper one unless ours is getting old, and hold
+ *  the pin still while new fixes only wobble within GPS error — so the address doesn't keep flipping. */
 function onFix(lat: number, lng: number, accuracy: number, at: number) {
-  if (current.status === "ok" && accuracy > current.accuracy * 1.5 && Date.now() - current.at < 10_000) return;
+  if (current.status === "ok") {
+    const moved = distanceM(current.pos, { lat, lng });
+    const sharper = accuracy < current.accuracy * 0.7;
+    if (!sharper && moved < Math.max(15, accuracy)) { current = { ...current, at }; return; }   // same spot, still fresh
+    if (accuracy > current.accuracy * 1.5 && Date.now() - current.at < 10_000) return;
+  }
   set({ status: "ok", pos: { lat, lng }, accuracy, at });
 }
+
+/** Ask Android for location at most once per app session: someone who picked "Approximate" (or declined) isn't
+ *  shown the system prompt again every time a screen with a map opens. */
+let asked = false;
 
 /** The browser's / WebView's own geolocation (Android LocationManager inside the apps). */
 function watchBrowser(reportErrors: boolean) {
@@ -94,7 +104,7 @@ function watchBrowser(reportErrors: boolean) {
 async function startNative(g: number) {
   try {
     let perm = await NativeGeo.checkPermissions();
-    if (perm.location !== "granted") perm = await NativeGeo.requestPermissions({ permissions: ["location", "coarseLocation"] });
+    if (perm.location !== "granted" && !asked) { asked = true; perm = await NativeGeo.requestPermissions({ permissions: ["location", "coarseLocation"] }); }
     if (g !== gen) return;
     if (perm.location !== "granted" && perm.coarseLocation !== "granted") { set({ status: "denied", message: OFF }); return; }
     watchBrowser(false);
@@ -155,6 +165,7 @@ export function useDeviceLocation(enabled = true): DeviceLocation {
 
 /** Ask again after the person turns location back on. */
 export function retryLocation() {
+  asked = false;   // the person tapped retry: they expect the permission prompt again
   stop();
   set({ status: "locating" });
   if (listeners.size) start();

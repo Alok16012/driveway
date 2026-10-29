@@ -15,19 +15,32 @@ type OlaResult = { formatted_address: string; name?: string; types?: string[]; a
 
 const has = (c: OlaComponent, t: string) => (Array.isArray(c.types) ? c.types.includes(t) : c.types.split(/[,\s]+/).includes(t));
 
-/** "<place or street>, <locality>, <city>" from the best result, like the other geocoders. */
+/** A house or street address ("11/2, Neogi Para Rd"), as opposed to a shop, school or station name. */
+const isStreetLevel = (r: OlaResult) =>
+  /^\d/.test((r.name ?? "").trim()) || (r.types ?? []).some((t) => t === "street_address" || t === "route");
+
+/** Where the point is, in words. Ola lists several nearby places for a point and, in busy areas, those are
+ *  shops, schools or stations that can be a few hundred metres away — showing one of those as "your location"
+ *  looks wrong. So: a house/street result when there is one, else the area (locality, sector, neighbourhood)
+ *  from the first result without its shop/landmark name. */
 export function formatOlaAddress(results: OlaResult[]): string | null {
+  if (!results.length) return null;
+  const parts = (a: string) => a.split(",").map((x) => x.trim()).filter(Boolean);
+  const street = results.find(isStreetLevel);
+  if (street) {
+    const name = (street.name ?? "").trim();
+    const rest = parts(street.formatted_address ?? "").filter((p) => p !== name && !name.includes(p));
+    return [name || rest.shift(), ...rest].filter(Boolean).slice(0, 3).join(", ") || null;
+  }
   const r = results[0];
-  if (!r) return null;
+  const name = (r.name ?? "").trim();
+  const area = parts(r.formatted_address ?? "").filter((p) => p !== name && !/^\d{6}$/.test(p) && p !== "India");
+  if (area.length) return area.slice(0, 3).join(", ");
   const comps = r.address_components ?? [];
   const pick = (...types: string[]) => comps.find((c) => types.some((t) => has(c, t)))?.long_name;
-  const street = pick("premise", "point_of_interest", "establishment", "route", "street_address");
-  const locality = pick("sublocality_level_2", "sublocality_level_1", "sublocality", "neighborhood");
-  const city = pick("locality", "administrative_area_level_3", "administrative_area_level_2");
-  const first = r.name && r.name.length <= 60 ? r.name : street;
-  const parts = [first, locality, city].filter((x, i, all): x is string => !!x && all.indexOf(x) === i);
-  if (parts.length >= 2) return parts.slice(0, 3).join(", ");
-  return r.formatted_address?.split(",").slice(0, 3).map((x) => x.trim()).filter(Boolean).join(", ") || null;
+  const local = [pick("route"), pick("sublocality_level_1", "sublocality", "neighborhood"), pick("locality", "administrative_area_level_3")]
+    .filter((x, i, all): x is string => !!x && all.indexOf(x) === i);
+  return local.length ? local.join(", ") : name || null;
 }
 
 export async function olaReverseGeocode(pos: LatLng): Promise<string | null> {

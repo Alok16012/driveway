@@ -56,18 +56,21 @@ describe("decodePolyline", () => {
 
 describe("formatOlaAddress", () => {
   const comp = (long_name: string, types: string) => ({ long_name, short_name: long_name, types });
-  it("uses the place name, locality and city", () => {
-    expect(formatOlaAddress([{ formatted_address: "Spencer's, 6 Camac St, Elgin, Kolkata, West Bengal 700017, India", name: "Spencer's",
-      address_components: [comp("Camac Street", "route"), comp("Elgin", "sublocality"), comp("Kolkata", "locality"), comp("West Bengal", "administrative_area_level_1")] }]))
-      .toBe("Spencer's, Elgin, Kolkata");
+  it("prefers a house/street result over nearby shops and stations", () => {
+    expect(formatOlaAddress([
+      { formatted_address: "Duncan Tea House, Central Park, Sector III, Bidhannagar, Kolkata, West Bengal", name: "Duncan Tea House", types: ["restaurant"] },
+      { formatted_address: "13, Neogi Para Rd, Neogipara, Ashokgarh, Kolkata, West Bengal, 700036, India", name: "13, Neogi Para Rd", types: ["street_address"] },
+    ])).toBe("13, Neogi Para Rd, Neogipara, Ashokgarh");
+    expect(formatOlaAddress([{ formatted_address: "11/2, Neogi Para Rd, 11/2, Neogi Para Rd, Neogipara, Ariadaha, Baranagar", name: "11/2, Neogi Para Rd", types: ["point_of_interest"] }]))
+      .toBe("11/2, Neogi Para Rd, Neogipara, Ariadaha");
   });
-  it("falls back to the street when there is no name, and accepts array types", () => {
-    expect(formatOlaAddress([{ formatted_address: "x", address_components: [
-      { long_name: "Boring Road", short_name: "Boring Rd", types: ["route"] }, { long_name: "Patna", short_name: "Patna", types: ["locality"] }] }]))
-      .toBe("Boring Road, Patna");
+  it("shows the area, not a landmark's name, when there is no street address", () => {
+    expect(formatOlaAddress([{ formatted_address: "East West Metro Karunamoyee Station, Central Park, Sector III, Karunamoyee, West Bengal, 700064, India",
+      name: "East West Metro Karunamoyee Station", types: ["supermarket"] }])).toBe("Central Park, Sector III, Karunamoyee");
   });
-  it("trims the formatted address when the components say too little", () => {
-    expect(formatOlaAddress([{ formatted_address: "Gandhi Maidan, Patna, Bihar 800001, India" }])).toBe("Gandhi Maidan, Patna, Bihar 800001");
+  it("falls back to the components, accepting string or array types", () => {
+    expect(formatOlaAddress([{ formatted_address: "", address_components: [
+      { long_name: "Boring Road", short_name: "Boring Rd", types: ["route"] }, comp("Patna", "locality")] }])).toBe("Boring Road, Patna");
     expect(formatOlaAddress([])).toBeNull();
   });
 });

@@ -45,6 +45,9 @@ export { HOME_BG };
 const ON_BG = "white";
 const ON_BG_SOFT = "rgba(255,255,255,0.85)";
 
+/** A fix less certain than this is called out on the map (Android's "Approximate" location is ~2 km). */
+const ROUGH_M = 150;
+
 const SERVICES: RideOption[] = ["bike", "mini", "sedan", "suv", "any", "rental", "parcel", "auto", "erick"];
 
 export default function HomeScreen(p: HomeProps) {
@@ -79,6 +82,12 @@ export default function HomeScreen(p: HomeProps) {
               {off ? "Location off · tap to retry" : address ?? (loc.status === "ok" ? "Finding your address…" : "Locating…")}
             </span>
           </div>
+          {loc.status === "ok" && loc.accuracy > ROUGH_M && (
+            // "Approximate" location on Android, or a weak fix: say why the pin may be off instead of looking wrong.
+            <div style={{ position: "absolute", left: 12, right: 12, bottom: 12, background: "rgba(15,23,41,0.88)", color: "white", borderRadius: 12, padding: "8px 10px", fontSize: 11.5, lineHeight: 1.4 }}>
+              Location approximate (±{loc.accuracy >= 1000 ? `${(loc.accuracy / 1000).toFixed(1)} km` : `${Math.round(loc.accuracy)} m`}). Phone Settings → Apps → DriveWay → Location mein <b>“Use precise location”</b> on karein, aur GPS on rakhein.
+            </div>
+          )}
         </MapView>
 
         <div style={{ margin: "-26px 10px 0", position: "relative", background: "var(--surface)", borderRadius: 20, padding: 12, boxShadow: "var(--shadow-xl)" }}>
