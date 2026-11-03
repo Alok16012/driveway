@@ -67,6 +67,14 @@ function useTripEnds(from: Place, to: Place | null) {
   };
 }
 
+/** A pickup turned into a drop (swap): "Current location" becomes a pinned place at the fixed position. */
+function asDrop(p: Place): Place | null {
+  if (p.kind !== "current") return p;
+  if (typeof p.lat !== "number" || typeof p.lng !== "number") return null;
+  const parts = (p.address || "").split(",").map((x) => x.trim()).filter(Boolean);
+  return { id: `g:here-${p.lat.toFixed(5)},${p.lng.toFixed(5)}`, name: parts[0] ?? "Pinned location", address: parts.slice(1).join(", ") || p.address, kind: null, lat: p.lat, lng: p.lng };
+}
+
 /** The road route between two points from Ola Maps: undefined while asking (at most ~4 s), null when unavailable. */
 function useRoad(a: LatLng | null, b: LatLng | null, enabled: boolean): RoadInfo | null | undefined {
   const [road, setRoad] = useState<RoadInfo | null | undefined>(undefined);
@@ -117,6 +125,7 @@ function NotInCity({ onChangePickup }: { onChangePickup: () => void }) {
 export function SearchPage({ places, initialTo, onBack, onDone }: { places: Place[]; initialTo?: Place; onBack: () => void; onDone: (from: Place, to: Place) => void }) {
   const current = places.find((p) => p.kind === "current") ?? places[0];
   const here = useCurrentAddress();
+  const here0 = here;
   const hereLabel = here.address ?? (here.loc.status === "ok" ? "Finding your address…" : "Locating…");
   const [from, setFrom] = useState<Place>(current);
   const [to, setTo] = useState<Place | null>(initialTo ?? null);
@@ -175,6 +184,15 @@ export function SearchPage({ places, initialTo, onBack, onDone }: { places: Plac
     }
   };
 
+  // Swap: the drop becomes the pickup; "Current location" becomes a pinned drop at where the phone is.
+  const swap = () => {
+    if (!to) return;
+    const here = from.kind === "current" && here0.loc.status === "ok" ? { ...from, lat: here0.loc.pos.lat, lng: here0.loc.pos.lng, address: here0.address ?? from.address } : from;
+    const drop = asDrop(here);
+    if (!drop) { setErr("Finding your location — try swapping again in a moment."); return; }
+    setErr(null); setFrom(to); setTo(drop); onDone(to, drop);
+  };
+
   const input = (which: "from" | "to") => {
     const on = focus === which;
     const val = which === "from" ? from : to;
@@ -205,7 +223,7 @@ export function SearchPage({ places, initialTo, onBack, onDone }: { places: Plac
             {input("from")}
             {input("to")}
           </div>
-          <button aria-label="Swap pickup and drop" disabled={!to || from.kind === "current"} onClick={() => { if (to && from.kind !== "current") { setFrom(to); setTo(from); } }} className="press"
+          <button aria-label="Swap pickup and drop" disabled={!to} onClick={swap} className="press"
             style={{ ...iconBtn, width: 36, height: 36, borderRadius: "50%", background: "var(--bg-secondary)", justifyContent: "center" }}>
             <SwapIcon s={18} c="var(--ink-soft)" />
           </button>
@@ -278,9 +296,9 @@ function slots(): [string, string][] {
   return out;
 }
 
-export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = true, onAcChange, onBack, onEditRoute, onBooked, onParcel }: {
+export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = true, onAcChange, onBack, onEditRoute, onSwap, onBooked, onParcel }: {
   from: Place; to: Place; prefer?: RideOption; initialCoupon: string | null; initialAc?: boolean; onAcChange?: (ac: boolean) => void;
-  onBack: () => void; onEditRoute: () => void; onBooked: (scheduled: boolean) => void;
+  onBack: () => void; onEditRoute: () => void; onSwap?: (from: Place, to: Place) => void; onBooked: (scheduled: boolean) => void;
   onParcel: (x: { quote: Quote; pay: PayMethod; coupon: string | null; from: Place }) => void;
 }) {
   const [sel, setSel] = useState<RideOption>(prefer ?? "any");
@@ -291,6 +309,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
   const [when, setWhen] = useState<[string, string] | null>(null);
   const [passenger, setPassenger] = useState<{ name: string; phone: string } | null>(null);
   const [addOn, setAddOn] = useState(0);
+  const [share, setShare] = useState(0);              // 0 = private ride, 1 or 2 = sharing seats
   const [rental, setRental] = useState<{ pkg: string; car: VehicleKind }>({ pkg: "r2", car: "mini" });
   const [sheet, setSheet] = useState<null | "pay" | "coupon" | "who" | "when" | "rental" | "fare">(null);
   const [bigMap, setBigMap] = useState(false);
@@ -341,13 +360,23 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
     if (o === "rental") return { fare: rentalQ?.fare ?? 0, discount: rentalQ?.discount ?? 0, available: (rentalQ?.available ?? 0) > 0, eta: opt(rental.car)?.eta ?? 5, lines: null, coupon: rentalQ?.coupon ?? null, cancel: opt(rental.car)?.cancel_fee ?? 0, booking: rentalQ?.booking_fee ?? 0 };
     if (o === "parcel") { const p = q.parcels[0]; return { fare: p?.fare ?? 0, discount: p?.discount ?? 0, available: (p?.available ?? 0) > 0, eta: opt("bike")?.eta ?? 3, lines: null, coupon: p?.coupon ?? null, cancel: 0, booking: p?.booking_fee ?? 0 }; }
     const x = opt(o);
+    if (share && x?.share) return { fare: share === 2 ? x.share.fare2 : x.share.fare, discount: 0, available: x.available > 0, eta: x.eta, lines: null, coupon: null, cancel: x.cancel_fee, booking: share === 2 ? x.share.booking_fee2 : x.share.booking_fee };
     return { fare: x?.fare ?? 0, discount: x?.discount ?? 0, available: (x?.available ?? 0) > 0, eta: x?.eta ?? 5, lines: x?.lines ?? null, coupon: x?.coupon ?? null, cancel: x?.cancel_fee ?? 0, booking: x?.booking_fee ?? 0 };
   };
   const cur = pick(sel);
   const isParcel = sel === "parcel";
   const extra = isParcel ? 0 : addOn;
   const nameOf = (o: RideOption) => (o === "any" ? "Book Any" : o === "rental" ? "Hourly Rental" : o === "parcel" ? "Parcel" : vehicleById(o).name);
-  const visible = ORDER.filter((o) => o === "any" || o === "rental" || o === "parcel" || !!opt(o as VehicleKind));
+  const canShare = (o: RideOption) => !!(o !== "any" && o !== "rental" && o !== "parcel" && opt(o as VehicleKind)?.share);
+  const shareOpts = ORDER.filter(canShare);
+  const visible = share ? shareOpts : ORDER.filter((o) => o === "any" || o === "rental" || o === "parcel" || !!opt(o as VehicleKind));
+  const maxSeats = canShare(sel) ? opt(sel as VehicleKind)!.share!.seats : 1;
+  const chooseShare = (n: number) => {
+    setShare(n);
+    if (!n) return;
+    setWhen(null);                                      // sharing is for rides now
+    if (!canShare(sel)) { const first = shareOpts.find((o) => (opt(o as VehicleKind)?.available ?? 0) > 0) ?? shareOpts[0]; if (first) setSel(first); }
+  };
 
   const book = async () => {
     if (busy) return;
@@ -355,7 +384,8 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
     setBusy(true); setBookErr(null);
     try {
       await bookRide({
-        option: sel, from: ends.fromId, to: ends.toId, pickup: ends.pickup, drop: ends.drop, ac, pay, coupon, when: when?.[1] ?? null, passenger,
+        option: sel, from: ends.fromId, to: ends.toId, pickup: ends.pickup, drop: ends.drop, ac, pay, coupon: share ? null : coupon, when: share ? null : when?.[1] ?? null, passenger,
+        ...(share ? { share: Math.min(share, maxSeats) } : {}),
         rental: sel === "rental" ? rental : undefined, add_on: extra, road: q.roadInput ?? null, idem: idem.current,
       });
       onBooked(!!when);
@@ -370,7 +400,8 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
 
   const barBtn: React.CSSProperties = { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: "6px 4px", fontSize: 14.5, fontWeight: 500, color: "var(--ink)", minWidth: 0 };
   const PayIcon = PAYS.find((x) => x.id === pay)!.Icon;
-  const couponState = coupon ? cur.coupon : null;
+  const couponState = coupon && !share ? cur.coupon : null;
+  const swapTo = asDrop(ends.resolvedFrom);
 
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", background: "var(--app-bg)" }}>
@@ -388,7 +419,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
 
       {/* ── pickup / drop + when ── */}
       <div style={{ position: "relative", background: "var(--surface)", borderRadius: "14px 14px 0 0", marginTop: -8, boxShadow: "0 -4px 14px rgba(15,23,41,0.08)", borderBottom: "1px solid var(--line)" }}>
-        <button onClick={onEditRoute} style={{ width: "100%", display: "flex", gap: 14, padding: "14px 96px 14px 18px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+        <button onClick={onEditRoute} style={{ width: "100%", display: "flex", gap: 14, padding: `14px ${onSwap ? 140 : 96}px 14px 18px`, background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
           <span style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 6 }}>
             <span style={{ width: 11, height: 11, borderRadius: "50%", background: "#43a047" }} />
             <span style={{ width: 2, flex: 1, background: "var(--line-strong)", margin: "4px 0" }} />
@@ -399,7 +430,13 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
             <span style={{ display: "block", fontSize: 15, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingTop: 12 }}>{to.name}, {to.address}</span>
           </span>
         </button>
-        <button onClick={() => setSheet("when")} className="press" style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", width: 72, padding: "10px 4px", borderRadius: 12, border: "none", background: "white", boxShadow: "0 2px 10px rgba(15,23,41,0.14)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+        {onSwap && (
+          <button aria-label="Swap pickup and drop" disabled={!swapTo} onClick={() => swapTo && onSwap(to, swapTo)} className="press"
+            style={{ position: "absolute", right: 96, top: "50%", transform: "translateY(-50%)", width: 38, height: 38, borderRadius: "50%", border: "none", background: "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: swapTo ? "pointer" : "default", opacity: swapTo ? 1 : 0.5 }}>
+            <SwapIcon s={18} c="var(--ink)" />
+          </button>
+        )}
+        <button onClick={() => (share ? undefined : setSheet("when"))} className="press" style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", width: 72, padding: "10px 4px", borderRadius: 12, border: "none", background: "white", boxShadow: "0 2px 10px rgba(15,23,41,0.14)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
           <AlarmIcon s={24} c={when ? "var(--blue)" : "var(--ink)"} />
           <span style={{ fontSize: 13, fontWeight: 600, color: when ? "var(--blue)" : "var(--ink)", lineHeight: 1.15, textAlign: "center" }}>{when ? when[0].replace(/^(Today|Tomorrow), /, "") : "Now"}</span>
         </button>
@@ -428,6 +465,37 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
           })}
         </div>
       </div>
+
+      {/* ── private / sharing ── */}
+      {shareOpts.length > 0 && (
+        <div style={{ padding: "0 14px 10px" }}>
+          <div role="radiogroup" aria-label="Private or sharing ride" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {[0, 1].map((n) => {
+              const on = n ? share > 0 : share === 0;
+              return (
+                <button key={n} role="radio" aria-checked={on} onClick={() => chooseShare(n ? Math.max(share, 1) : 0)} className="press" style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 14, cursor: "pointer", textAlign: "left",
+                  border: on ? "2px solid var(--blue)" : "2px solid var(--line)", background: on ? "var(--blue-tint)" : "var(--surface)",
+                }}>
+                  <span style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, background: n ? "#dcfce7" : "#e0e7ff" }}>{n ? "👥" : "🚘"}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 15, fontWeight: 700, color: on ? "var(--blue)" : "var(--ink)" }}>{n ? "Sharing" : "Private"}</span>
+                    <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-soft)" }}>{n ? `Up to ${q.share_off ?? 30}% sasta` : "Sirf aapke liye"}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {share > 0 && (
+            <div style={{ marginTop: 8, padding: "10px 12px", borderRadius: 14, background: "var(--surface)", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.35 }}>Raaste mein same direction ke aur log baith sakte hain. Coupon sharing pe nahi lagta.</span>
+              {[1, 2].filter((n) => n <= maxSeats).map((n) => (
+                <button key={n} aria-pressed={share === n} onClick={() => setShare(n)} className="press" style={{ ...chip(share === n), padding: "7px 11px", whiteSpace: "nowrap" }}>{n} seat{n > 1 ? "s" : ""}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── ride options ── */}
       <div style={{ flex: 1, margin: "4px 14px 14px", background: "var(--surface)", borderRadius: 18, overflow: "hidden", boxShadow: "var(--shadow-card)", alignSelf: "stretch" }}>
@@ -465,7 +533,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
                 : <span style={{ textAlign: "right" }}>
                     <span style={{ display: "block", fontSize: 15.5, fontWeight: 700, color: "var(--ink)" }}>{o === "parcel" ? "from " : ""}{inr(p.fare - p.discount)}</span>
                     {p.discount > 0 && <span style={{ display: "block", fontSize: 11, color: "var(--ink-mute)", textDecoration: "line-through" }}>{inr(p.fare)}</span>}
-                    {v?.ac && !p.discount && <span style={{ display: "block", fontSize: 11, color: "var(--ink-mute)" }}>{ac ? "Non-AC" : "AC"} {inr(v.alt_fare)}</span>}
+                    {v?.ac && !p.discount && !share && <span style={{ display: "block", fontSize: 11, color: "var(--ink-mute)" }}>{ac ? "Non-AC" : "AC"} {inr(v.alt_fare)}</span>}
                     {v && !v.ac && <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 11.5, color: "var(--ink-mute)" }}><UserIcon s={11} c="var(--ink-mute)" />{v.seats}</span>}
                   </span>)}
             </button>
@@ -497,7 +565,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
         )}
         <ErrorText msg={bookErr} />
         <PrimaryButton onClick={() => void book()} disabled={busy || !cur.available || (!!couponState && !couponState.ok)}>
-          {busy ? "Booking…" : isParcel ? "Continue to Parcel details" : `${when ? "Schedule" : "Book"} ${sel === "any" ? "Any" : sel === "rental" ? "Rental" : nameOf(sel)} · ${inr(cur.fare - cur.discount + cur.booking + extra)}`}
+          {busy ? "Booking…" : isParcel ? "Continue to Parcel details" : `${when ? "Schedule" : "Book"} ${share ? "Sharing " : ""}${sel === "any" ? "Any" : sel === "rental" ? "Rental" : nameOf(sel)} · ${inr(cur.fare - cur.discount + cur.booking + extra)}`}
         </PrimaryButton>
       </div>
 
@@ -928,6 +996,11 @@ export function LiveRidePage({ ride, onBack, onCancelled, onEnded, onChat, onSha
           {parcel && ride.parcel && (
             <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-soft)", background: "var(--bg-secondary)", borderRadius: 10, padding: "8px 10px" }}>
               📦 {ride.parcel.type} · {ride.parcel.weight_label}{ride.parcel.note ? ` · “${ride.parcel.note}”` : ""}
+            </p>
+          )}
+          {ride.shared && (
+            <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--success-text)", background: "var(--success)", borderRadius: 10, padding: "8px 10px" }}>
+              👥 Sharing · {ride.seats ?? 1} seat{(ride.seats ?? 1) > 1 ? "s" : ""}{ride.co_riders ? ` · ${ride.co_riders} aur ${ride.co_riders > 1 ? "log" : "vyakti"} is ride mein` : " · raaste mein aur log baith sakte hain"}
             </p>
           )}
           <div style={{ borderTop: "1px solid var(--line)", marginTop: 12, paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>

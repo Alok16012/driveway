@@ -180,6 +180,7 @@ export function RequestPopup({ offer, autoAccept, busy, err, onAccept, onDecline
             <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
               {!parcel && <span style={{ background: offer.ac ? "var(--info-bg)" : "var(--surface-dim)", color: offer.ac ? "var(--info-text)" : "var(--text-muted)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>{offer.ac ? "❄ AC RIDE" : "NON-AC"}</span>}
               {parcel && offer.parcel && <span style={{ background: "var(--gold-tint)", color: "var(--gold-dark)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>📦 {offer.parcel.type.toUpperCase()} · {offer.parcel.weight_label.toUpperCase()}</span>}
+              {offer.shared && <span style={{ background: "var(--success)", color: "var(--success-text)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>👥 SHARING · {offer.seats ?? 1} SEAT{(offer.seats ?? 1) > 1 ? "S" : ""}</span>}
               {autoAccept && <span style={{ background: "var(--success)", color: "var(--success-text)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>AUTO-ACCEPTING…</span>}
             </div>
           </div>
@@ -220,6 +221,31 @@ export function RequestPopup({ offer, autoAccept, busy, err, onAccept, onDecline
 
 /* ───────────────────────── Trip management ───────────────────────── */
 
+const STEP: Record<string, string> = { Arriving: "Pickup", Arrived: "Waiting", Started: "On trip", Completed: "Done" };
+
+/** On a shared trip: one chip per passenger, to switch between them. */
+export function SharedTripBar({ trips, focus, onPick }: { trips: RideView[]; focus: string; onPick: (id: string) => void }) {
+  return (
+    <div style={{ position: "sticky", top: 0, zIndex: 30, padding: "calc(10px + env(safe-area-inset-top)) 12px 10px", background: "var(--app-bg)" }}>
+      <p style={{ margin: "0 2px 6px", fontSize: 12, fontWeight: 700, color: "var(--on-bg)" }}>👥 Sharing · {trips.length} sawari</p>
+      <div className="no-scroll" style={{ display: "flex", gap: 8, overflowX: "auto" }}>
+        {trips.map((t) => {
+          const on = t.id === focus;
+          return (
+            <button key={t.id} onClick={() => onPick(t.id)} aria-pressed={on} className="press" style={{
+              flexShrink: 0, padding: "7px 12px", borderRadius: 12, cursor: "pointer", textAlign: "left",
+              border: on ? "2px solid var(--blue)" : "2px solid transparent", background: on ? "white" : "rgba(255,255,255,0.85)",
+            }}>
+              <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{(t.customer?.name ?? "Customer").split(" ")[0]}</span>
+              <span style={{ display: "block", fontSize: 11, color: "var(--ink-soft)" }}>{STEP[t.status] ?? t.status} · {t.seats ?? 1} seat</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 
 function useSince(iso: string | null) {
@@ -228,8 +254,8 @@ function useSince(iso: string | null) {
   return iso ? Math.max(0, (now - new Date(iso).getTime()) / 1000) : 0;
 }
 
-export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollected, onPaidDirect, onRated, onBack, onCall, onCancel, onSos, onNavigate }: {
-  trip: RideView; busy: boolean; err: string | null;
+export function TripPage({ trip, compact, busy, err, onArrived, onStart, onEnd, onCollected, onPaidDirect, onRated, onBack, onCall, onCancel, onSos, onNavigate }: {
+  trip: RideView; compact?: boolean; busy: boolean; err: string | null;
   onArrived: () => void; onStart: (otp: string) => void; onEnd: () => void; onCollected: () => void; onPaidDirect: () => void; onRated: (stars: number) => void;
   onBack: () => void; onCall: () => void; onCancel: () => void; onSos: () => void; onNavigate: () => void;
 }) {
@@ -304,9 +330,9 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
   const pill: React.CSSProperties = { flex: 1, border: "none", borderRadius: 12, padding: "10px 6px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
 
   return (
-    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: compact ? undefined : "100%", flex: 1, display: "flex", flexDirection: "column" }}>
       <div style={{ position: "relative" }}>
-        <MapView mode={phase === "Started" ? "trip" : "approach"} progress={progress} motion={motion} from={trip.from.id} pickupAt={placePos(trip.from)} to={trip.to.id} dropAt={placePos(trip.to)} live vehicle={trip.vehicle} height={320} radius={0} />
+        <MapView mode={phase === "Started" ? "trip" : "approach"} progress={progress} motion={motion} from={trip.from.id} pickupAt={placePos(trip.from)} to={trip.to.id} dropAt={placePos(trip.to)} live vehicle={trip.vehicle} height={compact ? 230 : 320} radius={0} />
         <button onClick={onBack} aria-label="Back" className="press" style={{ ...iconBtn, position: "absolute", top: 16, left: 16, width: 40, height: 40, borderRadius: "50%", background: "white", justifyContent: "center", boxShadow: "var(--shadow-md)" }}><BackIcon c="var(--ink)" /></button>
         <div style={{ position: "absolute", top: 16, left: 66, right: 16, background: "var(--blue-dark)", color: "white", borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, boxShadow: "var(--shadow-md)" }}>
           <NavIcon s={22} c="var(--gold)" />
@@ -327,7 +353,7 @@ export function TripPage({ trip, busy, err, onArrived, onStart, onEnd, onCollect
         <div style={{ ...card, padding: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
             <Avatar initials={initials(who)} size={42} tone="gold" />
-            <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>{trip.passenger?.name ?? who}</p><p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>{trip.pay} · {inr(trip.fare - trip.discount)} · {rideLabel(trip, vehicleById(trip.vehicle).name)}</p></div>
+            <div style={{ flex: 1 }}><p style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>{trip.passenger?.name ?? who}</p><p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>{trip.pay} · {inr(trip.fare - trip.discount)} · {rideLabel(trip, vehicleById(trip.vehicle).name)}{trip.shared ? ` · 👥 Sharing ${trip.seats ?? 1} seat` : ""}</p></div>
             <button onClick={onCall} disabled={!trip.customer?.phone} aria-label="Call customer" className="press" style={{ width: 42, height: 42, borderRadius: "50%", border: "none", background: "var(--blue-tint)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><PhoneIcon s={19} c="var(--blue)" /></button>
           </div>
           <RouteLines from={placeLine(trip.from)} to={placeLine(trip.to)} />

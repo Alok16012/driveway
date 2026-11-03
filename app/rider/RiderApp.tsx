@@ -5,7 +5,7 @@ import Link from "next/link";
 import BottomNav, { HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph, WalletGlyph } from "../components/BottomNav";
 import { BlockedBanner, BlockedScreen, EmailLogin, ForgotPassword, ResetPassword, SignUp, BrandSplash } from "../components/Auth";
 import { KycFlow, PendingApproval } from "../components/rider/Kyc";
-import { AlertsScreen, EarningsScreen, RequestPopup, RiderAccount, RiderHome, TripPage, TripsScreen, type AccountKey, type QuickKey } from "../components/rider/RiderScreens";
+import { AlertsScreen, EarningsScreen, RequestPopup, RiderAccount, RiderHome, SharedTripBar, TripPage, TripsScreen, type AccountKey, type QuickKey } from "../components/rider/RiderScreens";
 import {
   BankPage, CancelTripSheet, DocumentsPage, IncentivesScreen, PerformancePage, PreferencesPage, ReferPage, SosSheet, TripDetailPage, VehiclePage, WalletPage, type RiderPrefs,
 } from "../components/rider/RiderPages";
@@ -13,7 +13,7 @@ import { ChatScreen, EditProfilePage, type ChatMessage } from "../components/cus
 import { HOME_BG, LoadState, Toast } from "../components/ui";
 import { inr } from "../lib/data";
 import { NATIVE_APP } from "../lib/native";
-import { acceptRide, completeRide, confirmCash, confirmDirectPayment, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, isRecoveryLink, myDriver, myDriverTrips, myProfile, myTrip, newKey, onAuthChange, recoveryLinkError, payDues, rateCustomer, rechargeWallet, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides, type DriverMe, type RideView, placeName } from "../lib/api";
+import { acceptRide, completeRide, confirmCash, confirmDirectPayment, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, isRecoveryLink, myDriver, myDriverTrips, myProfile, myTrips, newKey, onAuthChange, recoveryLinkError, payDues, rateCustomer, rechargeWallet, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides, type DriverMe, type RideView, placeName } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
 import { startTripTracking } from "../lib/tripTracking";
 
@@ -37,6 +37,8 @@ export default function RiderApp() {
   const [stack, setStack] = useState<Detail[]>([]);
   const [offer, setOffer] = useState<RideView | null>(null);
   const [trip, setTrip] = useState<RideView | null>(null);
+  const [actives, setActives] = useState<RideView[]>([]);    // every trip in hand — more than one only when sharing
+  const focusId = useRef<string | null>(null);
   const [trips, setTrips] = useState<RideView[] | null>(null);
   const [sheet, setSheet] = useState<"cancel" | "sos" | null>(null);
   const [prefs, setPrefs] = useState<RiderPrefs>({ autoAccept: false, cash: true, nav: "Google Maps" });
@@ -95,9 +97,12 @@ export default function RiderApp() {
   }, []);
   const refreshTrip = useCallback(async () => {
     try {
-      const t = await myTrip();
+      const list = await myTrips();
+      const t = list.find((x) => x.id === focusId.current) ?? list[0] ?? null;
       if (!t && tripId.current) { void refreshMe(); }
       tripId.current = t?.id ?? null;
+      focusId.current = t?.id ?? null;
+      setActives(list);
       setTrip(t);
     } catch { /* keep last state */ }
   }, [refreshMe, flash]);
@@ -117,18 +122,22 @@ export default function RiderApp() {
   useEffect(() => (liveTrip ? startTripTracking() : undefined), [liveTrip]);
 
   // A customer cancellation removes the trip: tell the driver.
-  const lastTrip = useRef<RideView | null>(null);
+  const lastTrips = useRef<RideView[]>([]);
   const selfCancelled = useRef(false);
   useEffect(() => {
-    if (lastTrip.current && !trip && lastTrip.current.status !== "Completed" && !selfCancelled.current) flash("The customer cancelled this ride");
-    if (!trip) selfCancelled.current = false;
-    lastTrip.current = trip;
-  }, [trip, flash]);
+    const gone = lastTrips.current.filter((x) => x.status !== "Completed" && !actives.some((y) => y.id === x.id));
+    if (gone.length && !selfCancelled.current) flash(gone.length > 1 || actives.length ? `${gone[0].customer?.name ?? "A customer"} cancelled their ride` : "The customer cancelled this ride");
+    if (gone.length) selfCancelled.current = false;
+    lastTrips.current = actives;
+  }, [actives, flash]);
+  // On a shared trip with free seats the rider keeps getting sharing requests going the same way (the server filters).
+  const pooling = actives.length > 0 && actives.every((x) => x.shared && ["Arriving", "Arrived", "Started"].includes(x.status));
+  const pickTrip = (id: string) => { const t = actives.find((x) => x.id === id); if (t) { focusId.current = id; tripId.current = id; setTrip(t); setErr(null); } };
 
   /* ── dispatch: poll for offers while online and free (this is also the heartbeat) ── */
   const online = !!me?.online;
   useEffect(() => {
-    if (stage !== "app" || !online || blocked || trip) { setOffer(null); return; }
+    if (stage !== "app" || !online || blocked || (trip && !pooling)) { setOffer(null); return; }
     let live = true;
     const poll = async () => {
       try {
@@ -140,7 +149,7 @@ export default function RiderApp() {
     const t = setInterval(() => void poll(), 3000);
     const unResume = watchResume(() => void poll());
     return () => { live = false; clearInterval(t); unResume(); };
-  }, [stage, online, blocked, trip, prefs.cash]);
+  }, [stage, online, blocked, !!trip, pooling, prefs.cash]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const BLOCKED_MSG = "Your account is blocked — contact support";
   const toggleOnline = async (v: boolean) => {
@@ -153,10 +162,10 @@ export default function RiderApp() {
   const accept = useCallback(async () => {
     if (!offer || busy) return;
     setBusy(true); setErr(null);
-    try { await acceptRide(offer.id); setOffer(null); setStack([]); await refreshTrip(); }
+    try { await acceptRide(offer.id); setOffer(null); setStack([]); if (pooling) flash("Sharing passenger added"); await refreshTrip(); }
     catch (e) { skipped.current.add(offer.id); setOffer(null); flash((e as Error).message); }
     finally { setBusy(false); }
-  }, [offer, busy, refreshTrip, flash]);
+  }, [offer, busy, pooling, refreshTrip, flash]);
   const decline = useCallback((expired: boolean) => {
     if (!offer) return;
     skipped.current.add(offer.id);
@@ -271,8 +280,9 @@ export default function RiderApp() {
           </div>
         ) : (
           <div ref={scrollRef} className="no-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", background: !trip && !detail && tab === "home" ? HOME_BG : undefined, paddingBottom: showNav ? "calc(76px + env(safe-area-inset-bottom))" : undefined }}>
-            {trip ? (
-              <TripPage trip={trip} busy={busy} err={err}
+            {trip ? (<div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
+              {actives.length > 1 && <SharedTripBar trips={actives} focus={trip.id} onPick={pickTrip} />}
+              <TripPage key={trip.id} trip={trip} compact={actives.length > 1} busy={busy} err={err}
                 onBack={() => flash("Finish or cancel this trip first")}
                 onCall={() => { if (trip.customer?.phone) window.location.href = "tel:+" + trip.customer.phone.replace(/\D/g, ""); }}
                 onNavigate={() => navigate(trip.status === "Started" ? trip.to : trip.from)}
@@ -284,7 +294,7 @@ export default function RiderApp() {
                 onCollected={() => void act(() => confirmCash(trip.id), "Cash collection recorded")}
                 onPaidDirect={() => void act(() => confirmDirectPayment(trip.id), "Direct payment recorded — platform fee deducted from your wallet")}
                 onRated={(n) => void finishTrip(n)} />
-            ) : detail ? (
+            </div>) : detail ? (
               <>
                 {detail.k === "alerts" && <AlertsScreen txns={me.txns} onBack={back} />}
                 {detail.k === "wallet" && <WalletPage me={me} busy={busy} err={err} onWithdraw={() => void withdraw()} onPayDues={() => void clearDues()} onRecharge={(n) => void recharge(n)} onBack={back} />}
@@ -335,7 +345,7 @@ export default function RiderApp() {
           ]} />
         )}
 
-        {stage === "app" && offer && !trip && !blocked && <RequestPopup key={offer.id} offer={offer} autoAccept={prefs.autoAccept} busy={busy} err={null} onAccept={() => void accept()} onDecline={decline} />}
+        {stage === "app" && offer && (!trip || pooling) && !blocked && <RequestPopup key={offer.id} offer={offer} autoAccept={prefs.autoAccept} busy={busy} err={null} onAccept={() => void accept()} onDecline={decline} />}
         {sheet === "cancel" && trip && (
           <CancelTripSheet busy={busy} err={err} onClose={() => setSheet(null)}
             onConfirm={(reason) => void act(() => { selfCancelled.current = true; return driverCancelRide(trip.id, reason); }, "Ride cancelled — it's been offered to other drivers").then(() => setSheet(null))} />

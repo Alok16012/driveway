@@ -29,10 +29,12 @@ export interface QuoteOption {
   id: VehicleKind; name: string; tagline: string; seats: number; ac: boolean; eta: number; cancel_fee: number;
   fare: number; alt_fare: number; lines: FareLine[]; available: number; discount: number; coupon: CouponResult | null;
   booking_fee: number;   // customer booking charge on this option (0 when the fare is ₹50 or less)
+  /** Sharing price when the admin allows sharing on this type: 1 seat / 2 seats, and their booking charges. */
+  share?: { seats: number; fare: number; fare2: number; booking_fee: number; booking_fee2: number } | null;
 }
 export interface RentalQuote { pkg: string; hours: number; km: number; extra_km: number; extra_hour: number; car: VehicleKind; fare: number; discount: number; coupon: CouponResult | null; booking_fee: number; available: number }
 export interface ParcelQuote { id: "light" | "medium" | "heavy"; label: string; sub: string; vehicle: VehicleKind; fee: number; fare: number; discount: number; coupon: CouponResult | null; booking_fee: number; available: number }
-export interface Quote { km: number; mins: number; road?: boolean; roadInput?: RoadInfo | null; options: QuoteOption[]; any: QuoteOption | null; any_available: number; rentals: RentalQuote[]; parcels: ParcelQuote[]; booking_fee: number; booking_fee_above: number }
+export interface Quote { km: number; mins: number; road?: boolean; roadInput?: RoadInfo | null; options: QuoteOption[]; any: QuoteOption | null; any_available: number; rentals: RentalQuote[]; parcels: ParcelQuote[]; booking_fee: number; booking_fee_above: number; share_off?: number }
 
 export type PaymentStatus = "unpaid" | "pending" | "paid" | "refunded" | "partially_refunded";
 export interface RideView {
@@ -49,6 +51,7 @@ export interface RideView {
   otp?: string | null;
   driver: { name: string; vehicle: VehicleKind; model: string; plate: string; rating: number | null; trips: number; phone: string | null } | null;
   customer: { name: string; rating: number | null; phone: string | null } | null;
+  shared?: boolean; seats?: number; co_riders?: number;   // sharing: seats booked, other passengers on board
   earn?: number;   // driver offers only
 }
 
@@ -232,6 +235,7 @@ export interface BookRequest {
   pickup?: { lat: number; lng: number; name?: string; address: string | null };   // with `from` "cur": GPS fix or searched place
   drop?: { lat: number; lng: number; name: string; address: string };            // with `to` "pin": searched place
   road?: RoadInfo | null;                               // the route the quote was priced on
+  share?: number;                                       // sharing: 1 or 2 seats
   idem: string;
 }
 export const bookRide = (p: BookRequest) => rpc<{ id: string; code: string; status: RideStatus; duplicate: boolean }>("book_ride", { p });
@@ -268,6 +272,7 @@ export const driverOffers = () => rpc<RideView[]>("driver_offers");
 export const acceptRide = (id: string) => rpc<RideView>("accept_ride", { p_ride: id });
 export const declineRide = (id: string) => rpc<void>("decline_ride", { p_ride: id });
 export const myTrip = () => rpc<RideView | null>("my_trip");
+export const myTrips = () => rpc<RideView[]>("my_trips");
 export const driverArrived = (id: string) => rpc<RideView>("driver_arrived", { p_ride: id });
 export const startRide = (id: string, otp: string) => rpc<RideView & { error?: "wrong_otp"; attempts_left?: number }>("start_ride", { p_ride: id, p_otp: otp });
 export const completeRide = (id: string) => rpc<RideView>("complete_ride", { p_ride: id });

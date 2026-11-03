@@ -30,10 +30,11 @@ interface RideRow {
   cancel_fee: number; total: number; pay_method: string; payment_status: string; refunded: number; status: string; cancel_reason: string | null;
   cancelled_by: string | null; rating: number | null; created_at: string; completed_at: string | null; scheduled_for: string | null;
 }
-interface Vehicle { id: VehicleKind; name: string; base: number; per_km: number; per_min: number; min_fare: number; cancel_fee: number; platform_fee: number; platform_fee_non_ac: number; ac: boolean; enabled: boolean; sort: number }
+interface Vehicle { id: VehicleKind; name: string; base: number; per_km: number; per_min: number; min_fare: number; cancel_fee: number; platform_fee: number; platform_fee_non_ac: number; ac: boolean; enabled: boolean; share_on: boolean; seats: number; sort: number }
 interface Settings {
   surge_on: boolean; surge_mult: number; non_ac_factor: number; booking_fee: number; booking_fee_above: number;
   referral_on: boolean; referral_referrer_bonus: number; referral_new_bonus: number; referral_rides: number;
+  share_off: number; share_pickup_km: number;
 }
 interface Coupon { code: string; title: string; body: string; off: number; pct: boolean; max_off: number | null; min_fare: number; expires_at: string; active: boolean; uses: number; total_limit: number | null; per_user_limit: number }
 interface Ledger { id: number; ride_id: string | null; user_id: string | null; party: string; kind: string; amount: number; method: string | null; note: string | null; created_at: string }
@@ -838,12 +839,13 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
   const upd = (id: string, p: Partial<Vehicle>) => { setDirty(true); setRows((r) => r.map((x) => (x.id === id ? { ...x, ...p } : x))); };
   const updS = (p: Partial<Settings>) => { setDirty(true); setS((x) => ({ ...x, ...p })); };
   const shown = (v: Vehicle) => PRICE_FIELDS.filter((f) => f.k !== "platform_fee" || hasAc(v));
-  const refOk = validS(Number(s.referral_referrer_bonus), 5000) && validS(Number(s.referral_new_bonus), 5000) && Number(s.referral_rides) >= 1 && validS(Number(s.referral_rides), 500);
+  const refOk = validS(Number(s.referral_referrer_bonus), 5000) && validS(Number(s.referral_new_bonus), 5000) && Number(s.referral_rides) >= 1 && validS(Number(s.referral_rides), 500)
+    && validS(Number(s.share_off), 60) && Number(s.share_pickup_km) >= 0.5 && validS(Number(s.share_pickup_km), 10);
   const invalid = rows.some((v) => shown(v).some((f) => !valid(f.k, Number(v[f.k])))) || !validS(Number(s.booking_fee), 100) || !validS(Number(s.booking_fee_above), 10000) || !refOk;
 
-  const KEYS = ["base", "per_km", "per_min", "min_fare", "cancel_fee", "platform_fee", "platform_fee_non_ac", "ac", "enabled"] as const;
+  const KEYS = ["base", "per_km", "per_min", "min_fare", "cancel_fee", "platform_fee", "platform_fee_non_ac", "ac", "enabled", "share_on"] as const;
   const changedOf = (v: Vehicle) => { const o = d.vehicles.find((x) => x.id === v.id)!; return KEYS.filter((k) => String(v[k]) !== String(o[k])); };
-  const SETTING_KEYS = ["surge_on", "surge_mult", "booking_fee", "booking_fee_above", "referral_on", "referral_referrer_bonus", "referral_new_bonus", "referral_rides"] as const;
+  const SETTING_KEYS = ["surge_on", "surge_mult", "booking_fee", "booking_fee_above", "referral_on", "referral_referrer_bonus", "referral_new_bonus", "referral_rides", "share_off", "share_pickup_km"] as const;
   const settingsChanged = SETTING_KEYS.some((k) => String(s[k]) !== String(d.settings[k]));
   const changes = rows.reduce((n, v) => n + changedOf(v).length, 0) + (settingsChanged ? 1 : 0);
 
@@ -921,6 +923,10 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
                 <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600 }}>❄ AC option {v.ac ? "on" : "off"}<span style={{ display: "block", fontWeight: 500, color: "var(--ink-mute)", fontSize: 11 }}>{v.ac ? "Customer AC ya Non-AC chun sakta hai" : "Sirf Non-AC rides"}</span></span>
                 <Toggle on={v.ac} onChange={(on) => upd(v.id, { ac: on })} label={`${v.name} offers AC`} />
               </label>}
+              {v.id !== "bike" && <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, padding: "8px 10px", borderRadius: 10, background: "var(--bg-secondary)" }}>
+                <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600 }}>👥 Sharing {v.share_on ? "on" : "off"}<span style={{ display: "block", fontWeight: 500, color: "var(--ink-mute)", fontSize: 11 }}>{v.share_on ? `Customer seat book kar sakta hai (max ${Math.min(2, v.seats - 1)}) · ${s.share_off}% sasta` : "Sirf private rides"}</span></span>
+                <Toggle on={v.share_on} onChange={(on) => upd(v.id, { share_on: on })} label={`${v.name} sharing`} />
+              </label>}
               <div style={{ marginTop: 4 }}>{shown(v).map((f) => priceInput(v, f))}</div>
               <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "var(--blue-tint)" }}>
                 <p style={{ margin: 0, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em", color: "var(--blue)" }}>{km} KM RIDE (≈ {ex.mins} MIN)</p>
@@ -956,6 +962,23 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
           </div>
           <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>
             {s.surge_on ? `On: har fare ${Number(s.surge_mult).toFixed(1)} guna — ₹100 ki ride ₹${Math.round(100 * Number(s.surge_mult))} ki hogi. Customer ko "High demand" dikhega.` : "Off: normal fare. Rush ke time on karein."}
+          </p>
+        </Panel>
+        <Panel title="Sharing (seat-wise ride)">
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {([["share_off", "Sharing mein kitna sasta (%)", 60, 1], ["share_pickup_km", "Agla passenger kitni door tak (km)", 10, 0.5]] as const).map(([k, l, max, step]) => {
+              const ok = validS(Number(s[k]), max) && (k !== "share_pickup_km" || Number(s[k]) >= 0.5);
+              return (
+                <label key={k} style={{ fontSize: 13.5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>{l}
+                  <input type="number" min={k === "share_pickup_km" ? 0.5 : 0} max={max} step={step} value={Number.isNaN(Number(s[k])) ? "" : s[k]} aria-label={l}
+                    onChange={(e) => updS({ [k]: e.target.value === "" ? NaN : Number(e.target.value) } as Partial<Settings>)}
+                    style={{ ...field, width: 90, padding: "7px 10px", fontSize: 14, borderColor: ok ? undefined : "var(--red)" }} />
+                </label>
+              );
+            })}
+          </div>
+          <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>
+            ₹100 ki ride sharing mein ek seat ₹{Math.ceil(100 * (100 - Number(s.share_off || 0)) / 100)} ki (2 seat: ₹{Math.min(100, Math.ceil(100 * (100 - Number(s.share_off || 0)) / 100) * 2)}). Rider ko sirf wahi sharing request milegi jiska pickup {s.share_pickup_km} km ke andar ho aur jo same direction ja raha ho, jab tak seat khaali hain. Kaunsi gaadi share ho sakti hai — upar har card pe 👥 switch. Bike kabhi share nahi hoti.
           </p>
         </Panel>
         <Panel title="Rider referral (Refer & Earn)" right={<Toggle on={s.referral_on} onChange={(on) => updS({ referral_on: on })} label="Rider referrals" />}>

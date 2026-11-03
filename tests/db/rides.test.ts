@@ -906,3 +906,79 @@ describe("Rider referrals (Refer & Earn)", () => {
     await t.rpc(adm, "admin_update_settings", { referral_on: true, referral_rides: 10 });
   });
 });
+
+describe("Ride sharing", () => {
+  // Kolkata: two passengers heading east from the centre, one heading west.
+  const at = (lat: number, lng: number) => ({ lat, lng, address: "Kolkata" });
+  const pin = (lat: number, lng: number) => ({ lat, lng, name: "Drop", address: "Kolkata" });
+  const east1 = { from: "cur", to: "pin", pickup: at(22.5726, 88.3639), drop: pin(22.5726, 88.43) };
+  const east2 = { from: "cur", to: "pin", pickup: at(22.5750, 88.3700), drop: pin(22.5800, 88.44) };
+  const west = { from: "cur", to: "pin", pickup: at(22.5740, 88.3650), drop: pin(22.5700, 88.30) };
+
+  it("sharing costs the admin's discounted price, on everything but bikes, and only for rides now", async () => {
+    const u = await t.user();
+    const q = await t.rpc(u, "quote", "cur", "pin", true, null, { lat: 22.5726, lng: 88.3639 }, { lat: 22.5726, lng: 88.43 });
+    const auto = q.options.find((o: any) => o.id === "auto");
+    expect(q.options.find((o: any) => o.id === "bike").share).toBeNull();
+    expect(auto.share.fare).toBe(Math.ceil(auto.fare * 0.7));
+    expect(auto.share.fare2).toBe(Math.min(auto.fare, Math.ceil(auto.fare * 0.7) * 2));
+    await rejects(t.book(u, { ...east1, option: "bike", share: 1 }), /isn't available on Bike/);
+    await rejects(t.book(u, { ...east1, option: "auto", share: 3 }), /1 or 2 seats/);
+    await rejects(t.book(u, { ...east1, option: "auto", share: 1, when: new Date(Date.now() + 3600e3).toISOString() }), /only for rides now/);
+    const b = await t.book(u, { ...east1, option: "auto", share: 2 });
+    expect(await t.ride(b.id)).toMatchObject({ shared: true, seats: 2, fare: auto.share.fare2 });
+  });
+
+  it("a rider picks up more sharing passengers going the same way until the seats are full — never a private ride", async () => {
+    const d = await t.driver("auto", { wallet: 200 });
+    const a = await t.book(await t.user(), { ...east1, option: "auto", share: 1 });
+    await t.rpc(d, "accept_ride", a.id);
+    const b = await t.book(await t.user(), { ...east2, option: "auto", share: 1 });
+    const w = await t.book(await t.user(), { ...west, option: "auto", share: 1 });
+    const p = await t.book(await t.user(), { ...east2, option: "auto" });
+    const offered = (await t.rpc(d, "driver_offers")).map((o: any) => o.id);
+    expect(offered).toContain(b.id);
+    expect(offered).not.toContain(w.id);                         // other direction
+    expect(offered).not.toContain(p.id);                         // private
+    await rejects(t.rpc(d, "accept_ride", p.id), /finish your current trip/);
+    await rejects(t.rpc(d, "accept_ride", w.id), /isn't on your way/);
+    await t.rpc(d, "accept_ride", b.id);
+    const two = await t.book(await t.user(), { ...east2, option: "auto", share: 2 });
+    await rejects(t.rpc(d, "accept_ride", two.id), /no free seats/);   // auto: 3 seats, 2 taken
+    const trips = await t.rpc(d, "my_trips");
+    expect(trips.map((x: any) => x.id)).toEqual([a.id, b.id]);
+    expect(trips[0]).toMatchObject({ shared: true, co_riders: 1 });
+    for (const id of [a.id, b.id]) {
+      await t.rpc(d, "driver_arrived", id);
+      await t.rpc(d, "start_ride", id, await t.otpOf(id));
+    }
+    await t.rpc(d, "complete_ride", a.id);
+    expect((await t.ride(b.id)).status).toBe("Started");
+    await t.rpc(d, "complete_ride", b.id);
+    expect((await t.ledger(b.id)).some((l: any) => l.kind === "driver_earning")).toBe(true);
+  });
+
+  it("a rider on a private trip gets no sharing requests", async () => {
+    const d = await t.driver("erick", { wallet: 200 });
+    const p = await t.book(await t.user(), { ...east1, option: "erick" });
+    await t.rpc(d, "accept_ride", p.id);
+    const s = await t.book(await t.user(), { ...east2, option: "erick", share: 1 });
+    expect(await t.rpc(d, "driver_offers")).toEqual([]);
+    await rejects(t.rpc(d, "accept_ride", s.id), /finish your current trip/);
+  });
+
+  it("only admins set sharing; bikes can't be shared; a type switched off can't be booked shared", async () => {
+    const adm = await t.user({ admin: true }); const u = await t.user();
+    await rejects(t.rpc(u, "admin_update_settings", { share_off: 50 }), /admin/i);
+    await rejects(t.rpc(adm, "admin_update_settings", { share_off: 80 }), /0–60%/);
+    await rejects(t.rpc(adm, "admin_update_vehicle", "bike", { share_on: true }), /bikes can't be shared/);
+    await t.rpc(adm, "admin_update_settings", { share_off: 40 });
+    const q = await t.rpc(u, "quote", "cur", "pin", true, null, { lat: 22.5726, lng: 88.3639 }, { lat: 22.5726, lng: 88.43 });
+    const mini = q.options.find((o: any) => o.id === "mini");
+    expect(mini.share.fare).toBe(Math.ceil(mini.fare * 0.6));
+    await t.rpc(adm, "admin_update_vehicle", "mini", { share_on: false });
+    await rejects(t.book(u, { ...east1, option: "mini", share: 1 }), /isn't available on Mini/);
+    await t.rpc(adm, "admin_update_vehicle", "mini", { share_on: true });
+    await t.rpc(adm, "admin_update_settings", { share_off: 30 });
+  });
+});

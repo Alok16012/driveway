@@ -240,8 +240,9 @@ export default function CustomerApp() {
               <ConfirmPickupPage from={detail.from} onBack={back} onConfirm={(p) => push({ k: "choose", from: p, to: detail.to, prefer: detail.prefer })} />
             )}
             {detail?.k === "choose" && (
-              <ChooseRidePage from={detail.from} to={detail.to} prefer={detail.prefer} initialCoupon={pendingCoupon}
+              <ChooseRidePage key={`${detail.from.id}>${detail.to.id}`} from={detail.from} to={detail.to} prefer={detail.prefer} initialCoupon={pendingCoupon}
                 initialAc={acPref} onAcChange={setAcPref} onBack={back} onEditRoute={back}
+                onSwap={(from, to) => setStack((st) => [...st.slice(0, -1), { k: "choose", from, to, prefer: detail.prefer }])}
                 onBooked={(s) => void onBooked(s)}
                 onParcel={(x) => push({ k: "parcel", to: detail.to, ...x })} />
             )}
