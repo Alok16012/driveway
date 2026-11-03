@@ -64,7 +64,7 @@ export default function HomeScreen(p: HomeProps) {
         </div>
         <button aria-label="Notifications" onClick={p.onNotifications} className="press" style={iconBtn}>
           <BellIcon s={25} c={ON_BG} w={1.7} />
-          {p.unread > 0 && <span style={{ position: "absolute", top: 1, right: 2, width: 8, height: 8, borderRadius: "50%", background: "var(--red)", border: "1.5px solid #fb923c" }} />}
+          {p.unread > 0 && <span style={{ position: "absolute", top: 1, right: 2, width: 8, height: 8, borderRadius: "50%", background: "var(--red)", border: "1.5px solid #f6a95a" }} />}
         </button>
       </div>
 
