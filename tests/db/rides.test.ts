@@ -84,7 +84,7 @@ describe("Pricing on the server (BUG-17, BUG-18, BUG-22, D)", () => {
     const r = (await t.as(u, `select fare, total, add_on from public.rides where id = '${b.id}'`))[0];
     expect(r).toEqual({ fare: base + 20, total: base + 20 + 5, add_on: 20 });            // + ₹5 booking charge (fare above ₹50)
     expect((await t.rpc(u, "my_active_ride")).add_on).toBe(20);
-    for (const bad of [5, 50, -10, "x"]) await rejects(t.book(await t.user(), { option: "auto", add_on: bad }), /add-on/);
+    for (const bad of [7, 50, -10, "x"]) await rejects(t.book(await t.user(), { option: "auto", add_on: bad }), /add-on/);
   });
   it("pickup equal to drop is refused (quote and booking)", async () => {
     const u = await t.user();
@@ -980,5 +980,26 @@ describe("Ride sharing", () => {
     await rejects(t.book(u, { ...east1, option: "mini", share: 1 }), /isn't available on Mini/);
     await t.rpc(adm, "admin_update_vehicle", "mini", { share_on: true });
     await t.rpc(adm, "admin_update_settings", { share_off: 30 });
+  });
+});
+
+describe("Add-on while searching (faster pickup)", () => {
+  it("₹5 add-on at booking; the customer can raise it while searching, up to ₹50, and riders who skipped see it again", async () => {
+    const u = await t.user(); const d = await t.driver("auto");
+    const b = await t.book(u, { option: "auto", add_on: 5 });
+    const before = await t.ride(b.id);
+    expect(before.add_on).toBe(5);
+    await t.rpc(d, "decline_ride", b.id);
+    expect((await t.rpc(d, "driver_offers")).map((o: any) => o.id)).not.toContain(b.id);
+    const v = await t.rpc(u, "raise_add_on", b.id, 10);
+    expect(v).toMatchObject({ add_on: 15, fare: before.fare + 10, total: before.total + 10 });
+    expect((await t.rpc(d, "driver_offers")).map((o: any) => o.id)).toContain(b.id);
+    await rejects(t.rpc(u, "raise_add_on", b.id, 7), /₹5, ₹10 or ₹20/);
+    await t.rpc(u, "raise_add_on", b.id, 20);
+    await rejects(t.rpc(u, "raise_add_on", b.id, 20), /at most ₹50/);
+    await rejects(t.rpc(await t.user(), "raise_add_on", b.id, 5), /not found/);
+    await t.rpc(d, "accept_ride", b.id);
+    await rejects(t.rpc(u, "raise_add_on", b.id, 5), /already been found/);
+    expect((await t.ride(b.id)).fare).toBe(before.fare + 30);
   });
 });

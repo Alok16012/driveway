@@ -9,7 +9,7 @@ import MapView, { SIM_APPROACH_SEC, SIM_TRIP_SEC } from "../MapView";
 import VehicleArt, { AnyArt, ParcelArt, RentalArt } from "../VehicleArt";
 import { Avatar, ErrorText, Footer, LoadState, PageHeader, PrimaryButton, Stars, StatusBadge, card, field, iconBtn, onLight } from "../ui";
 import { PARCEL_TYPES, RIDE_STEPS, inr, vehicleById, type PayMethod, type VehicleKind } from "../../lib/data";
-import { activeCoupons, bookRide, cancelRide, closeRide, customerEndRide, isIndianMobile, newKey, payRide, quote as fetchQuote, rateRide, rideLabel, watchDriverPosition, type CouponRow, type DriverPos, type FareLine, type Place, type Quote, type QuoteOption, type RideView, placeName, type RoadInfo } from "../../lib/api";
+import { activeCoupons, bookRide, cancelRide, closeRide, customerEndRide, isIndianMobile, raiseAddOn, newKey, payRide, quote as fetchQuote, rateRide, rideLabel, watchDriverPosition, type CouponRow, type DriverPos, type FareLine, type Place, type Quote, type QuoteOption, type RideView, placeName, type RoadInfo } from "../../lib/api";
 import type { RideOption } from "./types";
 import { INDIA_CENTER, distanceM, nearbyPlaces, placePos, reverseGeocode, useCurrentAddress, useDeviceLocation, type LatLng } from "../../lib/location";
 import { hasGoogle, newSearchSession, placeDetails, searchPlaces, type PlaceSuggestion } from "../../lib/google";
@@ -557,7 +557,7 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
         </div>
         {!isParcel && cur.available && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 2px 10px" }}>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", lineHeight: 1.25 }}>Add on for faster pickup</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", lineHeight: 1.25 }}>Jaldi pickup ke liye add karein</span>
             {ADD_ONS.map((n) => (
               <button key={n} aria-pressed={addOn === n} onClick={() => setAddOn(addOn === n ? 0 : n)} className="press" style={{ ...chip(addOn === n), padding: "7px 12px" }}>+{inr(n)}</button>
             ))}
@@ -651,7 +651,9 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
   );
 }
 
-const ADD_ONS = [10, 20, 30];
+const ADD_ONS = [5, 10, 20, 30];
+const BOOSTS = [5, 10, 20];      // raise while searching, up to ₹50 in all
+const MAX_ADD_ON = 50;
 const sheetTitle: React.CSSProperties = { margin: "0 0 12px", fontSize: 18, fontWeight: 700, color: "var(--ink)" };
 const chip = (on: boolean): React.CSSProperties => ({
   borderRadius: 12, cursor: "pointer", fontSize: 13, fontWeight: 600,
@@ -858,7 +860,16 @@ export function LiveRidePage({ ride, onBack, onCancelled, onEnded, onChat, onSha
   const parcel = ride.service === "parcel";
   const sinceAssign = useSince(ride.assigned_at);
   const sinceStart = useSince(ride.started_at);
-  const sinceSearch = useSince(ride.created_at);
+  const sinceSearch = useSince(ride.searching_since ?? ride.created_at);
+  const [boosting, setBoosting] = useState(false);
+  const [boostErr, setBoostErr] = useState<string | null>(null);
+  const [addOn, setAddOn] = useState(ride.add_on ?? 0);
+  useEffect(() => { setAddOn(ride.add_on ?? 0); }, [ride.add_on]);
+  const boost = async (n: number) => {
+    if (boosting) return;
+    setBoosting(true); setBoostErr(null);
+    try { const r = await raiseAddOn(ride.id, n); setAddOn(r.add_on ?? addOn + n); } catch (e) { setBoostErr((e as Error).message); } finally { setBoosting(false); }
+  };
   const approachMins = 5;
   const progress = ride.status === "Arrived" ? 1 : ride.status === "Started" ? Math.min(0.97, sinceStart / SIM_TRIP_SEC) : Math.min(0.95, sinceAssign / SIM_APPROACH_SEC);
   const motion = ride.status === "Started" && ride.started_at ? { since: ride.started_at, seconds: SIM_TRIP_SEC, max: 0.97 }
@@ -944,6 +955,22 @@ export function LiveRidePage({ ride, onBack, onCancelled, onEnded, onChat, onSha
             <p style={{ margin: "12px 0 2px", fontSize: 14.5, fontWeight: 600 }}>{parcel ? `Connecting you to a ${v.name.toLowerCase()} delivery partner` : ride.service === "any" ? "Connecting you to the nearest Mini, Sedan or XL" : `Connecting you to nearby ${v.name} drivers`}</p>
             <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)" }}>Searching for {Math.floor(sinceSearch / 60)}:{String(Math.floor(sinceSearch % 60)).padStart(2, "0")} · we&apos;ll stop after {Math.round(ride.search_timeout_sec / 60 * 10) / 10} min</p>
             {ride.otp && <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--info-text)" }}>Your ride OTP: <b style={{ letterSpacing: "0.2em" }}>{ride.otp}</b></p>}
+            {!parcel && (
+              <div style={{ marginTop: 14, padding: "12px 12px 10px", borderRadius: 14, background: "var(--gold-tint)", border: "1px solid var(--gold-100)", textAlign: "left" }}>
+                <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>⚡ Jaldi driver chahiye?</p>
+                <p style={{ margin: "2px 0 8px", fontSize: 12, color: "var(--ink-soft)" }}>
+                  {addOn > 0 ? `Aapne ${inr(addOn)} add kiya hai — poora driver ko milta hai.` : "Thoda add karein — poora driver ko milta hai, request dobara sabko jaati hai."}
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {BOOSTS.map((n) => {
+                    const off = boosting || addOn + n > MAX_ADD_ON;
+                    return <button key={n} disabled={off} onClick={() => void boost(n)} className="press" style={{ ...chip(false), flex: 1, padding: "9px 0", fontWeight: 700, opacity: off ? 0.45 : 1, cursor: off ? "default" : "pointer" }}>+{inr(n)}</button>;
+                  })}
+                </div>
+                {addOn >= MAX_ADD_ON && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--ink-mute)" }}>Zyada se zyada {inr(MAX_ADD_ON)} add ho sakta hai.</p>}
+                <ErrorText msg={boostErr} />
+              </div>
+            )}
           </div>
         ) : ride.driver && (
           <div style={{ ...card, padding: 14 }}>

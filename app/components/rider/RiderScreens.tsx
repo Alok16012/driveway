@@ -180,6 +180,7 @@ export function RequestPopup({ offer, autoAccept, busy, err, onAccept, onDecline
             <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
               {!parcel && <span style={{ background: offer.ac ? "var(--info-bg)" : "var(--surface-dim)", color: offer.ac ? "var(--info-text)" : "var(--text-muted)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>{offer.ac ? "❄ AC RIDE" : "NON-AC"}</span>}
               {parcel && offer.parcel && <span style={{ background: "var(--gold-tint)", color: "var(--gold-dark)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>📦 {offer.parcel.type.toUpperCase()} · {offer.parcel.weight_label.toUpperCase()}</span>}
+              {(offer.add_on ?? 0) > 0 && <span style={{ background: "var(--gold-tint)", color: "var(--gold-dark)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>⚡ +{inr(offer.add_on)} ADD-ON</span>}
               {offer.shared && <span style={{ background: "var(--success)", color: "var(--success-text)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>👥 SHARING · {offer.seats ?? 1} SEAT{(offer.seats ?? 1) > 1 ? "S" : ""}</span>}
               {autoAccept && <span style={{ background: "var(--success)", color: "var(--success-text)", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>AUTO-ACCEPTING…</span>}
             </div>

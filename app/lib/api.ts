@@ -46,7 +46,7 @@ export interface RideView {
   parcel: { type: string; weight: string; weight_label: string; receiver: { name: string; phone: string }; note: string; sender: { name: string; phone: string } } | null;
   rental: { pkg: string; hours: number; km: number; extra_km: number; extra_hour: number } | null;
   cancel_reason: string | null; cancelled_by: string | null; rating: number | null;
-  created_at: string; assigned_at: string | null; arrived_at: string | null; started_at: string | null; completed_at: string | null;
+  created_at: string; searching_since?: string | null; assigned_at: string | null; arrived_at: string | null; started_at: string | null; completed_at: string | null;
   search_timeout_sec: number; free_wait_sec: number; wait_fee_per_min: number; platform_fee: number; cancel_fee_now: number;
   otp?: string | null;
   driver: { name: string; vehicle: VehicleKind; model: string; plate: string; rating: number | null; trips: number; phone: string | null } | null;
@@ -240,6 +240,8 @@ export interface BookRequest {
 }
 export const bookRide = (p: BookRequest) => rpc<{ id: string; code: string; status: RideStatus; duplicate: boolean }>("book_ride", { p });
 export const myActiveRide = () => rpc<RideView | null>("my_active_ride");
+/** While searching: add ₹5/₹10/₹20 more for faster pickup (up to ₹50); the request goes out again. */
+export const raiseAddOn = (ride: string, amount: number) => rpc<RideView>("raise_add_on", { p_ride: ride, p_amount: amount });
 export const myRides = () => rpc<RideView[]>("my_rides");
 export const cancelRide = (id: string, reason: string) => rpc<RideView>("cancel_ride", { p_ride: id, p_reason: reason });
 export const payRide = (id: string, method: Exclude<PayMethod, "Cash">) => rpc<RideView>("pay_ride", { p_ride: id, p_method: method });
