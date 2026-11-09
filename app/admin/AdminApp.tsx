@@ -839,9 +839,16 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
   const upd = (id: string, p: Partial<Vehicle>) => { setDirty(true); setRows((r) => r.map((x) => (x.id === id ? { ...x, ...p } : x))); };
   const updS = (p: Partial<Settings>) => { setDirty(true); setS((x) => ({ ...x, ...p })); };
   const shown = (v: Vehicle) => PRICE_FIELDS.filter((f) => f.k !== "platform_fee" || hasAc(v));
-  const refOk = validS(Number(s.referral_referrer_bonus), 5000) && validS(Number(s.referral_new_bonus), 5000) && Number(s.referral_rides) >= 1 && validS(Number(s.referral_rides), 500)
-    && validS(Number(s.share_off), 60) && Number(s.share_pickup_km) >= 0.5 && validS(Number(s.share_pickup_km), 10);
-  const invalid = rows.some((v) => shown(v).some((f) => !valid(f.k, Number(v[f.k])))) || !validS(Number(s.booking_fee), 100) || !validS(Number(s.booking_fee_above), 10000) || !refOk;
+  const kmOk = (n: number) => Number.isFinite(n) && n >= 0.5 && n <= 10 && Math.round(n * 10) === n * 10;   // 0.5–10 km, one decimal
+  // Every box that's wrong, by name — so the save bar can say which one (it may be far down the page).
+  const bad = [
+    ...rows.flatMap((v) => shown(v).filter((f) => !valid(f.k, Number(v[f.k]))).map((f) => `${v.name} · ${f.label}`)),
+    ...(!validS(Number(s.booking_fee), 100) || !validS(Number(s.booking_fee_above), 10000) ? ["Booking charge"] : []),
+    ...(!validS(Number(s.referral_referrer_bonus), 5000) || !validS(Number(s.referral_new_bonus), 5000) || Number(s.referral_rides) < 1 || !validS(Number(s.referral_rides), 500) ? ["Rider referral"] : []),
+    ...(!validS(Number(s.share_off), 60) || !kmOk(Number(s.share_pickup_km)) ? ["Sharing"] : []),
+  ];
+  const invalid = bad.length > 0;
+  const [saveErr, setSaveErr] = useState<string | null>(null);
 
   const KEYS = ["base", "per_km", "per_min", "min_fare", "cancel_fee", "platform_fee", "platform_fee_non_ac", "ac", "enabled", "share_on"] as const;
   const changedOf = (v: Vehicle) => { const o = d.vehicles.find((x) => x.id === v.id)!; return KEYS.filter((k) => String(v[k]) !== String(o[k])); };
@@ -850,7 +857,7 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
   const changes = rows.reduce((n, v) => n + changedOf(v).length, 0) + (settingsChanged ? 1 : 0);
 
   const save = async () => {
-    setBusy(true);
+    setBusy(true); setSaveErr(null);
     try {
       for (const v of rows) {
         const keys = changedOf(v);
@@ -861,9 +868,9 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
       }
       setDirty(false);
       await done("Prices saved ✓ — new bookings use them now. Rides already booked keep their price.");
-    } catch (e) { await done((e as Error).message); } finally { setBusy(false); }
+    } catch (e) { const m = (e as Error).message; setSaveErr(m); await done(`Save nahi hua: ${m}`); } finally { setBusy(false); }
   };
-  const discard = () => { setRows(d.vehicles); setS(d.settings); setDirty(false); };
+  const discard = () => { setRows(d.vehicles); setS(d.settings); setDirty(false); setSaveErr(null); };
 
   const money = (n: number) => (Number.isFinite(n) ? inr(n) : "—");
   const priceInput = (v: Vehicle, f: (typeof PRICE_FIELDS)[number]) => {
@@ -967,7 +974,7 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
         <Panel title="Sharing (seat-wise ride)">
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {([["share_off", "Sharing mein kitna sasta (%)", 60, 1], ["share_pickup_km", "Agla passenger kitni door tak (km)", 10, 0.5]] as const).map(([k, l, max, step]) => {
-              const ok = validS(Number(s[k]), max) && (k !== "share_pickup_km" || Number(s[k]) >= 0.5);
+              const ok = k === "share_pickup_km" ? kmOk(Number(s[k])) : validS(Number(s[k]), max);
               return (
                 <label key={k} style={{ fontSize: 13.5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>{l}
                   <input type="number" min={k === "share_pickup_km" ? 0.5 : 0} max={max} step={step} value={Number.isNaN(Number(s[k])) ? "" : s[k]} aria-label={l}
@@ -1005,8 +1012,9 @@ function PricingSection({ d, done }: { d: Data; done: (msg: string) => Promise<v
       {changes > 0 && (
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50, display: "flex", justifyContent: "center", padding: "12px 16px calc(12px + env(safe-area-inset-bottom))", pointerEvents: "none" }}>
           <div style={{ ...card, pointerEvents: "auto", display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", maxWidth: 640, width: "100%", boxShadow: "0 12px 32px rgba(15,23,41,0.25)" }}>
-            <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: invalid ? "var(--red)" : "var(--ink)" }}>
-              {invalid ? "Laal box theek karein, phir save hoga" : `${changes} ${changes === 1 ? "change" : "changes"} save nahi hue`}
+            <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: invalid || saveErr ? "var(--red)" : "var(--ink)" }}>
+              {invalid ? `Ye box theek karein: ${bad.slice(0, 2).join(", ")}${bad.length > 2 ? ` +${bad.length - 2}` : ""}`
+                : saveErr ? `Save nahi hua — ${saveErr}` : `${changes} ${changes === 1 ? "change" : "changes"} save nahi hue`}
             </span>
             <button onClick={discard} disabled={busy} style={smallBtn("ghost")}>Discard</button>
             <button onClick={() => void save()} disabled={busy || invalid} style={{ ...smallBtn("blue"), opacity: busy || invalid ? 0.5 : 1, padding: "9px 16px", fontSize: 13.5 }}>{busy ? "Saving…" : "Save prices"}</button>
