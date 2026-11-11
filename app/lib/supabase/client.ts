@@ -29,3 +29,10 @@ export function supabase(): SupabaseClient {
   if (!client) { client = createClient(url, anonKey, { auth: { storageKey: key } }); clients.set(key, client); }
   return client;
 }
+
+/** A throwaway client that never stores a session — for signing up another account (e.g. the Play Store review
+ *  logins created from the admin panel) without signing the admin out. */
+export function freshClient(): SupabaseClient {
+  if (!url || !anonKey) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local");
+  return createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "driveway-signup-tmp" } });
+}

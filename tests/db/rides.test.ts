@@ -1026,3 +1026,22 @@ describe("Delete my account (in the app)", () => {
     await rejects(t.rpc(adm, "delete_my_account"), /admin accounts/);
   });
 });
+
+describe("Google Play review accounts (admin)", () => {
+  it("the admin turns two signed-up accounts into a customer and an approved rider with a starting wallet", async () => {
+    const adm = await t.user({ admin: true });
+    const c = await t.user({ email: "play.customer@example.com", name: "Play Review Customer" });
+    const r = await t.user({ email: "play.rider@example.com", name: "" });
+    await rejects(t.rpc(c, "admin_setup_review_accounts", "play.customer@example.com", "play.rider@example.com"), /admin/i);
+    await rejects(t.rpc(adm, "admin_setup_review_accounts", "nobody@example.com", "play.rider@example.com"), /not found/);
+    await rejects(t.rpc(adm, "admin_setup_review_accounts", "play.rider@example.com", "PLAY.RIDER@example.com"), /two different emails/);
+    const out = await t.rpc(adm, "admin_setup_review_accounts", "Play.Customer@example.com", "play.rider@example.com");
+    expect(out).toMatchObject({ customer: c, rider: r });
+    const d = (await t.admin(`select kyc, vehicle, name from public.drivers where id = $1`, [r]))[0];
+    expect(d).toMatchObject({ kyc: "Approved", vehicle: "auto", name: "Play Review Rider" });
+    await t.rpc(adm, "admin_setup_review_accounts", "play.customer@example.com", "play.rider@example.com");   // again: no double wallet
+    expect(Number((await t.admin(`select sum(amount)::int n from public.ledger where user_id = $1`, [r]))[0].n)).toBe(200);
+    expect((await t.rpc(r, "set_online", true)).online).toBe(true);
+    expect(await t.admin(`select 1 from public.drivers where id = $1`, [c])).toHaveLength(0);
+  });
+});

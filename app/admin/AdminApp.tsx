@@ -11,8 +11,8 @@ import {
 } from "../components/icons";
 import { Avatar, ErrorText, LoadState, PasswordInput, PrimaryButton, StatusBadge, Toggle, card, field, label, onLight } from "../components/ui";
 import { inr, vehicleById, type VehicleKind } from "../lib/data";
-import { adminSignIn, changePassword, friendly, getSession, isRecoveryLink, myProfile, newKey, onAuthChange, recoveryLinkError, rpc, sendPasswordReset, signOut, updatePassword, type City, fmtPhone } from "../lib/api";
-import { supabase } from "../lib/supabase/client";
+import { adminSignIn, changePassword, friendly, getSession, isRecoveryLink, myProfile, newKey, onAuthChange, recoveryLinkError, rpc, sendPasswordReset, isIndianMobile, signOut, updatePassword, type City, fmtPhone } from "../lib/api";
+import { freshClient, supabase } from "../lib/supabase/client";
 
 /* ───────────────────────── Data shapes (rows the admin's RLS lets it read) ───────────────────────── */
 
@@ -1411,6 +1411,7 @@ function SettingsSection({ d }: { d: Data }) {
         ))}
         <p style={{ margin: "12px 0 0", fontSize: 12, color: "var(--ink-mute)" }}>Admin access is granted from the Supabase SQL editor (see docs/SETUP.md). Every admin action is recorded in the audit log.</p>
       </Panel>
+      <ReviewAccountsPanel />
       <ChangePasswordPanel />
     </div>
   );
@@ -1419,6 +1420,61 @@ function SettingsSection({ d }: { d: Data }) {
 const ADMIN_MIN_PASSWORD = 12;
 
 /** The signed-in admin changes their own password; the current one is checked first. */
+/** Google Play needs a customer login and an approved rider login for its reviewers. The admin types the emails,
+ *  passwords and mobiles; the accounts are signed up normally and then finished on the server (confirmed,
+ *  rider approved with a starting wallet). */
+function ReviewAccountsPanel() {
+  const blank = { email: "", password: "", phone: "" };
+  const [cu, setCu] = useState(blank);
+  const [ri, setRi] = useState(blank);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const valid = (a: typeof blank) => /^\S+@\S+\.\S+$/.test(a.email.trim()) && a.password.length >= 6 && isIndianMobile(a.phone);
+  const ok = valid(cu) && valid(ri) && cu.email.trim().toLowerCase() !== ri.email.trim().toLowerCase();
+  const signUp = async (a: typeof blank, name: string) => {
+    const { error } = await freshClient().auth.signUp({ email: a.email.trim(), password: a.password, options: { data: { name, phone: `91${a.phone}` } } });
+    if (error && !/already registered|already exists/i.test(error.message)) throw new Error(`${a.email}: ${friendly(error)}`);
+  };
+  const create = async () => {
+    if (!ok || busy) return;
+    setBusy(true); setErr(null); setDone(null);
+    try {
+      await signUp(cu, "Play Review Customer");
+      await signUp(ri, "Play Review Rider");
+      const out = await rpc<{ city: string }>("admin_setup_review_accounts", { p_customer_email: cu.email.trim(), p_rider_email: ri.email.trim() });
+      setDone(`Customer: ${cu.email.trim()} / ${cu.password}\nRider (approved, ${out.city}, ₹200 wallet): ${ri.email.trim()} / ${ri.password}`);
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  const fields = (who: string, a: typeof blank, set: (v: typeof blank) => void) => (
+    <div style={{ display: "grid", gap: 8 }}>
+      <p style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{who}</p>
+      <input value={a.email} onChange={(e) => { set({ ...a, email: e.target.value }); setDone(null); }} placeholder="Email" aria-label={`${who} email`} type="email" style={field} />
+      <input value={a.password} onChange={(e) => { set({ ...a, password: e.target.value }); setDone(null); }} placeholder="Password (6+ characters)" aria-label={`${who} password`} style={field} />
+      <input value={a.phone} onChange={(e) => { set({ ...a, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }); setDone(null); }} placeholder="10-digit mobile" aria-label={`${who} mobile`} inputMode="numeric" style={field} />
+    </div>
+  );
+  return (
+    <Panel title="Google Play test accounts">
+      <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "var(--ink-soft)" }}>
+        Play Store reviewers need a customer login and an approved rider login. Fill both and tap Create — the rider is approved straight away with a ₹200 wallet. Use emails that aren&apos;t registered yet (or existing non-admin accounts with their current password). Then paste the logins into Play Console → App content → App access.
+      </p>
+      <form onSubmit={(e) => { e.preventDefault(); void create(); }} style={{ display: "grid", gap: 14 }}>
+        {fields("Customer (user)", cu, setCu)}
+        {fields("Rider (partner)", ri, setRi)}
+        <ErrorText msg={err} />
+        <PrimaryButton type="submit" disabled={!ok || busy}>{busy ? "Creating…" : "Create test accounts"}</PrimaryButton>
+      </form>
+      {done && (
+        <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "var(--success)", color: "var(--success-text)", fontSize: 13, whiteSpace: "pre-wrap" }}>
+          <b>Ready ✓</b>{"\n"}{done}
+          <button type="button" onClick={() => void navigator.clipboard?.writeText(done)} style={{ ...smallBtn("ghost"), display: "block", marginTop: 8 }}>Copy</button>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function ChangePasswordPanel() {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
