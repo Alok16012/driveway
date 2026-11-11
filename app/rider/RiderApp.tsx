@@ -13,7 +13,8 @@ import {
 import { ChatScreen, EditProfilePage, type ChatMessage } from "../components/customer/AccountScreens";
 import { HOME_BG, LoadState, Toast } from "../components/ui";
 import { inr } from "../lib/data";
-import { NATIVE_APP } from "../lib/native";
+import { firstIntro, saveMode } from "../lib/mode";
+import { useRouter } from "next/navigation";
 import { acceptRide, completeRide, confirmCash, confirmDirectPayment, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, isRecoveryLink, myDriver, myDriverTrips, myProfile, myTrips, newKey, onAuthChange, recoveryLinkError, payDues, rateCustomer, rechargeWallet, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides, type DriverMe, type RideView, placeName } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
 import { startTripTracking } from "../lib/tripTracking";
@@ -50,7 +51,11 @@ export default function RiderApp() {
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [bootErr, setBootErr] = useState<string | null>(null);
-  const [intro, setIntro] = useState(true);
+  const [intro, setIntro] = useState(firstIntro);
+  // One app for both sides: remember the rider side, and switch back to booking rides without signing in again.
+  const router = useRouter();
+  useEffect(() => { saveMode("rider"); }, []);
+  const toCustomer = () => { saveMode("customer"); router.push("/"); };
   const endIntro = useCallback(() => setIntro(false), []);
   const [checking, setChecking] = useState(false);
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
@@ -251,7 +256,7 @@ export default function RiderApp() {
         {(intro || stage === "splash") && (
           <BrandSplash variant="rider" cta="Start Riding" onDone={stage === "loading" && !bootErr ? undefined : endIntro}
             onStart={stage === "splash" ? () => { setIntro(false); setStage("login"); } : undefined}
-            footer={NATIVE_APP ? undefined : <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.75)" }}><Link href="/" style={{ color: "white", fontWeight: 600 }}>Book a ride instead</Link></p>} />
+            footer={<p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.75)" }}><Link href="/" onClick={() => saveMode("customer")} style={{ color: "white", fontWeight: 600 }}>Book a ride instead</Link></p>} />
         )}
 
         {stage === "loading" && <LoadState error={bootErr} onRetry={() => void boot()} />}
@@ -330,7 +335,7 @@ export default function RiderApp() {
                 {tab === "earnings" && <EarningsScreen me={me} />}
                 {tab === "trips" && <TripsScreen trips={trips} onOpen={(r) => push({ k: "trip", id: r.id })} />}
                 {tab === "incentives" && <IncentivesScreen me={me} />}
-                {tab === "account" && <RiderAccount me={me} locked={blocked} onMenu={(k) => { if (blocked && (k === "edit" || k === "bank")) { flash(BLOCKED_MSG); return; } if (k === "performance") void refreshTrips(); push(k === "help" ? { k: "support" } : { k }); }} onLogout={() => void logout()} onDelete={() => setSheet("delete")} />}
+                {tab === "account" && <RiderAccount me={me} locked={blocked} onMenu={(k) => { if (k === "book") { toCustomer(); return; }  if (blocked && (k === "edit" || k === "bank")) { flash(BLOCKED_MSG); return; } if (k === "performance") void refreshTrips(); push(k === "help" ? { k: "support" } : { k }); }} onLogout={() => void logout()} onDelete={() => setSheet("delete")} />}
               </>
             )}
           </div>

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { CityField } from "../CityPicker";
 import {
   BackIcon, BellIcon, CardIcon, ChevronRight, DocIcon, GearIcon, HelpIcon, HistoryIcon, InfoIcon, AlertIcon,
-  PinIcon, SendIcon, WalletIcon, ArrowRight, CalendarIcon, GiftIcon, UserIcon,
+  PinIcon, SendIcon, WalletIcon, ArrowRight, CalendarIcon, GiftIcon, UserIcon, SteeringIcon,
 } from "../icons";
 import { BrandMark } from "../Brand";
 import VehicleArt, { ParcelArt } from "../VehicleArt";
@@ -231,10 +231,11 @@ export function ChatScreen({ title, subtitle, messages, typing, onSend, onBack, 
 
 /* ───────────────────────── Profile ───────────────────────── */
 
-export type ProfileKey = "edit" | "rides" | "places" | "payments" | "wallet" | "notifications" | "help" | "report" | "legal" | "about";
+export type ProfileKey = "edit" | "drive" | "rides" | "places" | "payments" | "wallet" | "notifications" | "help" | "report" | "legal" | "about";
 
 const MENU: { key: ProfileKey; label: string; Icon: (p: { s?: number; c?: string; w?: number }) => React.ReactElement }[] = [
   { key: "edit", label: "Edit Profile", Icon: UserIcon },
+  { key: "drive", label: "Drive & earn — switch to Rider", Icon: SteeringIcon },
   { key: "rides", label: "Ride History", Icon: HistoryIcon },
   { key: "places", label: "Saved Places", Icon: PinIcon },
   { key: "payments", label: "Payment Methods", Icon: CardIcon },

@@ -450,14 +450,14 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
             const on = ac === v;
             return (
               <button key={String(v)} role="radio" aria-checked={on} onClick={() => setAc(v)} className="press" style={{
-                display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 14, cursor: "pointer", textAlign: "left",
+                display: "flex", alignItems: "center", gap: 8, padding: "10px 10px", borderRadius: 14, cursor: "pointer", textAlign: "left",
                 border: on ? `2px solid ${v ? "var(--blue)" : "var(--ink)"}` : "2px solid var(--line)",
                 background: on ? (v ? "var(--blue-tint)" : "var(--bg-secondary)") : "var(--surface)",
               }}>
                 <span style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, background: v ? "#dbeafe" : "#fde68a" }}>{v ? "❄️" : "🌬️"}</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: 15, fontWeight: 700, color: on ? (v ? "var(--blue)" : "var(--ink)") : "var(--ink)" }}>{v ? "AC" : "Non-AC"}</span>
-                  <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-soft)" }}>{v ? "Cool & comfortable" : "Cheaper car fares"}</span>
+                  <span style={{ display: "block", fontSize: 15, fontWeight: 700, color: on ? (v ? "var(--blue)" : "var(--ink)") : "var(--ink)", whiteSpace: "nowrap" }}>{v ? "AC" : "Non-AC"}</span>
+                  <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-soft)", lineHeight: 1.3 }}>{v ? "Cool & comfortable" : "Cheaper car fares"}</span>
                 </span>
                 <span style={{ width: 18, height: 18, borderRadius: "50%", flexShrink: 0, border: on ? `5px solid ${v ? "var(--blue)" : "var(--ink)"}` : "2px solid var(--line-strong)" }} />
               </button>
@@ -474,12 +474,12 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
               const on = n ? share > 0 : share === 0;
               return (
                 <button key={n} role="radio" aria-checked={on} onClick={() => chooseShare(n ? Math.max(share, 1) : 0)} className="press" style={{
-                  display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 14, cursor: "pointer", textAlign: "left",
+                  display: "flex", alignItems: "center", gap: 8, padding: "10px 10px", borderRadius: 14, cursor: "pointer", textAlign: "left",
                   border: on ? "2px solid var(--blue)" : "2px solid var(--line)", background: on ? "var(--blue-tint)" : "var(--surface)",
                 }}>
                   <span style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, background: n ? "#dcfce7" : "#e0e7ff" }}>{n ? "👥" : "🚘"}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: "block", fontSize: 15, fontWeight: 700, color: on ? "var(--blue)" : "var(--ink)" }}>{n ? "Sharing" : "Private"}</span>
+                    <span style={{ display: "block", fontSize: 15, fontWeight: 700, color: on ? "var(--blue)" : "var(--ink)", whiteSpace: "nowrap" }}>{n ? "Sharing" : "Private"}</span>
                     <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-soft)" }}>{n ? `Up to ${q.share_off ?? 30}% sasta` : "Sirf aapke liye"}</span>
                   </span>
                 </button>
@@ -556,11 +556,13 @@ export function ChooseRidePage({ from, to, prefer, initialCoupon, initialAc = tr
           <button onClick={() => setSheet("who")} style={barBtn}><UserIcon s={21} c="var(--ink-soft)" /> <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{passenger ? passenger.name.split(" ")[0] : "Myself"}</span></button>
         </div>
         {!isParcel && cur.available && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 2px 10px" }}>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", lineHeight: 1.25 }}>Jaldi pickup ke liye add karein</span>
-            {ADD_ONS.map((n) => (
-              <button key={n} aria-pressed={addOn === n} onClick={() => setAddOn(addOn === n ? 0 : n)} className="press" style={{ ...chip(addOn === n), padding: "7px 12px" }}>+{inr(n)}</button>
-            ))}
+          <div style={{ margin: "0 2px 10px" }}>
+            <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 6 }}>⚡ Jaldi pickup ke liye add karein (poora driver ko)</span>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${ADD_ONS.length}, 1fr)`, gap: 8 }}>
+              {ADD_ONS.map((n) => (
+                <button key={n} aria-pressed={addOn === n} onClick={() => setAddOn(addOn === n ? 0 : n)} className="press" style={{ ...chip(addOn === n), padding: "7px 0" }}>+{inr(n)}</button>
+              ))}
+            </div>
           </div>
         )}
         <ErrorText msg={bookErr} />

@@ -7,11 +7,19 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 const clients = new Map<string, SupabaseClient>();
 
-/* Each app keeps its own sign-in, so being logged in to one of /admin, /rider or the customer app (at / and
- * /customer) never signs you in to another. One client per app, since in-app links move between them without a reload. */
+/* Customers and riders share one sign-in — it's one DriveWay app with a customer side (/) and a rider side
+ * (/rider), and switching sides never asks to log in again. The admin panel keeps its own sign-in.
+ * One client per key, since in-app links move between the sides without a reload. */
+const SHARED = "driveway-customer-auth";
 function storageKey(): string {
   const app = typeof window === "undefined" ? "" : window.location.pathname.split("/")[1];
-  return `driveway-${app === "rider" || app === "admin" ? app : "customer"}-auth`;
+  if (app === "admin") return "driveway-admin-auth";
+  // Riders signed in before the sides were merged kept their session under their own key: carry it over once.
+  try {
+    const old = localStorage.getItem("driveway-rider-auth");
+    if (old) { if (!localStorage.getItem(SHARED)) localStorage.setItem(SHARED, old); localStorage.removeItem("driveway-rider-auth"); }
+  } catch { /* storage blocked */ }
+  return SHARED;
 }
 
 export function supabase(): SupabaseClient {

@@ -482,11 +482,12 @@ export function AlertsScreen({ txns, onBack }: { txns: Txn[]; onBack?: () => voi
 
 /* ───────────────────────── Account ───────────────────────── */
 
-export type AccountKey = "edit" | "refer" | "documents" | "vehicle" | "bank" | "preferences" | "performance" | "help";
+export type AccountKey = "edit" | "book" | "refer" | "documents" | "vehicle" | "bank" | "preferences" | "performance" | "help";
 
 const MENU: { k: AccountKey; label: string; Icon: typeof HelpIcon }[] = [
   { k: "edit", label: "Edit profile", Icon: UserIcon },
   { k: "refer", label: "Refer & Earn", Icon: GiftIcon },
+  { k: "book", label: "Book a ride — switch to Customer", Icon: NavIcon },
   { k: "performance", label: "Ratings & Performance", Icon: ShieldIcon },
   { k: "documents", label: "Documents", Icon: DocIcon },
   { k: "vehicle", label: "Vehicle details", Icon: SteeringIcon },

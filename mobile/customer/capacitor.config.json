@@ -3,7 +3,16 @@
   "appName": "DriveWay",
   "webDir": "www",
   "backgroundColor": "#f49a3f",
-  "server": { "androidScheme": "https", "appStartPath": "/" },
-  "includePlugins": ["@capacitor/geolocation"],
-  "android": { "allowMixedContent": false }
+  "server": {
+    "androidScheme": "https",
+    "appStartPath": "/"
+  },
+  "includePlugins": [
+    "@capacitor-community/background-geolocation",
+    "@capacitor/geolocation"
+  ],
+  "android": {
+    "allowMixedContent": false,
+    "useLegacyBridge": true
+  }
 }

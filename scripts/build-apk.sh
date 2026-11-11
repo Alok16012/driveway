@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Builds the Android apps: DriveWay (customer), DriveWay Rider and DriveWay Admin.
-#   npm run build:apk            → all three apps
+#   npm run build:apk            → DriveWay (customer + rider) and Admin
 #   npm run build:apk -- rider   → just one
 # Output: mobile/dist/driveway-<app>.apk (debug-signed, installable for testing).
 # Needs JDK 21 (JAVA_HOME, or ~/.local/jdk21) and the Android SDK (ANDROID_HOME, or ~/Library/Android/sdk).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-apps=("$@"); [ ${#apps[@]} -eq 0 ] && apps=(customer rider admin)
+# customer = the one DriveWay app (customer + rider sides). The separate rider shell is kept for old installs only.
+apps=("$@"); [ ${#apps[@]} -eq 0 ] && apps=(customer admin)
 
 if [ -z "${JAVA_HOME:-}" ] && [ -d "$HOME/.local/jdk21/Contents/Home" ]; then export JAVA_HOME="$HOME/.local/jdk21/Contents/Home"; fi
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"

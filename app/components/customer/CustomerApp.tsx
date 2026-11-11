@@ -14,6 +14,8 @@ import { LoadState, Toast, card } from "../ui";
 import { CardIcon, UpiIcon, WalletIcon } from "../icons";
 import { inr, type PayMethod } from "../../lib/data";
 import { NATIVE_APP } from "../../lib/native";
+import { firstIntro, saveMode, savedMode } from "../../lib/mode";
+import { useRouter } from "next/navigation";
 import { cancelRide, closeRide, fmtWhen, getSession, isRecoveryLink, myActiveRide, myProfile, myRides, myWallet, onAuthChange, payRide, recoveryLinkError, places as fetchPlaces, signOut, supportMessage, updateMyPhone, updateMyProfile, watchResume, watchRides, type Place, type Profile, type Quote, type RideView, type Txn, placeName, fmtPhone } from "../../lib/api";
 import { supabase } from "../../lib/supabase/client";
 
@@ -41,6 +43,10 @@ export default function CustomerApp() {
   const [stage, setStage] = useState<Stage>("loading");
   const [me, setMe] = useState<Profile | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // One app for both sides: open on the rider side if that's what was used last.
+  const router = useRouter();
+  const toRider = useCallback(() => { saveMode("rider"); router.push("/rider"); }, [router]);
+  useEffect(() => { if (NATIVE_APP && savedMode() === "rider") router.replace("/rider"); }, [router]);
   const [places, setPlaces] = useState<Place[]>([]);
   const [tab, setTab] = useState<Tab>("home");
   const [stack, setStack] = useState<Detail[]>([]);
@@ -54,7 +60,7 @@ export default function CustomerApp() {
   const [pendingCoupon, setPendingCoupon] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [bootErr, setBootErr] = useState<string | null>(null);
-  const [intro, setIntro] = useState(true);
+  const [intro, setIntro] = useState(firstIntro);
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
   const recovering = useRef(isRecoveryLink());
   const endIntro = useCallback(() => setIntro(false), []);
@@ -200,9 +206,9 @@ export default function CustomerApp() {
         {(intro || stage === "splash") && (
           <BrandSplash variant="customer" onDone={stage === "loading" && !bootErr ? undefined : endIntro}
             onStart={stage === "splash" ? () => { setIntro(false); setStage("login"); } : undefined}
-            footer={NATIVE_APP ? undefined :
+            footer={
               <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
-                <Link href="/rider" style={{ color: "white", fontWeight: 600 }}>Drive with DriveWay</Link>
+                Have a bike, auto or cab? <Link href="/rider" onClick={() => saveMode("rider")} style={{ color: "white", fontWeight: 700 }}>Drive with DriveWay</Link>
               </p>
             } />
         )}
@@ -291,7 +297,7 @@ export default function CustomerApp() {
               <ProfileScreen
                 user={{ name: me.name, email: me.email ?? "", phone: fmtPhone(me.phone), rating: me.rating, initials: initialsOf(me.name) }}
                 stats={{ rides: me.completed, saved: 0, coupons: 0 }} locked={blocked}
-                onMenu={(key) => key === "edit" && blocked ? flash(BLOCKED_MSG) : push(key === "rides" ? { k: "rides" } : key === "help" ? { k: "chat" } : { k: "info", key })}
+                onMenu={(key) => key === "drive" ? toRider() : key === "edit" && blocked ? flash(BLOCKED_MSG) : push(key === "rides" ? { k: "rides" } : key === "help" ? { k: "chat" } : { k: "info", key })}
                 onLogout={() => void logout()}
                 onDelete={() => setDeleting(true)}
               />

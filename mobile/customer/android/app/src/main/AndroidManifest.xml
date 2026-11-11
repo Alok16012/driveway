@@ -41,4 +41,7 @@
     <!-- Asked for from the app (pickup location); the app works without it. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Trip location sharing keeps running in a foreground service while a trip is live (the plugin adds
+         FOREGROUND_SERVICE / FOREGROUND_SERVICE_LOCATION); this shows its notification on Android 13+. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>
