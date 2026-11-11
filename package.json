@@ -9,7 +9,8 @@
     "test": "vitest run",
     "build:apk": "bash scripts/build-apk.sh",
     "build:ios": "bash scripts/build-ios.sh",
-    "build:aab": "bash scripts/build-aab.sh"
+    "build:aab": "bash scripts/build-aab.sh",
+    "release": "bash scripts/release.sh"
   },
   "dependencies": {
     "@capacitor-community/background-geolocation": "1.2.26",
