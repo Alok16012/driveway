@@ -291,7 +291,7 @@ export function ProfileScreen({ user, stats, locked, onMenu, onLogout, onDelete 
       </div>
       <div style={{ padding: "22px 16px 12px" }}>
         <button onClick={onLogout} className="press" style={{ width: "100%", background: "var(--surface)", color: "var(--red)", border: "none", borderRadius: 16, padding: 15, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>Log Out</button>
-        <button onClick={onDelete} style={{ display: "block", margin: "12px auto 0", background: "none", border: "none", color: "var(--on-bg-soft)", fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>Request account deletion</button>
+        <button onClick={onDelete} style={{ display: "block", margin: "12px auto 0", background: "none", border: "none", color: "var(--on-bg-soft)", fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>Delete account</button>
         <p style={{ textAlign: "center", fontSize: 11.5, color: "var(--on-bg-soft)", marginTop: 10 }}>DriveWay v1.0.0</p>
       </div>
     </div>

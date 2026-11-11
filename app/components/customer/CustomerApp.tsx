@@ -7,6 +7,7 @@ import { BlockedBanner, EmailLogin, ForgotPassword, PermissionStep, ProfileSetup
 import HomeScreen, { HOME_BG } from "./HomeScreen";
 import { ChooseRidePage, LiveRidePage, ParcelPage, SearchPage, TripDonePage } from "./BookingScreens";
 import { ConfirmPickupPage } from "./ConfirmPickup";
+import { DeleteAccountSheet } from "../DeleteAccount";
 import { ChatScreen, EditProfilePage, InfoPage, OffersScreen, ProfileScreen, RideDetailPage, RidesScreen, type ChatMessage, type ProfileKey } from "./AccountScreens";
 import type { RideOption } from "./types";
 import { LoadState, Toast, card } from "../ui";
@@ -39,6 +40,7 @@ const optionOf = (r: RideView): RideOption => (r.service === "ride" ? r.vehicle 
 export default function CustomerApp() {
   const [stage, setStage] = useState<Stage>("loading");
   const [me, setMe] = useState<Profile | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [places, setPlaces] = useState<Place[]>([]);
   const [tab, setTab] = useState<Tab>("home");
   const [stack, setStack] = useState<Detail[]>([]);
@@ -291,7 +293,7 @@ export default function CustomerApp() {
                 stats={{ rides: me.completed, saved: 0, coupons: 0 }} locked={blocked}
                 onMenu={(key) => key === "edit" && blocked ? flash(BLOCKED_MSG) : push(key === "rides" ? { k: "rides" } : key === "help" ? { k: "chat" } : { k: "info", key })}
                 onLogout={() => void logout()}
-                onDelete={() => void supportMessage("Please delete my DriveWay account and personal data.", "Customer").then(() => flash("Deletion request sent to support — we'll confirm by SMS"), (e) => flash((e as Error).message))}
+                onDelete={() => setDeleting(true)}
               />
             )}
           </div>
@@ -307,6 +309,7 @@ export default function CustomerApp() {
           ]} />
         )}
 
+        {deleting && <DeleteAccountSheet onClose={() => setDeleting(false)} onDeleted={() => { setDeleting(false); setStack([]); setTab("home"); flash("Your account has been deleted"); }} />}
         <Toast msg={toast} bottom={showNav ? 90 : 96} />
       </div>
     </div>

@@ -252,7 +252,7 @@ const SwitchLink = ({ q, cta, onClick }: { q: string; cta: string; onClick: () =
 
 const Terms = () => (
   <p style={{ marginTop: "auto", fontSize: 11.5, color: "var(--on-bg-soft)", textAlign: "center", lineHeight: 1.5 }}>
-    By continuing you agree to DriveWay&apos;s Terms of Service and Privacy Policy.
+    By continuing you agree to DriveWay&apos;s <a href="https://drivewayride.in/terms" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>Terms of Service</a> and <a href="https://drivewayride.in/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>Privacy Policy</a>.
   </p>
 );
 

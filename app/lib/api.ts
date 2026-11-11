@@ -154,6 +154,21 @@ export async function adminSignIn(email: string, password: string) {
   return me;
 }
 export const signOut = async () => { await supabase().auth.signOut(); };
+/** Delete the signed-in account (Play Store requirement), then a rider's KYC files, then sign out.
+ *  The account goes first, so a refused delete (cash dues, ride in progress) leaves the documents in place. */
+export async function deleteMyAccount(rider: boolean) {
+  const sb = supabase();
+  const uid = (await sb.auth.getUser()).data.user?.id;
+  await rpc("delete_my_account");
+  if (rider && uid) {
+    try {
+      const bucket = sb.storage.from("driver-docs");
+      const { data: files } = await bucket.list(uid);
+      if (files?.length) await bucket.remove(files.map((f) => `${uid}/${f.name}`));
+    } catch { /* best effort — the files are no longer linked to any account */ }
+  }
+  await sb.auth.signOut();
+}
 export async function getSession(): Promise<Session | null> {
   const { data } = await supabase().auth.getSession();
   return data.session;

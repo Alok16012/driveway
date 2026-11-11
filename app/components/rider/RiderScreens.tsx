@@ -503,7 +503,7 @@ export const rates = (me: DriverMe) => {
   };
 };
 
-export function RiderAccount({ me, locked, onMenu, onLogout }: { me: DriverMe; locked?: boolean; onMenu: (k: AccountKey) => void; onLogout: () => void }) {
+export function RiderAccount({ me, locked, onMenu, onLogout, onDelete }: { me: DriverMe; locked?: boolean; onMenu: (k: AccountKey) => void; onLogout: () => void; onDelete?: () => void }) {
   const r = rates(me);
   return (
     <div style={{ paddingBottom: 12 }}>
@@ -540,6 +540,7 @@ export function RiderAccount({ me, locked, onMenu, onLogout }: { me: DriverMe; l
           ))}
         </div>
         <button onClick={onLogout} className="press" style={{ width: "100%", background: "var(--surface)", color: "var(--red)", border: "none", borderRadius: 16, padding: 15, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>Log Out</button>
+        {onDelete && <button onClick={onDelete} style={{ display: "block", margin: "12px auto 0", background: "none", border: "none", color: "var(--on-bg-soft)", fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>Delete account</button>}
         <p style={{ textAlign: "center", fontSize: 11.5, color: "var(--on-bg-soft)", margin: "0 0 12px" }}>DriveWay Rider v2.0.0</p>
       </div>
     </div>

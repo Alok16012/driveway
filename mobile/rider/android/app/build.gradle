@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+// Play Store upload key. Kept outside the repo: ~/DriveWay-PlayStore-Keys/keystore.properties
+// (or the file named by DRIVEWAY_KEYSTORE). Without it, release builds are left unsigned.
+def signingProps = new Properties()
+def signingFile = file(System.getenv("DRIVEWAY_KEYSTORE") ?: "${System.getProperty('user.home')}/DriveWay-PlayStore-Keys/keystore.properties")
+if (signingFile.exists()) { signingFile.withInputStream { signingProps.load(it) } }
+
 android {
     namespace "com.driveway.rider"
     compileSdk rootProject.ext.compileSdkVersion
@@ -16,8 +22,19 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (signingProps['storeFile']) {
+            upload {
+                storeFile file(signingProps['storeFile'])
+                storePassword signingProps['storePassword']
+                keyAlias signingProps['keyAlias']
+                keyPassword signingProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (signingProps['storeFile']) { signingConfig signingConfigs.upload }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import BottomNav, { HomeGlyph, OffersGlyph, ProfileGlyph, RidesGlyph, WalletGlyph } from "../components/BottomNav";
 import { BlockedBanner, BlockedScreen, EmailLogin, ForgotPassword, ResetPassword, SignUp, BrandSplash } from "../components/Auth";
 import { KycFlow, PendingApproval } from "../components/rider/Kyc";
+import { DeleteAccountSheet } from "../components/DeleteAccount";
 import { AlertsScreen, EarningsScreen, RequestPopup, RiderAccount, RiderHome, SharedTripBar, TripPage, TripsScreen, type AccountKey, type QuickKey } from "../components/rider/RiderScreens";
 import {
   BankPage, CancelTripSheet, DocumentsPage, IncentivesScreen, PerformancePage, PreferencesPage, ReferPage, SosSheet, TripDetailPage, VehiclePage, WalletPage, type RiderPrefs,
@@ -40,7 +41,7 @@ export default function RiderApp() {
   const [actives, setActives] = useState<RideView[]>([]);    // every trip in hand — more than one only when sharing
   const focusId = useRef<string | null>(null);
   const [trips, setTrips] = useState<RideView[] | null>(null);
-  const [sheet, setSheet] = useState<"cancel" | "sos" | null>(null);
+  const [sheet, setSheet] = useState<"cancel" | "sos" | "delete" | null>(null);
   const [prefs, setPrefs] = useState<RiderPrefs>({ autoAccept: false, cash: true, nav: "Google Maps" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -329,7 +330,7 @@ export default function RiderApp() {
                 {tab === "earnings" && <EarningsScreen me={me} />}
                 {tab === "trips" && <TripsScreen trips={trips} onOpen={(r) => push({ k: "trip", id: r.id })} />}
                 {tab === "incentives" && <IncentivesScreen me={me} />}
-                {tab === "account" && <RiderAccount me={me} locked={blocked} onMenu={(k) => { if (blocked && (k === "edit" || k === "bank")) { flash(BLOCKED_MSG); return; } if (k === "performance") void refreshTrips(); push(k === "help" ? { k: "support" } : { k }); }} onLogout={() => void logout()} />}
+                {tab === "account" && <RiderAccount me={me} locked={blocked} onMenu={(k) => { if (blocked && (k === "edit" || k === "bank")) { flash(BLOCKED_MSG); return; } if (k === "performance") void refreshTrips(); push(k === "help" ? { k: "support" } : { k }); }} onLogout={() => void logout()} onDelete={() => setSheet("delete")} />}
               </>
             )}
           </div>
@@ -359,6 +360,7 @@ export default function RiderApp() {
             else flash("Sharing isn't available on this device");
           }} />
         )}
+        {sheet === "delete" && <DeleteAccountSheet rider onClose={() => setSheet(null)} onDeleted={() => { setSheet(null); flash("Your account has been deleted"); }} />}
         <Toast msg={toast} bottom={showNav ? 90 : 96} />
       </div>
     </div>

@@ -1003,3 +1003,26 @@ describe("Add-on while searching (faster pickup)", () => {
     expect((await t.ride(b.id)).fare).toBe(before.fare + 30);
   });
 });
+
+describe("Delete my account (in the app)", () => {
+  it("a customer with no history is removed; with history the personal details go and the records stay", async () => {
+    const u = await t.user({ name: "Ravi Kumar" });
+    await t.rpc(u, "delete_my_account");
+    expect(await t.admin(`select 1 from public.profiles where id = $1`, [u])).toHaveLength(0);
+    const { c } = await fullTrip({ pay: "Cash" });
+    await t.rpc(c, "delete_my_account");
+    const p = (await t.admin(`select name, phone, email, deleted_at from public.profiles where id = $1`, [c]))[0];
+    expect(p).toMatchObject({ name: "Deleted user", phone: null, email: null });
+    expect(p.deleted_at).not.toBeNull();
+    expect(await t.admin(`select 1 from public.rides where customer_id = $1`, [c])).toHaveLength(1);
+  });
+  it("a rider with dues must clear them first; nobody can delete during a ride; admins can't self-delete", async () => {
+    const d = await t.driver("auto", { wallet: 0 });
+    await t.admin(`insert into public.ledger (idem, user_id, party, kind, amount, note) values ('test:dues:' || $1, $1::uuid, 'driver', 'cash_collected', -40, 'test')`, [d]);
+    await rejects(t.rpc(d, "delete_my_account"), /clear your cash dues/);
+    const u = await t.user(); await t.book(u, { option: "bike" });
+    await rejects(t.rpc(u, "delete_my_account"), /ride in progress/);
+    const adm = await t.user({ admin: true });
+    await rejects(t.rpc(adm, "delete_my_account"), /admin accounts/);
+  });
+});
