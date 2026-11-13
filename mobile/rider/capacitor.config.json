@@ -1,9 +1,18 @@
 {
-  "appId": "com.driveway.rider",
-  "appName": "DriveWay Rider",
+  "appId": "com.driveway.partner",
+  "appName": "DriveWay Partner",
   "webDir": "www",
   "backgroundColor": "#f49a3f",
-  "server": { "androidScheme": "https", "appStartPath": "/rider" },
-  "includePlugins": ["@capacitor-community/background-geolocation", "@capacitor/geolocation"],
-  "android": { "allowMixedContent": false, "useLegacyBridge": true }
+  "server": {
+    "androidScheme": "https",
+    "appStartPath": "/rider"
+  },
+  "includePlugins": [
+    "@capacitor-community/background-geolocation",
+    "@capacitor/geolocation"
+  ],
+  "android": {
+    "allowMixedContent": false,
+    "useLegacyBridge": true
+  }
 }

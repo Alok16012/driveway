@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Privacy Policy · DriveWay", descrip
 export default function Page() {
   return (
     <LegalPage title="Privacy Policy" updated="11 November 2026">
-      <p>This policy covers the DriveWay customer app, the DriveWay Rider app, the DriveWay Admin app and drivewayride.in (together, &quot;DriveWay&quot;). It explains what we collect, why, who we share it with and how you can delete it.</p>
+      <p>This policy covers the DriveWay customer app, the DriveWay Partner app (for riders and drivers), the DriveWay Admin app and drivewayride.in (together, &quot;DriveWay&quot;). It explains what we collect, why, who we share it with and how you can delete it.</p>
 
       <h2>What we collect</h2>
       <ul>

@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # Builds the Play Store bundles (signed with the upload key in ~/DriveWay-PlayStore-Keys).
-#   npm run build:aab            → DriveWay (customer + rider) and Admin
+#   npm run build:aab            → DriveWay, DriveWay Partner (mobile/rider) and DriveWay Admin
 #   npm run build:aab -- rider   → just one
 # Output: mobile/dist/driveway-<app>.aab. Bump versionCode in mobile/<app>/android/app/build.gradle for every upload.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# customer = the one DriveWay app (customer + rider sides). The separate rider shell is kept for old installs only.
-apps=("$@"); [ ${#apps[@]} -eq 0 ] && apps=(customer admin)
+apps=("$@"); [ ${#apps[@]} -eq 0 ] && apps=(customer rider admin)
 if [ -z "${JAVA_HOME:-}" ] && [ -d "$HOME/.local/jdk21/Contents/Home" ]; then export JAVA_HOME="$HOME/.local/jdk21/Contents/Home"; fi
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 props="${DRIVEWAY_KEYSTORE:-$HOME/DriveWay-PlayStore-Keys/keystore.properties}"

@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Delete your account · DriveWay", de
 export default function Page() {
   return (
     <LegalPage title="Delete your DriveWay account" updated="11 November 2026">
-      <p>This works for both the <b>DriveWay</b> customer app and the <b>DriveWay Rider</b> app.</p>
+      <p>This works for both the <b>DriveWay</b> customer app and the <b>DriveWay Partner</b> app.</p>
       <h2>In the app</h2>
       <p>Open the app → <b>Account / Profile</b> → <b>Delete account</b> at the bottom → type DELETE → <b>Delete account</b>.</p>
       <h2>On this website</h2>

@@ -30,7 +30,7 @@ export function WalletPage({ me, busy, err, onWithdraw, onPayDues, onRecharge, o
   const feeMin = Math.min(me.platform_fee, me.platform_fee_non_ac);
   const feeText = me.platform_fee === me.platform_fee_non_ac ? inr(me.platform_fee) : `${inr(me.platform_fee)} (AC) / ${inr(me.platform_fee_non_ac)} (non-AC)`;
   return (
-    <InfoPage title="Rider Wallet" onBack={onBack}>
+    <InfoPage title="Partner Wallet" onBack={onBack}>
       <div style={{ borderRadius: 22, padding: 18, background: "linear-gradient(150deg,var(--blue-dark),var(--blue))", color: "white", boxShadow: "0 10px 28px rgba(11,92,255,0.28)" }}>
         <p style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.75)" }}>Wallet balance</p>
         <p style={{ margin: "2px 0 0", fontSize: 32, fontWeight: 800 }}>{me.balance < 0 ? "− " : ""}{inr(Math.abs(me.balance))}</p>
@@ -169,7 +169,7 @@ export function DocumentsPage({ me, onBack }: { me: DriverMe; onBack: () => void
           <StatusBadge status={me.kyc} />
         </div>
       ))}
-      <p style={{ ...onCanvas, textAlign: "center" }}>To replace a document, message Rider Support — the new copy is re-verified before it takes effect.</p>
+      <p style={{ ...onCanvas, textAlign: "center" }}>To replace a document, message Partner Support — the new copy is re-verified before it takes effect.</p>
     </InfoPage>
   );
 }
@@ -190,7 +190,7 @@ export function VehiclePage({ me, onBack }: { me: DriverMe; onBack: () => void }
           </div>
         ))}
       </div>
-      <p style={{ ...onCanvas, textAlign: "center" }}>To change your vehicle, contact rider support — a new RC and insurance will need re-verification.</p>
+      <p style={{ ...onCanvas, textAlign: "center" }}>To change your vehicle, contact Partner Support — a new RC and insurance will need re-verification.</p>
     </InfoPage>
   );
 }
@@ -337,7 +337,7 @@ export function ReferPage({ onBack, onCopied }: { onBack: () => void; onCopied: 
   const [r, setR] = useState<MyReferral | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { myReferral().then(setR, (e) => setErr((e as Error).message)); }, []);
-  const msg = r ? `DriveWay pe rider bano aur kamao! Apply karte waqt mera code daalo: ${r.code} — ${r.rides} rides ke baad tumhe ${inr(r.new_bonus)} bonus milega. App: https://drivewayride.in/rider` : "";
+  const msg = r ? `DriveWay Partner bano aur kamao! Apply karte waqt mera code daalo: ${r.code} — ${r.rides} rides ke baad tumhe ${inr(r.new_bonus)} bonus milega. App: https://drivewayride.in/rider` : "";
   const copy = async () => { try { await navigator.clipboard.writeText(r!.code); onCopied(); } catch { /* clipboard blocked */ } };
   return (
     <InfoPage title="Refer & Earn" onBack={onBack}>

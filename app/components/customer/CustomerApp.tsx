@@ -14,7 +14,7 @@ import { LoadState, Toast, card } from "../ui";
 import { CardIcon, UpiIcon, WalletIcon } from "../icons";
 import { inr, type PayMethod } from "../../lib/data";
 import { NATIVE_APP } from "../../lib/native";
-import { firstIntro, saveMode, savedMode } from "../../lib/mode";
+import { firstIntro, saveMode } from "../../lib/mode";
 import { useRouter } from "next/navigation";
 import { cancelRide, closeRide, fmtWhen, getSession, isRecoveryLink, myActiveRide, myProfile, myRides, myWallet, onAuthChange, payRide, recoveryLinkError, places as fetchPlaces, signOut, supportMessage, updateMyPhone, updateMyProfile, watchResume, watchRides, type Place, type Profile, type Quote, type RideView, type Txn, placeName, fmtPhone } from "../../lib/api";
 import { supabase } from "../../lib/supabase/client";
@@ -43,10 +43,9 @@ export default function CustomerApp() {
   const [stage, setStage] = useState<Stage>("loading");
   const [me, setMe] = useState<Profile | null>(null);
   const [deleting, setDeleting] = useState(false);
-  // One app for both sides: open on the rider side if that's what was used last.
+  // On the website the customer and partner sides link to each other (the apps are separate on phones).
   const router = useRouter();
   const toRider = useCallback(() => { saveMode("rider"); router.push("/rider"); }, [router]);
-  useEffect(() => { if (NATIVE_APP && savedMode() === "rider") router.replace("/rider"); }, [router]);
   const [places, setPlaces] = useState<Place[]>([]);
   const [tab, setTab] = useState<Tab>("home");
   const [stack, setStack] = useState<Detail[]>([]);
@@ -206,9 +205,9 @@ export default function CustomerApp() {
         {(intro || stage === "splash") && (
           <BrandSplash variant="customer" onDone={stage === "loading" && !bootErr ? undefined : endIntro}
             onStart={stage === "splash" ? () => { setIntro(false); setStage("login"); } : undefined}
-            footer={
+            footer={NATIVE_APP ? undefined :
               <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
-                Have a bike, auto or cab? <Link href="/rider" onClick={() => saveMode("rider")} style={{ color: "white", fontWeight: 700 }}>Drive with DriveWay</Link>
+                Have a bike, auto or cab? <Link href="/rider" onClick={() => saveMode("rider")} style={{ color: "white", fontWeight: 700 }}>Become a DriveWay Partner</Link>
               </p>
             } />
         )}

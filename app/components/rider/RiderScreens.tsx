@@ -12,6 +12,7 @@ import { useRoadEta } from "../../lib/eta";
 import VehicleArt from "../VehicleArt";
 import { Avatar, ErrorText, OtpInput, PageHeader, PrimaryButton, Stars, StatusBadge, Tabs, Toggle, card, iconBtn, onLight } from "../ui";
 import { inr, vehicleById } from "../../lib/data";
+import { NATIVE_APP } from "../../lib/native";
 import { fmtWhen, rideLabel, type DriverMe, type RideView, type Txn, placeLine, placeName, fmtPhone } from "../../lib/api";
 
 const dotStyle = (c: string, sq = false): React.CSSProperties => ({ width: 9, height: 9, borderRadius: sq ? 2 : "50%", background: c, flexShrink: 0 });
@@ -52,7 +53,7 @@ export function RiderHome({ me, online, toggling, toggleErr, onToggle, onOpenEar
   return (
     <div style={{ paddingBottom: 24 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 10px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><BrandMark size={26} badge /><Wordmark light sub="RIDER · DRIVE · EARN" /></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><BrandMark size={26} badge /><Wordmark light sub="PARTNER · DRIVE · EARN" /></div>
         <button aria-label="Notifications" onClick={onAlerts} className="press" style={iconBtn}>
           <BellIcon s={25} c="var(--on-bg)" w={1.7} />
           {unread > 0 && <span style={{ position: "absolute", top: 1, right: 2, width: 8, height: 8, borderRadius: "50%", background: "var(--red)", border: "1.5px solid var(--app-bg)" }} />}
@@ -487,7 +488,7 @@ export type AccountKey = "edit" | "book" | "refer" | "documents" | "vehicle" | "
 const MENU: { k: AccountKey; label: string; Icon: typeof HelpIcon }[] = [
   { k: "edit", label: "Edit profile", Icon: UserIcon },
   { k: "refer", label: "Refer & Earn", Icon: GiftIcon },
-  { k: "book", label: "Book a ride — switch to Customer", Icon: NavIcon },
+  { k: "book", label: "Book a ride on DriveWay", Icon: NavIcon },
   { k: "performance", label: "Ratings & Performance", Icon: ShieldIcon },
   { k: "documents", label: "Documents", Icon: DocIcon },
   { k: "vehicle", label: "Vehicle details", Icon: SteeringIcon },
@@ -534,7 +535,7 @@ export function RiderAccount({ me, locked, onMenu, onLogout, onDelete }: { me: D
           ))}
         </div>
         <div style={{ ...card, padding: "0 14px" }}>
-          {MENU.filter((m) => !(locked && (m.k === "edit" || m.k === "bank"))).map(({ k, label: l, Icon }, i) => (
+          {MENU.filter((m) => !(locked && (m.k === "edit" || m.k === "bank")) && !(NATIVE_APP && m.k === "book")).map(({ k, label: l, Icon }, i) => (
             <button key={k} onClick={() => onMenu(k)} className="press" style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "14px 0", background: "none", border: "none", borderTop: i ? "1px solid var(--line)" : "none", cursor: "pointer", textAlign: "left" }}>
               <Icon s={21} c="var(--text-muted)" w={1.6} /><span style={{ flex: 1, fontSize: 14.5, fontWeight: 500, color: "var(--text-secondary)" }}>{l}</span><ChevronRight s={16} c="var(--ink-mute)" />
             </button>
@@ -542,7 +543,7 @@ export function RiderAccount({ me, locked, onMenu, onLogout, onDelete }: { me: D
         </div>
         <button onClick={onLogout} className="press" style={{ width: "100%", background: "var(--surface)", color: "var(--red)", border: "none", borderRadius: 16, padding: 15, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>Log Out</button>
         {onDelete && <button onClick={onDelete} style={{ display: "block", margin: "12px auto 0", background: "none", border: "none", color: "var(--on-bg-soft)", fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>Delete account</button>}
-        <p style={{ textAlign: "center", fontSize: 11.5, color: "var(--on-bg-soft)", margin: "0 0 12px" }}>DriveWay Rider v2.0.0</p>
+        <p style={{ textAlign: "center", fontSize: 11.5, color: "var(--on-bg-soft)", margin: "0 0 12px" }}>DriveWay Partner v1.0</p>
       </div>
     </div>
   );

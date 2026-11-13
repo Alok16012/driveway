@@ -118,7 +118,7 @@ const SPLASH_COPY: Record<SplashVariant, { headline: string; points: [string, st
   },
   admin: {
     headline: "Run the whole fleet from one place",
-    points: [["🚦", "Live rides"], ["🪪", "Rider KYC"], ["📊", "Pricing & reports"]],
+    points: [["🚦", "Live rides"], ["🪪", "Partner KYC"], ["📊", "Pricing & reports"]],
   },
 };
 
@@ -162,7 +162,7 @@ export function BrandSplash({ variant = "customer", cta = "Get Started", onStart
           Drive<span style={{ color: "#fef08a" }}>Way</span>
         </h1>
         <p className="fade-up" style={{ margin: "10px 0 0", fontSize: 12, fontWeight: 700, letterSpacing: "0.32em", color: "rgba(255,255,255,0.9)", animationDelay: "0.5s" }}>
-          RIDE · REACH · RELAX
+          {variant === "rider" ? "PARTNER · DRIVE · EARN" : "RIDE · REACH · RELAX"}
         </p>
         <p className="fade-up" style={{ margin: "18px 0 0", fontSize: 15, fontWeight: 600, color: "white", textAlign: "center", lineHeight: 1.4, animationDelay: "0.7s" }}>
           {copy.headline}

@@ -109,7 +109,7 @@ export function KycFlow({ onSubmitted }: { onSubmitted: () => void }) {
               <label style={label} htmlFor="kr">Referral code <span style={{ fontWeight: 500, opacity: 0.8 }}>(optional)</span></label>
               <input id="kr" value={k.referral} maxLength={12} autoCapitalize="characters" placeholder="e.g. ARJUN427"
                 onChange={(e) => set({ referral: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })} style={{ ...field, letterSpacing: "0.08em" }} />
-              <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--on-bg-soft)" }}>Kisi DriveWay rider ne code diya hai toh daalein — kuch rides ke baad dono ko bonus milega.</p>
+              <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--on-bg-soft)" }}>Kisi DriveWay Partner ne code diya hai toh daalein — kuch rides ke baad dono ko bonus milega.</p>
             </div>
           </>
         )}

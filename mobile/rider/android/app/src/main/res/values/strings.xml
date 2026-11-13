@@ -1,9 +1,9 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">DriveWay Rider</string>
-    <string name="title_activity_main">DriveWay Rider</string>
-    <string name="package_name">com.driveway.rider</string>
-    <string name="custom_url_scheme">com.driveway.rider</string>
+    <string name="app_name">DriveWay Partner</string>
+    <string name="title_activity_main">DriveWay Partner</string>
+    <string name="package_name">com.driveway.partner</string>
+    <string name="custom_url_scheme">com.driveway.partner</string>
     <!-- Trip location sharing (@capacitor-community/background-geolocation) -->
     <string name="capacitor_background_geolocation_notification_channel_name">Trip location sharing</string>
     <string name="capacitor_background_geolocation_notification_icon">drawable/ic_trip_tracking</string>

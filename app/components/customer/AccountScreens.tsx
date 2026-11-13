@@ -10,6 +10,7 @@ import { BrandMark } from "../Brand";
 import VehicleArt, { ParcelArt } from "../VehicleArt";
 import { Avatar, ErrorText, LoadState, PageHeader, PrimaryButton, StatusBadge, Tabs, card, field, iconBtn, label as fieldLabel } from "../ui";
 import { inr, vehicleById } from "../../lib/data";
+import { NATIVE_APP } from "../../lib/native";
 import { activeCoupons, fmtWhen, isIndianMobile, rideLabel, type CouponRow, type RideView, placeLine, placeName } from "../../lib/api";
 
 /* ───────────────────────── My rides ───────────────────────── */
@@ -235,7 +236,7 @@ export type ProfileKey = "edit" | "drive" | "rides" | "places" | "payments" | "w
 
 const MENU: { key: ProfileKey; label: string; Icon: (p: { s?: number; c?: string; w?: number }) => React.ReactElement }[] = [
   { key: "edit", label: "Edit Profile", Icon: UserIcon },
-  { key: "drive", label: "Drive & earn — switch to Rider", Icon: SteeringIcon },
+  { key: "drive", label: "Drive & earn — become a DriveWay Partner", Icon: SteeringIcon },
   { key: "rides", label: "Ride History", Icon: HistoryIcon },
   { key: "places", label: "Saved Places", Icon: PinIcon },
   { key: "payments", label: "Payment Methods", Icon: CardIcon },
@@ -279,7 +280,7 @@ export function ProfileScreen({ user, stats, locked, onMenu, onLogout, onDelete 
         </div>
       </div>
       <div style={{ padding: "18px 16px 0" }}>
-        {MENU.filter((m) => !(locked && m.key === "edit")).map(({ key, label, Icon }, i) => (
+        {MENU.filter((m) => !(locked && m.key === "edit") && !(NATIVE_APP && m.key === "drive")).map(({ key, label, Icon }, i) => (
           <button key={key} onClick={() => onMenu(key)} className="press" style={{
             width: "100%", display: "flex", alignItems: "center", gap: 16, padding: "16px 2px",
             background: "none", border: "none", borderTop: i === 0 ? "none" : "1px solid var(--on-bg-line)", cursor: "pointer", textAlign: "left",

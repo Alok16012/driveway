@@ -14,6 +14,7 @@ import { ChatScreen, EditProfilePage, type ChatMessage } from "../components/cus
 import { HOME_BG, LoadState, Toast } from "../components/ui";
 import { inr } from "../lib/data";
 import { firstIntro, saveMode } from "../lib/mode";
+import { NATIVE_APP } from "../lib/native";
 import { useRouter } from "next/navigation";
 import { acceptRide, completeRide, confirmCash, confirmDirectPayment, declineRide, driverArrived, driverCancelRide, driverCloseRide, driverOffers, getSession, isRecoveryLink, myDriver, myDriverTrips, myProfile, myTrips, newKey, onAuthChange, recoveryLinkError, payDues, rateCustomer, rechargeWallet, requestPayout, setOnline, signOut, startRide, supportMessage, updateMyDriverProfile, updateMyPhone, updateMyUpi, watchResume, watchRides, type DriverMe, type RideView, placeName } from "../lib/api";
 import { supabase } from "../lib/supabase/client";
@@ -52,7 +53,7 @@ export default function RiderApp() {
   const [toast, setToast] = useState<string | null>(null);
   const [bootErr, setBootErr] = useState<string | null>(null);
   const [intro, setIntro] = useState(firstIntro);
-  // One app for both sides: remember the rider side, and switch back to booking rides without signing in again.
+  // On the website the partner and customer sides link to each other with one login (separate apps on phones).
   const router = useRouter();
   useEffect(() => { saveMode("rider"); }, []);
   const toCustomer = () => { saveMode("customer"); router.push("/"); };
@@ -226,7 +227,7 @@ export default function RiderApp() {
   const loadChat = useCallback(async () => {
     const { data } = await supabase().from("tickets").select("notes").eq("role", "Driver").order("created_at", { ascending: false }).limit(1);
     const notes = (data?.[0]?.notes ?? []) as { from: string; body: string; at: string }[];
-    setChat([{ id: 0, from: "agent", body: "Hi! 👋 How can the rider support team help? Include the trip ID if it's about a ride.", at: "" },
+    setChat([{ id: 0, from: "agent", body: "Hi! 👋 How can the partner support team help? Include the trip ID if it's about a ride.", at: "" },
       ...notes.map((n, i) => ({ id: i + 1, from: (n.from === "user" ? "me" : "agent") as ChatMessage["from"], body: n.body, at: new Date(n.at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }) }))]);
   }, []);
   const detail = stack[stack.length - 1];
@@ -252,15 +253,15 @@ export default function RiderApp() {
       <div style={{ width: "100%", maxWidth: SHELL_MAX_W, height: "100%", position: "relative", background: "var(--app-bg)", overflow: "hidden", boxShadow: "var(--shadow-float)", display: "flex", flexDirection: "column" }}>
 
         {/* Animated launch screen, shown each time the app opens. Signed-out riders stay on it until they
-            tap Start Riding; everyone else continues into the app once it has played. */}
+            tap Start Earning; everyone else continues into the app once it has played. */}
         {(intro || stage === "splash") && (
-          <BrandSplash variant="rider" cta="Start Riding" onDone={stage === "loading" && !bootErr ? undefined : endIntro}
+          <BrandSplash variant="rider" cta="Start Earning" onDone={stage === "loading" && !bootErr ? undefined : endIntro}
             onStart={stage === "splash" ? () => { setIntro(false); setStage("login"); } : undefined}
-            footer={<p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.75)" }}><Link href="/" onClick={() => saveMode("customer")} style={{ color: "white", fontWeight: 600 }}>Book a ride instead</Link></p>} />
+            footer={NATIVE_APP ? undefined : <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.75)" }}><Link href="/" onClick={() => saveMode("customer")} style={{ color: "white", fontWeight: 600 }}>Book a ride instead</Link></p>} />
         )}
 
         {stage === "loading" && <LoadState error={bootErr} onRetry={() => void boot()} />}
-        {stage === "login" && <EmailLogin title="Welcome, Rider" accent="Let's get you earning" notice={loginNotice} onSignedIn={() => void boot()} onSignUp={() => setStage("signup")} onForgot={() => { setLoginNotice(null); setStage("forgot"); }} />}
+        {stage === "login" && <EmailLogin title="Welcome, Partner" accent="Let's get you earning" notice={loginNotice} onSignedIn={() => void boot()} onSignUp={() => setStage("signup")} onForgot={() => { setLoginNotice(null); setStage("forgot"); }} />}
         {stage === "forgot" && <ForgotPassword onBack={() => setStage("login")} />}
         {stage === "reset" && <ResetPassword onDone={() => { recovering.current = false; flash("Password updated — you're signed in."); void boot(); }} />}
         {stage === "signup" && (
@@ -280,7 +281,7 @@ export default function RiderApp() {
 
         {stage === "app" && me && (detail?.k === "support" ? (
           <div style={{ flex: 1, minHeight: 0 }}>
-            <ChatScreen title="Rider Support" subtitle="Agents reply here" messages={chat} typing={false} onBack={back}
+            <ChatScreen title="Partner Support" subtitle="Agents reply here" messages={chat} typing={false} onBack={back}
               onSend={(b) => void supportMessage(b, "Driver", trip?.id ?? null).then(loadChat, (e) => flash((e as Error).message))}
               quick={["Payout issue", "Customer didn't show", "App problem", "Document update"]} />
           </div>
