@@ -13,6 +13,7 @@
   ],
   "android": {
     "allowMixedContent": false,
-    "useLegacyBridge": true
+    "useLegacyBridge": true,
+    "adjustMarginsForEdgeToEdge": "auto"
   }
 }
