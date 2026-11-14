@@ -72,7 +72,7 @@ Available in cities where DriveWay operates. You need a valid driving licence an
 | News / Health / Government | No |
 | Financial features | None (the wallet only holds platform fees and earnings) |
 | Account deletion | In app: **Account → Delete account**. Web: https://drivewayride.in/delete-account |
-| Foreground service permissions | `FOREGROUND_SERVICE_LOCATION`, task type **Location sharing**: *"While a trip is in progress the app shares the partner's live location with the customer so they can see the vehicle approaching, including when the screen is off. It stops when the trip ends."* Play asks for a short video (YouTube unlisted): accept a ride, show the trip screen, lock the phone with the notification visible. |
+| Foreground service permissions | `FOREGROUND_SERVICE_LOCATION`, task **Background location updates → User-initiated location sharing** (not Navigation): *"While a trip is in progress the app shares the partner's live location with the customer so they can see the vehicle approaching, including when the screen is off. It stops when the trip ends."* Video: `DriveWay-Partner-location-demo.mp4` (2 min, in this folder) — upload it to YouTube as **Unlisted** and paste the link. |
 
 No background-location permission is requested, so no background location declaration is needed.
 
